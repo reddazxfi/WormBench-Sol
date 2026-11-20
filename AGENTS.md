@@ -414,15 +414,23 @@ The editor ships `spec/lua_sdk/wfws_sdk/` (id `wfws.sdk`), exporting
   `missile.sprite` override may survive it. The one exception is a roaming animal
   whose walk pose WA can draw (`roamWalkPoseId()`), which is kept and passed back
   as `roam = { walk, fly }`.
-- **That zero costs the worm its hands** on a thrown or placed donor: WA picks
-  their pose by the record's sprite (`Weapon__hold_sheet`), and 0 gives none. So
-  wherever the missile table writes `sprite = 0` for a real shot, a `copy_from`
-  claim from a donor in `POSE_BY_SPRITE_DONORS` also writes `hold_as =
-  "stock.<donor>"`, the engine's field that lends a stock weapon's pose (1.0.0).
-  Hold art skips it: `worm_sprites = holds.PX_POSTURE` draws the posture. Keeping
-  the sprite and hiding the round with `m.sprite = 0` instead shows the stock round
-  for one frame at the throw, since WA draws a launched missile before its first
-  `missile_frame` (cluster bits are not affected). An older DLL ignores `hold_as`.
+- **That zero costs the worm its hands** on a thrown or placed donor: WA reads a
+  thrown weapon's held pose, and a placed one's, from the record's sprite
+  (`Weapon__hold_sheet`; the engine's own table of placed sprites is
+  `worm_sprite::PLACED_HELD`), and 0 gives none, so WF 33 (a Cluster Bomb) aimed
+  empty-handed. `holdAsFor(project)` resolves the sprite the record would have
+  carried (the author's own unless that is the builder's zero, else the
+  baseline's) against `HELD_POSE_WEAPON`, a sprite to stock weapon table covering
+  the thrown five and the eight placed sprites, and the claim writes `hold_as =
+  "stock.<weapon>"`, the engine's field that lends a stock weapon's pose (1.0.0).
+  A sprite the table does not spell falls back to the donor when the donor is a
+  weapon WA poses by sprite (`POSE_BY_SPRITE_DONORS`), and only for a stock slot
+  the engine knows. Hold art skips it (`worm_sprites = holds.PX_POSTURE` draws the
+  posture), and a melee swing owns the hands. Keeping the sprite and hiding the
+  round with `m.sprite = 0` instead is too late: WA draws a launched missile once
+  before its first `missile_frame` (cluster bits are not affected). An imported
+  `hold_as` is kept as written (`project.holdAs`). An older DLL ignores the key,
+  so those weapons aim empty-handed there.
 - **Identity is decided by the burst, not by `m.sprite`** (`classify`): the first
   missile of the weapon is the round; a missile that first appears within
   `bit_window` frames (default 5) after the round was last seen and at the

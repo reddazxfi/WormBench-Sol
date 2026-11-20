@@ -15,7 +15,7 @@ import {
 } from '../types/weapon';
 import { getStockPanelPosition } from '../data/stockWeapons';
 import { stockDonor, stockDonorBaseline } from '../data/stockDonors';
-import { resolveStockSprite, stockSpriteId } from '../data/stockSprites';
+import { resolveStockSprite, stockSpriteId, stockSpriteName } from '../data/stockSprites';
 import { supportsFireSequence } from '../data/fireSequence';
 import { STAMP_FRAMES, stampFrameForAngle, supportsTerrainStamp } from '../data/terrainStamp';
 import { COLLISION_FLAGS } from '../data/recordSchema';
@@ -877,6 +877,86 @@ export const WFWS_BUILDER_MODULE = 'wf-lib/wfws_sprite_builder';
  * - Roaming art is not here: WA draws the walking, two flying and gas poses from
  *   separate record fields, so it goes through `sheep_sprites` and the record.
  */
+/**
+ * The stock weapons whose record sprite gives a thrown weapon its held pose
+ * (WA's `Weapon__hold_sheet`, 0x51C060): only these five. Any other sprite,
+ * and 0, aims with empty hands.
+ */
+/**
+ * The stock sprites WA gives a worm a held pose for (`Weapon__hold_sheet`), each
+ * with the stock weapon that carries it.
+ *
+ * A thrown weapon's pose is read from the record's `sprite`, and so is a placed
+ * one's (`crates/engine/src/worm_sprite.rs`: `PLACED_HELD` is WA's own table of
+ * them, and the thrown five are the same lookup). The sprite is therefore what
+ * decides the pose, not the weapon.
+ */
+const HELD_POSE_WEAPON: Record<string, string> = {
+  // thrown
+  grenade: 'stock.grenade',
+  banana: 'stock.banana_bomb',
+  cluster: 'stock.cluster_bomb',
+  petrolbm: 'stock.petrol_bomb',
+  hgrenade: 'stock.holy_grenade',
+  // placed (`PLACED_HELD`: vase 74, dynamite 78, sheepwlk 153, woman 162, sally
+  // 163, cowwalk 164, molewalk 166, skunk1 173)
+  vase: 'stock.ming_vase',
+  dynamite: 'stock.dynamite',
+  sheepwlk: 'stock.sheep',
+  woman: 'stock.old_woman',
+  sally: 'stock.old_woman',
+  cowwalk: 'stock.mad_cow',
+  molewalk: 'stock.mole_bomb',
+  skunk1: 'stock.skunk',
+};
+
+/**
+ * Weapons WA picks a worm's pose for by the record's sprite, used only when the
+ * record's sprite is one `HELD_POSE_WEAPON` does not spell (a `_2` variant, a
+ * per-team sprite): the donor's pose is still the right one.
+ */
+const POSE_BY_SPRITE_DONORS = new Set([
+  'grenade', 'cluster_bomb', 'banana_bomb', 'super_banana', 'holy_grenade', 'petrol_bomb',
+  'ming_vase', 'dynamite', 'sheep', 'super_sheep', 'aqua_sheep', 'old_woman',
+  'salvation_army', 'mad_cow', 'mole_bomb', 'skunk',
+]);
+
+/**
+ * `hold_as` for the claim, or undefined.
+ *
+ * The builder zeroes the record's `missile.sprite` so WA never draws the stock
+ * round (WA draws a launched missile once before its first `missile_frame`, so
+ * hiding it there leaves a frame showing). A thrown weapon's held pose is read
+ * from that same sprite, so the zero also emptied the worm's hands: WF 33, a
+ * Cluster Bomb, aimed holding nothing. `hold_as` lends the pose of the stock
+ * weapon the record's own sprite would have given. A weapon with its own hold
+ * art draws over the empty-handed pose on purpose, and a melee swing owns the
+ * hands, so neither gets one. An imported `hold_as` is kept as written.
+ */
+export function holdAsFor(project: WeaponProject): string | undefined {
+  if (project.holdAs) return project.holdAs;
+  if (!primaryBuilderOn(project) || project.hold?.enabled || project.melee?.enabled) return undefined;
+  const donorName = (project.based_on || project.slot || 'grenade').replace(/^stock\./, '');
+  // The sprite the record would carry without the builder: the author's own,
+  // unless that is the builder's zero, else the baseline's.
+  const own = project.recordOverrides?.['missile.sprite'];
+  const ownSet = own !== undefined && own !== '' && own !== 0 && own !== '0';
+  const sprite = ownSet
+    ? own
+    : recordField(
+        { ...project, recordOverrides: {} },
+        'missile.sprite',
+        stockDonorBaseline(donorName)?.recordOverrides?.['missile.sprite'],
+      );
+  const resolved = resolveStockSprite(sprite);
+  const name = typeof resolved === 'number' ? stockSpriteName(resolved) : resolved;
+  const posed = name ? HELD_POSE_WEAPON[name] : undefined;
+  if (posed) return posed;
+  // A sprite this table does not spell is still the donor's own on a weapon WA
+  // poses by sprite, and a stock slot the engine does not know may not be named.
+  return stockDonor(donorName) && POSE_BY_SPRITE_DONORS.has(donorName) ? `stock.${donorName}` : undefined;
+}
+
 export function wfwsRoleFlags(project: WeaponProject) {
   const builderOn = primaryBuilderOn(project);
   const bitMode = bitBuilderMode(project);
@@ -1195,18 +1275,6 @@ export function wepBundlePath(project: WeaponProject): string | null {
   const slug = project.packSlug ? `${sanitizeModFolder(project.packSlug)}/` : '';
   return `weps/${slug}${file}`;
 }
-
-/**
- * Donors whose worm pose WA picks by the record's `sprite` (its
- * `Weapon__hold_sheet`): the thrown weapons, and the placed ones it knows by
- * their flight sprite. Zeroing that sprite to hide the round leaves the worm
- * aiming with empty hands, so the claim lends the donor's pose (`hold_as`).
- */
-const POSE_BY_SPRITE_DONORS = new Set([
-  'grenade', 'cluster_bomb', 'banana_bomb', 'super_banana', 'holy_grenade', 'petrol_bomb',
-  'ming_vase', 'dynamite', 'sheep', 'super_sheep', 'aqua_sheep', 'old_woman',
-  'salvation_army', 'mad_cow', 'mole_bomb', 'skunk',
-]);
 
 export function generateLuaCode(project: WeaponProject): string {
   /**
@@ -2225,6 +2293,12 @@ export function generateLuaCode(project: WeaponProject): string {
     // A ghost that crosses a crate would collect it for the team, which is a
     // visible effect of a shot nobody asked for.
     lines.push('      collects_crates = false,');
+  }
+  const holdAs = holdAsFor(project);
+  if (holdAs) {
+    // The record's sprite is zeroed below, and a thrown weapon's held pose is
+    // read from it: lend the pose it would have given (`holdAsFor`).
+    lines.push(`      hold_as = ${luaQuote(holdAs)},`);
   }
   if (usesSwing && !meleeGhost) {
     // Space plays the clip instead of firing. WA's dispatch is eaten, so
@@ -3974,10 +4048,6 @@ export function generateLuaCode(project: WeaponProject): string {
       for (const row of holdRows) lines.push(`        ${row}`);
       lines.push('      },');
     }
-  } else if (zeroedSprite && !wepPath && donorKnown && POSE_BY_SPRITE_DONORS.has(donorName)) {
-    // The record's sprite is 0, so WA gives the worm nothing to hold: it takes
-    // the donor's pose instead. Hold art has its own posture and skips this.
-    lines.push(`      hold_as = ${luaQuote(donor)},`);
   }
 
   // Custom Lua callback (only when checkbox is explicitly enabled)

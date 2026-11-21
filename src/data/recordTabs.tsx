@@ -23,6 +23,7 @@ export type RecordTabId =
   | 'callbacks'
   | 'gun'
   | 'strike'
+  | 'airstrike'
   | 'gun_mine'
   | 'melee'
   | 'burst_bit'
@@ -42,6 +43,7 @@ export interface RecordTabDef {
 
 /** Canonical definitions for every section in the Weapon Record workbench. */
 export const RECORD_TABS: RecordTabDef[] = [
+  { id: 'airstrike', label: 'Airstrike', hint: 'Lua aircraft takeover, release cadence & preview', icon: Plane },
   { id: 'missile', label: 'Physics & Blast', hint: 'Power, gravity, wind, fuse & handling', icon: Bomb },
   { id: 'action', label: 'Missile Action', hint: 'Bounce, homing, roam, dig & targets', icon: Zap },
   { id: 'burst', label: 'Explodes Into', hint: 'Single blast, cluster bits or fire', icon: Sparkles },
@@ -142,16 +144,37 @@ export function visibleRecordTabs(
   }
 
   const isStrike = fireType === 'cursor' && !teleport;
+  if (isStrike) {
+    return [
+      {
+        id: 'airstrike',
+        label: 'Airstrike',
+        hint: 'Lua aircraft takeover, release cadence & live preview',
+        icon: Plane,
+      },
+      {
+        id: 'missile',
+        label: 'Strike & Bombs',
+        hint: 'Bomb physics, blast & native flyover',
+        icon: Bomb,
+      },
+      { id: 'action', label: 'Missile Action', hint: 'Bounce, homing, roam, dig & targets', icon: Zap },
+      { id: 'burst', label: 'Explodes Into', hint: 'Single blast, cluster bits or fire', icon: Sparkles },
+      { id: 'sprite', label: 'Sprites & Trail', hint: 'Missile sprite, smoke trail & sounds', icon: Sliders },
+      { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
+    ];
+  }
+
   return [
     {
       id: 'missile',
-      label: isStrike ? 'Strike & Bombs' : 'Physics & Blast',
-      hint: isStrike ? 'Aircraft drop & bomb physics' : 'Power, gravity, wind, fuse & blast',
-      icon: isStrike ? Plane : Bomb,
+      label: 'Physics & Blast',
+      hint: 'Power, gravity, wind, fuse & blast',
+      icon: Bomb,
     },
     { id: 'action', label: 'Missile Action', hint: 'Bounce, homing, roam, dig & targets', icon: Zap },
     { id: 'burst', label: 'Explodes Into', hint: 'Single blast, cluster bits or fire', icon: Sparkles },
     { id: 'sprite', label: 'Sprites & Trail', hint: 'Missile sprite, smoke trail & sounds', icon: Sliders },
-      { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
+    { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
   ];
 }

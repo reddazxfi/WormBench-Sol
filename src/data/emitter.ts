@@ -182,5 +182,12 @@ export function supportsEmitter(project: WeaponProject): boolean {
  * strike's bombs carry no `m.weapon` to recognise them by.
  */
 export function supportsEmitterRound(project: WeaponProject): boolean {
-  return project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse);
+  return (
+    project.fireType === 'power' ||
+    (project.fireType === 'drop' && !!project.body.fuse) ||
+    (project.fireType === 'cursor' &&
+      !project.teleport &&
+      !!project.airstrike?.enabled &&
+      (project.airstrike.payload?.kind ?? 'missile') === 'missile')
+  );
 }

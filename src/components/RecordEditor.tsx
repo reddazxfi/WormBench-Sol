@@ -32,6 +32,7 @@ import { FIRE_SUBTYPES, fireSubtypeLabel } from '../data/fireSubtypes';
 import { PackSpriteUpload } from './PackSpriteUpload';
 import { NumberInput, useNumberDraft } from './NumberInput';
 import { MeleeCard } from './MeleeCard';
+import { AirstrikeCard } from './AirstrikeCard';
 import { LuaFindings } from './LuaFindings';
 import { checkLua, fixLockstepRng } from '../utils/luaCheck';
 import { recordField } from '../utils/recordField';
@@ -718,6 +719,9 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
     );
 
   const tabWhisper = (id: RecordTabId): string | null => {
+    if (id === 'airstrike' && project.airstrike?.enabled) {
+      return 'on';
+    }
     if (id === 'action' && project.action && project.action !== 'none') {
       return project.action;
     }
@@ -834,16 +838,40 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
         )}
       </div>
 
+      {/* PANEL 0: Airstrike Takeover (cursor air strikes) */}
+      {normalizedTab === 'airstrike' && (
+        <div className="p-4 sm:p-5">
+          <AirstrikeCard project={project} onChange={onChange} />
+        </div>
+      )}
+
       {/* PANEL 1: Physics & Blast (or Strike & Bombs) */}
       {normalizedTab === 'missile' && (
         <div className="p-4 sm:p-5 space-y-5">
-          {isStrike && (
+          {isStrike && project.airstrike?.enabled ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-forge-200 bg-forge-50/70 px-3.5 py-2.5 text-xs text-forge-900 dark:border-forge-800/60 dark:bg-forge-950/30 dark:text-forge-200">
+              <span>
+                <strong>Lua Airstrike Takeover</strong> owns the flyover, aircraft art, and drop
+                cadence.{' '}
+                {(project.airstrike.payload?.kind ?? 'missile') === 'missile'
+                  ? 'The physics and blast controls below configure the launched projectile sub-table.'
+                  : `Current payload is "${project.airstrike.payload?.kind}" (the bomb physics below apply only when payload kind is Missile).`}
+              </span>
+              <button
+                type="button"
+                onClick={() => onSelectSubTab('airstrike')}
+                className="shrink-0 cursor-pointer rounded-md border border-forge-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-forge-700 hover:bg-forge-50 dark:border-forge-700 dark:bg-stone-900 dark:text-forge-300"
+              >
+                Open Airstrike
+              </button>
+            </div>
+          ) : isStrike ? (
             <div className="space-y-3.5 border-b border-stone-200/80 pb-5 dark:border-stone-800">
               <SectionHeader
                 title="Air Strike Flyover"
                 code="strike"
                 icon={<Plane className="h-4 w-4 text-forge-500" aria-hidden="true" />}
-                desc="Aircraft pass and drop pattern settings. Individual bomb physics sit immediately below."
+                desc="Native WA aircraft pass and drop pattern. For custom speed curves, strafing, multi-part planes, or full missile effects, switch to the Airstrike tab."
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {numField('strike.count', 'Munitions Dropped', 5, 'Number of bombs or mines released across the flyover.', { min: 0, max: 50 })}
@@ -876,7 +904,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 hint="Optional pack PNG replacing the flyover plane (top-level plane claim key, as in PX SetSpriteOverride 704 / Banana Express)."
               />
             </div>
-          )}
+          ) : null}
 
           <div className="space-y-3.5">
             <SectionHeader

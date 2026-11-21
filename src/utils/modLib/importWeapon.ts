@@ -224,19 +224,51 @@ export async function importBundleWeapon(
     );
   }
 
+  // When a cursor weapon carries `projectile = { copy_from = "stock.<donor>",
+  // missile = ..., clusters = ... }` (Lua airstrike takeover), map the
+  // projectile's own record tables seeded from its donor so the Physics /
+  // Action / Explodes Into panels round-trip faithfully.
+  const projTable = isTable(weapon.source?.projectile)
+    ? (weapon.source.projectile as LuaTable)
+    : isTable(weapon.record?.projectile)
+      ? (weapon.record.projectile as LuaTable)
+      : undefined;
+  const projDonorName = projTable ? str(projTable.copy_from)?.replace(/^stock\./, '') : undefined;
+  const projBase = projDonorName ? stockDonor(projDonorName) : undefined;
+  const recordForMap: LuaTable | undefined = projTable
+    ? (() => {
+        const merged: LuaTable = { ...(weapon.record ?? {}) };
+        delete merged.projectile;
+        if (projTable.missile !== undefined) merged.missile = projTable.missile;
+        if (projTable.clusters !== undefined) merged.clusters = projTable.clusters;
+        if (projTable.sprite !== undefined) merged.sprite = projTable.sprite;
+        if (projTable.cluster !== undefined) merged.cluster = projTable.cluster;
+        return merged;
+      })()
+    : weapon.record;
+
   // The module's tables become the typed fields, so the panels show the real
   // weapon. Whatever the mapper does not model stays in `recordExtra` and is
   // still emitted verbatim.
-  const mapped = mapRecord(weapon.record, {
+  const mapped = mapRecord(recordForMap, {
     // A `.wep` supplies the base record; without one the editor's defaults do,
     // so a record that declares only some fields still exports complete values.
-    body: (project.body ?? { ...DEFAULT_BODY, clustlet: { ...DEFAULT_BODY.clustlet } }) as WeaponProject['body'],
-    action: (project.action ?? 'none') as WeaponProject['action'],
-    burst: (project.burst ?? 'nothing') as WeaponProject['burst'],
-    roamConfig: (project.roamConfig ?? { ...DEFAULT_ROAM }) as WeaponProject['roamConfig'],
-    digConfig: (project.digConfig ?? { ...DEFAULT_DIG }) as WeaponProject['digConfig'],
-    fireConfig: (project.fireConfig ?? { ...DEFAULT_FIRE }) as WeaponProject['fireConfig'],
-    recordOverrides: { ...(project.recordOverrides ?? {}) },
+    body: ((projBase?.body ?? project.body) ?? {
+      ...DEFAULT_BODY,
+      clustlet: { ...DEFAULT_BODY.clustlet },
+    }) as WeaponProject['body'],
+    action: ((projBase?.action ?? project.action) ?? 'none') as WeaponProject['action'],
+    burst: ((projBase?.burst ?? project.burst) ?? 'nothing') as WeaponProject['burst'],
+    roamConfig: ((projBase?.roamConfig ?? project.roamConfig) ?? {
+      ...DEFAULT_ROAM,
+    }) as WeaponProject['roamConfig'],
+    digConfig: ((projBase?.digConfig ?? project.digConfig) ?? {
+      ...DEFAULT_DIG,
+    }) as WeaponProject['digConfig'],
+    fireConfig: ((projBase?.fireConfig ?? project.fireConfig) ?? {
+      ...DEFAULT_FIRE,
+    }) as WeaponProject['fireConfig'],
+    recordOverrides: { ...(projBase?.recordOverrides ?? project.recordOverrides ?? {}) },
   });
   if (weapon.record) {
     const mappedKeys = Object.keys(mapped.recordOverrides).length;
@@ -382,6 +414,15 @@ export async function importBundleWeapon(
       notes.push('not carried: on_shot (the sequential-fire burst owns that key)');
       continue;
     }
+    if (
+      key === 'on_click' &&
+      features.project.airstrike?.enabled &&
+      /air\.strike\s*\(/.test(text)
+    ) {
+      // `wfws_airstrike` owns `on_click = function(ev) air.strike(ev) end`.
+      claimAbsorbed.push('on_click');
+      continue;
+    }
     carriedHookList.push({ key, text, line: split.hookLines?.[key as keyof typeof split.hookLines] ?? 0 });
   }
   // `wa.on.*` registrations (M6): additive, so they are carried verbatim and in
@@ -504,7 +545,11 @@ export async function importBundleWeapon(
     // `mod.toml` declares), so the map has to exist even when the project this
     // import started from did not carry one.
     customSprites: { ...(project.customSprites ?? {}) },
-      fireType: isMelee ? 'melee' : (project.fireType ?? 'power'),
+    fireType: isMelee
+      ? 'melee'
+      : features.project.airstrike?.enabled
+        ? 'cursor'
+        : (project.fireType ?? 'power'),
       id,
       name,
       description:
@@ -531,7 +576,7 @@ export async function importBundleWeapon(
       recordOverrides: mapped.recordOverrides,
       recordExtra: mapped.recordExtra,
       specialSubtype: mapped.specialSubtype ?? project.specialSubtype,
-      teleport: mapped.teleport ?? project.teleport,
+      teleport: features.project.airstrike?.enabled ? false : (mapped.teleport ?? project.teleport),
       // The decoded `.wep` is the diff base; without one the donor is.
       wepBaseline: baseline,
       donorBaseline,

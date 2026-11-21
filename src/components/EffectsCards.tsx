@@ -8,6 +8,7 @@ import type {
   WeaponProject,
 } from '../types/weapon';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../data/explosionPresets';
+import { takeoverMissileActive } from '../data/airstrike';
 import { bitBuilderMode } from '../data/spriteBuilder';
 import { DEFAULT_CUSTOM_SOUNDS, INTERVAL_PRESETS, SOUND_PRIORITIES } from '../data/soundPresets';
 import { ExplosionPreview } from './ExplosionPreview';
@@ -38,16 +39,25 @@ const RIBBON_DEFAULT: RibbonTrailConfig = {
 
 /** A missile family has rounds for `wa.on.missile_frame` to sample. */
 export function supportsRibbonTrail(project: WeaponProject): boolean {
-  return project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse);
+  return (
+    project.fireType === 'power' ||
+    (project.fireType === 'drop' && !!project.body.fuse) ||
+    takeoverMissileActive(project)
+  );
 }
 
 /**
- * WA blasts a thrown/launched missile and a placed mine. A strike's bombs are
- * created from the strike's own record copy, not a weapon slot, so the claim's
- * `on_explode` never runs for them.
+ * WA blasts a thrown/launched missile and a placed mine. A native strike's
+ * bombs are created from the strike's own record copy, not a weapon slot, so
+ * the claim's `on_explode` never runs for them; Lua airstrike takeover launches
+ * missiles through this claim's `projectile` table so `on_explode` runs.
  */
 export function supportsExplosionEffect(project: WeaponProject): boolean {
-  return project.fireType === 'power' || project.fireType === 'drop';
+  return (
+    project.fireType === 'power' ||
+    project.fireType === 'drop' ||
+    takeoverMissileActive(project)
+  );
 }
 
 /** A missile or mine: WA blasts it, so `on_explode` runs. */
@@ -68,7 +78,11 @@ export function supportsLaunchSound(project: WeaponProject): boolean {
 
 /** Only a round WA flies has `wa.on.missile_frame` samples to tick against. */
 export function supportsIntervalSound(project: WeaponProject): boolean {
-  return project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse);
+  return (
+    project.fireType === 'power' ||
+    (project.fireType === 'drop' && !!project.body.fuse) ||
+    takeoverMissileActive(project)
+  );
 }
 
 interface CardProps {

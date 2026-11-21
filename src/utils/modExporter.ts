@@ -3,7 +3,11 @@
 // libraries as arguments and so can be exercised without Vite's `?raw` imports.
 import JSZip from 'jszip';
 import { PackProject, WeaponProject } from '../types/weapon';
-import { WFWS_SDK_MOD_TOML, WFWS_SPRITE_BUILDER_LUA } from '../data/wfwsSdk';
+import {
+  WFWS_AIRSTRIKE_LUA,
+  WFWS_SDK_MOD_TOML,
+  WFWS_SPRITE_BUILDER_LUA,
+} from '../data/wfwsSdk';
 import {
   EFFECTS_SDK_FILES,
   EFFECTS_SDK_MOD_TOML,
@@ -25,7 +29,11 @@ export {
 
 /** The library bundles this build ships: the wfws SDK always, effects on demand. */
 const LIBRARIES: PackLibraries = {
-  wfws: { modToml: WFWS_SDK_MOD_TOML, spriteBuilderLua: WFWS_SPRITE_BUILDER_LUA },
+  wfws: {
+    modToml: WFWS_SDK_MOD_TOML,
+    spriteBuilderLua: WFWS_SPRITE_BUILDER_LUA,
+    airstrikeLua: WFWS_AIRSTRIKE_LUA,
+  },
   effects: {
     modToml: EFFECTS_SDK_MOD_TOML,
     files: EFFECTS_SDK_FILES,

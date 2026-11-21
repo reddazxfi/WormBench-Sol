@@ -1,4 +1,7 @@
 import {
+  AirstrikeConfig,
+  AirstrikePlanePartConfig,
+  AirstrikeSoundSpec,
   BodyConfig,
   BehaviorArtKey,
   ClustletConfig,
@@ -26,6 +29,7 @@ import { supportsFireSequence } from '../data/fireSequence';
 import { STAMP_FRAMES, stampFrameForAngle, supportsTerrainStamp } from '../data/terrainStamp';
 import { COLLISION_FLAGS } from '../data/recordSchema';
 import { meleeStrikes } from '../data/melee';
+import { airstrikeActive, mergeAirstrikeConfig, takeoverMissileActive } from '../data/airstrike';
 import { SDK_MODULE_EXPORTS, SDK_MODULE_PREFIXES } from '../data/sdkModules';
 import { maskLuaCode, NOT_GENERATED_CLOSE, NOT_GENERATED_OPEN, scanBlockEnd } from './luaText';
 import { recordField } from './recordField';
@@ -737,12 +741,401 @@ const PACK_ART_STEM: Record<PackArtSlot, string> = {
  *  A strike's munition homing art follows the claim `sprite` (0xC0) instead. */
 export function packArtSlotApplies(project: WeaponProject, slot: PackArtSlot): boolean {
   if (slot === 'cluster_homing_sprite') {
-    return !(project.fireType === 'cursor' && !project.teleport);
+    return !(project.fireType === 'cursor' && !project.teleport) || takeoverMissileActive(project);
   }
   if (slot === 'strike_plane') {
-    return project.fireType === 'cursor' && !project.teleport;
+    return project.fireType === 'cursor' && !project.teleport && !airstrikeActive(project);
   }
   return true;
+}
+
+/** Bundle path of a custom airstrike plane sheet, or null when stock/unused. */
+export function airstrikePlaneSheetPath(project: WeaponProject): string | null {
+  if (!airstrikeActive(project)) return null;
+  const air = mergeAirstrikeConfig(project.airstrike);
+  if (air.entry.mode === 'payload') return null;
+  if (air.plane.spriteMode !== 'custom' || !air.plane.sheet?.file) return null;
+  const name = air.plane.sheet.file.name || air.plane.sheet.fileName || '';
+  const ext = name.toLowerCase().endsWith('.gif') ? 'gif' : 'png';
+  return `sprites/${sanitizeModFolder(project.id)}/airstrike_plane.${ext}`;
+}
+
+/** Bundle path of a custom airstrike child part sheet, or null when stock/unused. */
+export function airstrikePartSheetPath(
+  project: WeaponProject,
+  part: AirstrikePlanePartConfig,
+  index: number,
+): string | null {
+  if (!airstrikeActive(project)) return null;
+  const air = mergeAirstrikeConfig(project.airstrike);
+  if (air.entry.mode === 'payload') return null;
+  if (part.spriteMode !== 'custom' || !part.sheet?.file) return null;
+  const name = part.sheet.file.name || part.sheet.fileName || '';
+  const ext = name.toLowerCase().endsWith('.gif') ? 'gif' : 'png';
+  const safeId = (part.id || `part_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `sprites/${sanitizeModFolder(project.id)}/airstrike_part_${safeId}.${ext}`;
+}
+
+/** Bundle path of a custom airstrike strafe round art sheet, or null when unused. */
+export function airstrikeStrafeSheetPath(project: WeaponProject): string | null {
+  if (!airstrikeActive(project)) return null;
+  const air = mergeAirstrikeConfig(project.airstrike);
+  if (air.release.mode !== 'strafe' || !air.strafe.artEnabled || !air.strafe.artSheet?.file) {
+    return null;
+  }
+  const name = air.strafe.artSheet.file.name || air.strafe.artSheet.fileName || '';
+  const ext = name.toLowerCase().endsWith('.gif') ? 'gif' : 'png';
+  return `sprites/${sanitizeModFolder(project.id)}/airstrike_strafe.${ext}`;
+}
+
+/** Bundle path of a custom airstrike strafe casing sheet, or null when unused. */
+export function airstrikeCasingSheetPath(project: WeaponProject): string | null {
+  if (!airstrikeActive(project)) return null;
+  const air = mergeAirstrikeConfig(project.airstrike);
+  if (air.release.mode !== 'strafe' || !air.strafe.casingEnabled || !air.strafe.casingSheet?.file) {
+    return null;
+  }
+  const name = air.strafe.casingSheet.file.name || air.strafe.casingSheet.fileName || '';
+  const ext = name.toLowerCase().endsWith('.gif') ? 'gif' : 'png';
+  return `sprites/${sanitizeModFolder(project.id)}/airstrike_casing.${ext}`;
+}
+
+/** Bundle path of an uploaded airstrike WAV (`enter` / `loop` / `exit` / `release`). */
+export function airstrikeSoundPath(
+  project: WeaponProject,
+  role: 'enter' | 'loop' | 'exit' | 'release',
+): string | null {
+  if (!airstrikeActive(project)) return null;
+  const air = mergeAirstrikeConfig(project.airstrike);
+  if (role !== 'release' && air.entry.mode === 'payload') return null;
+  const spec: AirstrikeSoundSpec | undefined =
+    role === 'enter'
+      ? air.plane.soundEnter
+      : role === 'loop'
+        ? air.plane.soundLoop
+        : role === 'exit'
+          ? air.plane.soundExit
+          : air.release.sound;
+  if (!spec?.file?.file) return null;
+  return `sounds/${sanitizeModFolder(project.id)}/airstrike_${role}.wav`;
+}
+
+/** Emit the `air.install(ctx, { ... })` call for Lua airstrike takeover. */
+function emitAirstrikeInstallBlock(
+  lines: string[],
+  project: WeaponProject,
+  air: AirstrikeConfig,
+): void {
+  const soundExpr = (
+    role: 'enter' | 'loop' | 'exit' | 'release',
+    spec: AirstrikeSoundSpec | undefined,
+  ): string | null => {
+    const wavPath = airstrikeSoundPath(project, role);
+    if (wavPath) return luaQuote(wavPath);
+    const id = Math.round(spec?.id ?? 0);
+    return id > 0 ? String(id) : null;
+  };
+
+  lines.push('    air.install(ctx, {');
+  lines.push('      weapon = ctx.id,');
+  lines.push(`      mode = ${luaQuote(air.release.mode)},`);
+  lines.push(`      direction = ${luaQuote(air.direction)},`);
+  lines.push(`      default_dir = ${air.defaultDir < 0 ? -1 : 1},`);
+  if (air.zeroVxUsesFacing) lines.push('      zero_vx_uses_facing = true,');
+  if (air.stopOnTurnEnd === false) lines.push('      stop_on_turn_end = false,');
+
+  lines.push('      entry = {');
+  lines.push(`        mode = ${luaQuote(air.entry.mode)},`);
+  if (air.entry.y !== null && air.entry.y !== undefined) {
+    lines.push(`        y = ${formatNumber(air.entry.y)},`);
+  }
+  if (air.entry.mode === 'offmap') {
+    lines.push(`        side = ${formatNumber(Math.max(0, air.entry.side))},`);
+  }
+  if (air.entry.mode === 'payload') {
+    lines.push(`        spawn_at = ${luaQuote(air.entry.spawnAt)},`);
+  }
+  if (air.entry.dropOffsetX !== 0) {
+    lines.push(`        drop_offset_x = ${formatNumber(air.entry.dropOffsetX)},`);
+  }
+  lines.push('      },');
+
+  if (air.entry.mode === 'payload') {
+    lines.push('      plane = { enabled = false },');
+  } else {
+    const customPlanePath = airstrikePlaneSheetPath(project);
+    const planeSprite = customPlanePath
+      ? luaQuote(customPlanePath)
+      : luaQuote(air.plane.stockSprite || 'airjetg');
+    lines.push('      plane = {');
+    lines.push('        enabled = true,');
+    lines.push(`        sprite = ${planeSprite},`);
+    lines.push(`        frames = ${Math.max(1, Math.round(air.plane.frames))},`);
+    lines.push(`        fps = ${formatNumber(Math.max(0, air.plane.fps))},`);
+    if (air.plane.play !== 'loop') lines.push(`        play = ${luaQuote(air.plane.play)},`);
+    if (air.plane.scale !== 1) lines.push(`        scale = ${formatNumber(air.plane.scale)},`);
+    lines.push(`        facing_flip = ${air.plane.facingFlip ? 'true' : 'false'},`);
+    if (air.plane.bankAngleApproach !== 0) {
+      lines.push(`        bank_angle_approach = ${formatNumber(air.plane.bankAngleApproach)},`);
+    }
+    if (air.plane.bankAngleRelease !== 0) {
+      lines.push(`        bank_angle_release = ${formatNumber(air.plane.bankAngleRelease)},`);
+    }
+    if (
+      air.plane.bankAngleApproach !== 0 ||
+      air.plane.bankAngleRelease !== 0 ||
+      air.plane.bankRate !== 0.6
+    ) {
+      lines.push(`        bank_rate = ${formatNumber(Math.max(0, air.plane.bankRate))},`);
+    }
+    if (air.plane.collide) {
+      lines.push('        collide = true,');
+      if (air.plane.asObject) lines.push('        as_object = true,');
+      if (air.plane.hp > 0) lines.push(`        hp = ${Math.round(air.plane.hp)},`);
+      lines.push(`        dead_damage = ${Math.round(Math.max(0, air.plane.deadDamage))},`);
+      lines.push(`        boom_damage = ${Math.round(Math.max(0, air.plane.boomDamage))},`);
+      lines.push(`        boom_kind = ${Math.round(air.plane.boomKind)},`);
+      if (air.plane.boomFires > 0) {
+        lines.push(`        boom_fires = ${Math.round(air.plane.boomFires)},`);
+      }
+      lines.push(`        crash_on_water = ${air.plane.crashOnWater ? 'true' : 'false'},`);
+    }
+    lines.push(`        exit_margin = ${formatNumber(Math.max(0, air.plane.exitMargin))},`);
+    lines.push(`        timeout_frames = ${Math.max(1, Math.round(air.plane.timeoutFrames))},`);
+    if (air.plane.fadeOutFrames > 0) {
+      lines.push(`        fade_out_frames = ${Math.round(air.plane.fadeOutFrames)},`);
+    }
+    const sndEnter = soundExpr('enter', air.plane.soundEnter);
+    if (sndEnter) lines.push(`        sound_enter = ${sndEnter},`);
+    const sndLoop = soundExpr('loop', air.plane.soundLoop);
+    if (sndLoop) {
+      lines.push(`        sound_loop = ${sndLoop},`);
+      lines.push(`        sound_loop_ticks = ${Math.max(0, Math.round(air.plane.soundLoopTicks))},`);
+    }
+    const sndExit = soundExpr('exit', air.plane.soundExit);
+    if (sndExit) lines.push(`        sound_exit = ${sndExit},`);
+
+    if (air.plane.parts.length > 0) {
+      lines.push('        parts = {');
+      air.plane.parts.forEach((part, idx) => {
+        const partPath = airstrikePartSheetPath(project, part, idx);
+        const partSprite = partPath
+          ? luaQuote(partPath)
+          : luaQuote(part.stockSprite || 'airjetg');
+        lines.push('          {');
+        lines.push(`            name = ${luaQuote(part.label || `part_${idx + 1}`)},`);
+        lines.push(`            sprite = ${partSprite},`);
+        lines.push(`            ox = ${formatNumber(part.ox)}, oy = ${formatNumber(part.oy)},`);
+        lines.push(`            frames = ${Math.max(1, Math.round(part.frames))},`);
+        lines.push(`            fps = ${formatNumber(Math.max(0, part.fps))},`);
+        if (part.play !== 'loop') lines.push(`            play = ${luaQuote(part.play)},`);
+        if (part.scale !== 1) lines.push(`            scale = ${formatNumber(part.scale)},`);
+        if (part.depthOffset !== -1) {
+          lines.push(`            depth_offset = ${Math.round(part.depthOffset)},`);
+        }
+        if (part.bankScale !== 1) {
+          lines.push(`            bank_scale = ${formatNumber(part.bankScale)},`);
+        }
+        if (part.angleOffset !== 0) {
+          lines.push(`            angle_offset = ${formatNumber(part.angleOffset)},`);
+        }
+        if (part.facingFlip) lines.push('            facing_flip = true,');
+        if (part.aimSync) lines.push('            aim_sync = true,');
+        if (part.trackGun) lines.push('            track_gun = true,');
+        if (part.firingFrames) lines.push('            firing_frames = true,');
+        lines.push('          },');
+      });
+      lines.push('        },');
+    }
+    lines.push('      },');
+
+    lines.push('      speed = {');
+    lines.push(`        cruise = ${formatNumber(Math.max(0, air.speed.cruise))},`);
+    if (air.speed.release !== null && air.speed.release !== undefined) {
+      lines.push(`        release = ${formatNumber(Math.max(0, air.speed.release))},`);
+    }
+    if (air.speed.min !== 0) lines.push(`        min = ${formatNumber(Math.max(0, air.speed.min))},`);
+    if (air.speed.exit !== null && air.speed.exit !== undefined) {
+      lines.push(`        exit = ${formatNumber(Math.max(0, air.speed.exit))},`);
+    }
+    if (air.speed.decel > 0) lines.push(`        decel = ${formatNumber(air.speed.decel)},`);
+    if (air.speed.damping !== 1) lines.push(`        damping = ${formatNumber(air.speed.damping)},`);
+    if (air.speed.releaseDamping !== 1) {
+      lines.push(`        release_damping = ${formatNumber(air.speed.releaseDamping)},`);
+    }
+    if (air.speed.accel > 0) lines.push(`        accel = ${formatNumber(air.speed.accel)},`);
+    if (air.speed.growth !== 1) lines.push(`        growth = ${formatNumber(air.speed.growth)},`);
+    if (air.speed.recoverMode !== 'ramp') {
+      lines.push(`        recover_mode = ${luaQuote(air.speed.recoverMode)},`);
+    }
+    if (air.speed.recoverDelay > 0) {
+      lines.push(`        recover_delay = ${Math.round(air.speed.recoverDelay)},`);
+    }
+    if (air.speed.recoverMin !== 0.15) {
+      lines.push(`        recover_min = ${formatNumber(Math.max(0, air.speed.recoverMin))},`);
+    }
+    if (air.speed.slowDistance > 0) {
+      lines.push(`        slow_distance = ${formatNumber(air.speed.slowDistance)},`);
+    }
+    if (air.speed.engageRange > 0) {
+      lines.push(`        engage_range = ${formatNumber(air.speed.engageRange)},`);
+    }
+    if (air.speed.altitudeMode !== 'level') {
+      lines.push(`        altitude_mode = ${luaQuote(air.speed.altitudeMode)},`);
+      lines.push(`        dive_vy = ${formatNumber(air.speed.diveVy)},`);
+    }
+    lines.push('      },');
+  }
+
+  lines.push('      release = {');
+  lines.push(`        mode = ${luaQuote(air.release.mode)},`);
+  lines.push(`        pattern = ${luaQuote(air.release.pattern)},`);
+  lines.push(`        count = ${Math.max(0, Math.round(air.release.count))},`);
+  lines.push(`        cadence_unit = ${luaQuote(air.release.cadenceUnit)},`);
+  lines.push(`        spacing = ${formatNumber(Math.max(0, air.release.spacing))},`);
+  lines.push(`        frames_between = ${Math.max(0, Math.round(air.release.framesBetween))},`);
+  if (air.release.minFrames > 0) {
+    lines.push(`        min_frames = ${Math.round(air.release.minFrames)},`);
+  }
+  if (air.release.pattern === 'burst' || air.release.pattern === 'ripple') {
+    lines.push(`        burst_size = ${Math.max(1, Math.round(air.release.burstSize))},`);
+  }
+  if (air.release.perTick !== 1) {
+    lines.push(`        per_tick = ${Math.max(1, Math.round(air.release.perTick))},`);
+  }
+  if (air.release.pattern === 'carpet' || air.release.pattern === 'random_window') {
+    lines.push(`        window = ${formatNumber(Math.max(0, air.release.window))},`);
+  }
+  if (air.release.pattern === 'offsets') {
+    lines.push(
+      `        offsets = { ${air.release.offsets.map((n) => formatNumber(n)).join(', ')} },`,
+    );
+  }
+  if (air.release.windup > 0) {
+    lines.push(`        windup = ${Math.round(air.release.windup)},`);
+  }
+  lines.push(`        lead = ${air.release.lead ? 'true' : 'false'},`);
+  if (air.release.leadMaxBack > 0) {
+    lines.push(`        lead_max_back = ${formatNumber(air.release.leadMaxBack)},`);
+  }
+  if (air.release.leadInertiaY !== 0) {
+    lines.push(`        lead_inertia_y = ${formatNumber(air.release.leadInertiaY)},`);
+  }
+  if (air.release.jitterX > 0) lines.push(`        jitter_x = ${formatNumber(air.release.jitterX)},`);
+  if (air.release.jitterY > 0) lines.push(`        jitter_y = ${formatNumber(air.release.jitterY)},`);
+  if (air.release.jitterVx > 0) {
+    lines.push(`        jitter_vx = ${formatNumber(air.release.jitterVx)},`);
+  }
+  if (air.release.jitterVy > 0) {
+    lines.push(`        jitter_vy = ${formatNumber(air.release.jitterVy)},`);
+  }
+  const sndRelease = soundExpr('release', air.release.sound);
+  if (sndRelease) lines.push(`        sound = ${sndRelease},`);
+  if (air.release.soundCooldown > 0) {
+    lines.push(`        sound_cooldown = ${Math.round(air.release.soundCooldown)},`);
+  }
+  lines.push('      },');
+
+  if (air.release.mode === 'strafe') {
+    const s = air.strafe;
+    lines.push('      strafe = {');
+    lines.push(`        muzzle_x = ${formatNumber(s.muzzleX)}, muzzle_y = ${formatNumber(s.muzzleY)},`);
+    if (s.muzzleLength !== 0) {
+      lines.push(`        muzzle_length = ${formatNumber(s.muzzleLength)},`);
+    }
+    lines.push(`        aim_mode = ${luaQuote(s.aimMode)},`);
+    lines.push(`        aim_turn = ${formatNumber(s.aimTurn)},`);
+    if (s.aimMode === 'fixed') {
+      lines.push(`        fixed_angle_deg = ${formatNumber(s.fixedAngleDeg)},`);
+    }
+    if (s.targetSeek) {
+      lines.push('        target_seek = true,');
+      lines.push(
+        `        target_box = { rx = ${formatNumber(Math.max(1, s.targetBoxRx))}, up = ${formatNumber(Math.max(1, s.targetBoxUp))}, down = ${formatNumber(Math.max(1, s.targetBoxDown))} },`,
+      );
+    }
+    lines.push(`        bullet_speed = ${formatNumber(Math.max(0.1, s.bulletSpeed))},`);
+    lines.push(`        steer_frames = ${Math.max(0, Math.round(s.steerFrames))},`);
+    lines.push(`        max_fuse_ms = ${Math.max(0, Math.round(s.maxFuseMs))},`);
+    lines.push(`        exit_margin_frames = ${Math.max(0, Math.round(s.exitMarginFrames))},`);
+    const strafeArt = airstrikeStrafeSheetPath(project);
+    if (strafeArt) {
+      lines.push(`        art_sheet = ${luaQuote(strafeArt)},`);
+      lines.push(`        art_half = ${formatNumber(Math.max(1, s.artHalf))},`);
+      lines.push(`        art_frames = ${Math.max(1, Math.round(s.artFrames))},`);
+    }
+    if (s.trailEnabled) {
+      const { r, g, b } = hexToRgb(s.trailColor || '#ffaa44');
+      lines.push('        trail = {');
+      lines.push('          lib = trail,');
+      lines.push(
+        `          max = ${Math.max(2, Math.round(s.trailMax))}, every = ${Math.max(1, Math.round(s.trailEvery))},`,
+      );
+      lines.push(
+        `          core_w = ${formatNumber(Math.max(0, s.trailCoreWidth))}, glow_w = ${formatNumber(Math.max(0, s.trailGlowWidth))},`,
+      );
+      lines.push(`          r = ${r}, g = ${g}, b = ${b},`);
+      lines.push('        },');
+    }
+    const casingArt = airstrikeCasingSheetPath(project);
+    if (casingArt) {
+      lines.push('        casing = {');
+      lines.push(`          sheet = ${luaQuote(casingArt)},`);
+      lines.push(
+        `          frames = ${Math.max(1, Math.round(s.casingFrames))}, half = ${formatNumber(Math.max(1, s.casingHalf))},`,
+      );
+      lines.push(`          life = ${Math.max(1, Math.round(s.casingLife))},`);
+      lines.push(
+        `          speed_min = ${Math.round(Math.max(0, s.casingSpeedMin))}, speed_max = ${Math.round(Math.max(0, s.casingSpeedMax))},`,
+      );
+      lines.push(`          jitter_deg = ${formatNumber(Math.max(0, s.casingJitterDeg))},`);
+      lines.push('        },');
+    }
+    lines.push('      },');
+  }
+
+  const p = air.payload;
+  lines.push('      payload = {');
+  lines.push(`        kind = ${luaQuote(p.kind)},`);
+  if (p.kind === 'missile') {
+    lines.push('        weapon = ctx.id,');
+    lines.push(`        gravity_pct = ${Number(project.body.gravity_pct ?? 100)},`);
+  }
+  lines.push(`        inherit_vx = ${formatNumber(p.inheritVx)},`);
+  lines.push(`        vx = ${formatNumber(p.vx)}, vy = ${formatNumber(p.vy)},`);
+  if (p.spreadVx > 0) lines.push(`        spread_vx = ${formatNumber(p.spreadVx)},`);
+  if (p.spreadVy > 0) lines.push(`        spread_vy = ${formatNumber(p.spreadVy)},`);
+  if (p.kind === 'mine') {
+    lines.push(
+      `        mine = { fuse = ${Math.max(0, Math.round(p.mine.fuse))}, arm = ${Math.max(0, Math.round(p.mine.arm))}, damage = ${Math.max(0, Math.round(p.mine.damage))}, radius = ${Math.max(0, Math.round(p.mine.radius))}, dud_proof = ${p.mine.dudProof ? 'true' : 'false'} },`,
+    );
+  } else if (p.kind === 'crate') {
+    const crateFields = [
+      `kind = ${luaQuote(p.crate.kind)}`,
+      `health = ${Math.max(1, Math.round(p.crate.health))}`,
+      `drop = ${luaQuote(p.crate.drop)}`,
+    ];
+    if (p.crate.contents.trim()) {
+      crateFields.push(`contents = ${luaQuote(p.crate.contents.trim())}`);
+      crateFields.push(`amount = ${Math.max(1, Math.round(p.crate.amount))}`);
+    }
+    lines.push(`        crate = { ${crateFields.join(', ')} },`);
+  } else if (p.kind === 'fire') {
+    lines.push(
+      `        fire = { count = ${Math.max(1, Math.round(p.fire.count))}, duration = ${Math.max(1, Math.round(p.fire.duration))}, up_power = ${Math.max(0, Math.round(p.fire.upPower))}, damage = ${Math.max(0, Math.round(p.fire.damage))} },`,
+    );
+  } else if (p.kind === 'bullet') {
+    const bulletFields = [`weapon = ${luaQuote(p.bullet.weapon || 'stock.handgun')}`];
+    if (p.bullet.damage !== null && p.bullet.damage !== undefined) {
+      bulletFields.push(`damage = ${Math.max(0, Math.round(p.bullet.damage))}`);
+    }
+    if (p.bullet.pushPct !== null && p.bullet.pushPct !== undefined) {
+      bulletFields.push(`push_pct = ${Math.max(0, Math.round(p.bullet.pushPct))}`);
+    }
+    lines.push(`        bullet = { ${bulletFields.join(', ')} },`);
+  }
+  lines.push('      },');
+  lines.push('    })');
 }
 
 /** Where an uploaded pack-art sheet is written in the exported bundle, or null
@@ -1433,13 +1826,26 @@ export function generateLuaCode(project: WeaponProject): string {
     zeroBitDig,
   } = wfwsRoleFlags(project);
 
+  // Lua airstrike takeover (`wf-lib/wfws_airstrike`). When active on a cursor
+  // strike with `payload.kind == 'missile'`, `wa.weapons.launch` spawns real WA
+  // missiles from `projectile = { ... }` carrying `m.weapon == ctx.id`, which
+  // unlocks `on_explode`, `sb.flight`, ribbon trails, bursts, round emitters,
+  // terrain stamps, and interval sounds.
+  const usesAirstrike = airstrikeActive(project);
+  const airstrikeCfg = usesAirstrike ? mergeAirstrikeConfig(project.airstrike) : null;
+  const usesAirstrikeMissile = takeoverMissileActive(project);
+  const usesAirstrikeStrafeTrail =
+    !!airstrikeCfg && airstrikeCfg.release.mode === 'strafe' && airstrikeCfg.strafe.trailEnabled;
+
   // Which record families WA blasts at all: a gun, arrow, spray or special has
-  // no explosion to decorate, and neither does an air strike. A strike's bombs
-  // are built by AirStrikeEntity::release_missile from the strike's own record
-  // copy, not from a weapon-table slot, so the engine never maps them to this
-  // claim (`missile_boom::weapon_of` has no slot for them) and `on_explode`
-  // cannot fire. A mine is a drop without a fuse; the rest are missiles.
-  const explodesNatively = project.fireType === 'power' || project.fireType === 'drop';
+  // no explosion to decorate, and neither does a native air strike. A native
+  // strike's bombs are built by AirStrikeEntity::release_missile from the
+  // strike's own record copy, not from a weapon-table slot, so the engine never
+  // maps them to this claim (`missile_boom::weapon_of` has no slot for them)
+  // and `on_explode` cannot fire. Airstrike takeover with a missile payload
+  // launches via `projectile = { ... }` and DOES receive `on_explode`.
+  const explodesNatively =
+    project.fireType === 'power' || project.fireType === 'drop' || usesAirstrikeMissile;
 
   // Parse custom Lua callbacks to extract any `on_explode` hook.
   // This allows custom Lua logic, custom explosion WAV sound, and the effects-SDK
@@ -1519,7 +1925,9 @@ export function generateLuaCode(project: WeaponProject): string {
   const usesZap = usesElectricBlast || usesElectricImpact || usesElectricMelee;
   const usesIntervalSound =
     !!intervalSoundPath &&
-    (project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse));
+    (project.fireType === 'power' ||
+      (project.fireType === 'drop' && !!project.body.fuse) ||
+      usesAirstrikeMissile);
   const hasSnippetExplodeCode = project.enableCustomLua && !!parsedLua.onExplodeBody.trim();
   const hasCarriedExplodeCode = !!carriedExplode?.body.trim();
   const hasCustomExplodeCode = hasSnippetExplodeCode || hasCarriedExplodeCode;
@@ -1613,7 +2021,9 @@ export function generateLuaCode(project: WeaponProject): string {
   const ribbonTrail = project.ribbonTrail;
   const usesRibbonTrail =
     !!ribbonTrail?.enabled &&
-    (project.fireType === 'power' || (project.fireType === 'drop' && project.body.fuse));
+    (project.fireType === 'power' ||
+      (project.fireType === 'drop' && project.body.fuse) ||
+      usesAirstrikeMissile);
   // PX's effect manager as a live emitter (`fx.emitter`): a ring, sparks, short
   // bolts and a ribbon at a point that either rides the fired round or sits at
   // the muzzle while the turn's worm aims with this weapon. A melee claim eats
@@ -1623,9 +2033,12 @@ export function generateLuaCode(project: WeaponProject): string {
   // Trail sampling/drawing remains independent of the emitter actor.
   const emitterRibbon = usesEmitter && !!emitter?.trail?.enabled;
   // The round anchor needs a missile WA builds from this record (a placed mine
-  // is a mine entity, a strike's bombs carry no `m.weapon`).
+  // is a mine entity, a native strike's bombs carry no `m.weapon`; airstrike
+  // takeover missiles DO carry `m.weapon`).
   const emitterRoundOk =
-    project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse);
+    project.fireType === 'power' ||
+    (project.fireType === 'drop' && !!project.body.fuse) ||
+    usesAirstrikeMissile;
   const emitterAnchor: 'round' | 'muzzle' =
     emitter?.anchor === 'round' && emitterRoundOk ? 'round' : 'muzzle';
   const emitterProjectileExclusive = emitterRoundOk && !!emitter?.projectileExclusive;
@@ -1639,7 +2052,8 @@ export function generateLuaCode(project: WeaponProject): string {
   const emitterCarries = emitterUsesAim && emitterUsesRound;
   // Anything in px_effects needs the module required and installed; the trail
   // module on its own installs itself.
-  const usesEffectsSdk = usesExplosionEffect || usesEmitter || usesRibbonTrail;
+  const usesEffectsSdk =
+    usesExplosionEffect || usesEmitter || usesRibbonTrail || usesAirstrikeStrafeTrail;
 
   if (usesHold) {
     lines.push('local holds = require("wf-lib/holds")');
@@ -1648,6 +2062,9 @@ export function generateLuaCode(project: WeaponProject): string {
     // WFWS's fork: flight art (primary + cluster-bit + per-behaviour) and the
     // aiming manager, which share the one module.
     lines.push(`local sb = require(${luaQuote(WFWS_BUILDER_MODULE)})`);
+  }
+  if (usesAirstrike) {
+    lines.push('local air = require("wf-lib/wfws_airstrike")');
   }
   if (usesFireSequence) {
     lines.push('local seq = require("wf-lib/fire_seq")');
@@ -1808,14 +2225,21 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push('local trail = require("wf-lib/effects/trail")');
   }
   if (usesEffectsSdk) {
-    if (usesEmitter || usesExplosionEffect || usesRibbonTrail) {
+    if (usesEmitter || usesExplosionEffect || usesRibbonTrail || usesAirstrikeStrafeTrail) {
       lines.push('local fx = require("wf-lib/effects/px_effects")');
     }
     if (silencesBlast) {
       lines.push('local blast = require("wf-lib/effects/custom_explosion")');
     }
   }
-  if (usesHold || usesMissileSprite || usesRibbonTrail || usesEffectsSdk || usesFireSequence) {
+  if (
+    usesHold ||
+    usesMissileSprite ||
+    usesRibbonTrail ||
+    usesEffectsSdk ||
+    usesFireSequence ||
+    usesAirstrike
+  ) {
     lines.push('');
   }
 
@@ -2326,7 +2750,7 @@ export function generateLuaCode(project: WeaponProject): string {
     // by which time the envelope was nearly gone. Worms and the whole blast are
     // what it should cover; the smoke stays on its own band behind it.
     // Either ribbon card installs the shared sampler and draw callback.
-    const sdkTrail = usesRibbonTrail || emitterRibbon;
+    const sdkTrail = usesRibbonTrail || emitterRibbon || usesAirstrikeStrafeTrail;
     lines.push(
       `    fx.install{ trail = ${sdkTrail ? 'true' : 'false'}, depth = { burst = wa.depth.FRONT } }`,
     );
@@ -2341,6 +2765,9 @@ export function generateLuaCode(project: WeaponProject): string {
       roundOk: emitterRoundOk,
       keepWhileFiring: !!project.hold?.keepWhileFiring,
     });
+  }
+  if (usesAirstrike && airstrikeCfg) {
+    emitAirstrikeInstallBlock(lines, project, airstrikeCfg);
   }
   if (usesHoldLocal) {
     // With the aiming manager the table is built by `sb.hold`, which returns the
@@ -2425,7 +2852,7 @@ export function generateLuaCode(project: WeaponProject): string {
       clusterArt.push(`homing_sprite = ${luaQuote(clusterBitHomingArt)}`);
     }
   }
-  if (clusterArt.length > 0) {
+  if (clusterArt.length > 0 && !usesAirstrike) {
     lines.push(`      cluster = { ${clusterArt.join(', ')} },`);
   }
 
@@ -2435,7 +2862,7 @@ export function generateLuaCode(project: WeaponProject): string {
   // the gas pose `roam.gas.animal_sprite`. A builder sheet replaces the flying
   // state instead, so the uploads are dormant while it is on.
   const roamSheets = roamSheetsOwnFlight(project) ? roamSheetPaths(project) : null;
-  if (roamSheets) {
+  if (roamSheets && !usesAirstrike) {
     lines.push(`      sheep_sprites = { ${luaQuote(roamSheets.first)}, ${luaQuote(roamSheets.second)} },`);
   }
 
@@ -2444,10 +2871,10 @@ export function generateLuaCode(project: WeaponProject): string {
   // in a record takes stock ids only. `retarget_strike_sprite_id` writes the
   // strike munition (0x74) and carries the sheet into its homing sprite (0xC0)
   // and cluster sprite (0x138) when they shared the stock body.
-  if (strikeBodyArt) {
+  if (strikeBodyArt && !usesAirstrike) {
     lines.push(`      sprite = ${luaQuote(strikeBodyArt)},`);
   }
-  if (strikePlaneArt) {
+  if (strikePlaneArt && !usesAirstrike) {
     lines.push(`      plane = ${luaQuote(strikePlaneArt)},`);
   }
 
@@ -2499,7 +2926,7 @@ export function generateLuaCode(project: WeaponProject): string {
   const claimSdkSheet = (name: string) => {
     if (!packSprites.includes(name)) packSprites.push(name);
   };
-  if (usesRibbonTrail || emitterRibbon) {
+  if (usesRibbonTrail || emitterRibbon || usesAirstrikeStrafeTrail) {
     claimSdkSheet('trail.BEAM');
     claimSdkSheet('trail.GLOW');
   }
@@ -2512,6 +2939,21 @@ export function generateLuaCode(project: WeaponProject): string {
   }
   if (stampSheetPath) {
     packSprites.push(luaQuote(stampSheetPath));
+  }
+  let hasAirstrikeGpuSheets = false;
+  if (usesAirstrike && airstrikeCfg) {
+    const pushAirSprite = (path: string | null) => {
+      if (!path) return;
+      hasAirstrikeGpuSheets = true;
+      const quoted = luaQuote(path);
+      if (!packSprites.includes(quoted)) packSprites.push(quoted);
+    };
+    pushAirSprite(airstrikePlaneSheetPath(project));
+    airstrikeCfg.plane.parts.forEach((part, idx) => {
+      pushAirSprite(airstrikePartSheetPath(project, part, idx));
+    });
+    pushAirSprite(airstrikeStrafeSheetPath(project));
+    pushAirSprite(airstrikeCasingSheetPath(project));
   }
   // Sheets the carried code names (M6): a `wa.draw.quad{ sprite = HOLE }` can
   // only resolve a pack path the claim fills the sprite-key registry with, and
@@ -2536,11 +2978,8 @@ export function generateLuaCode(project: WeaponProject): string {
   // cluster sheet needs the stock id the record points at.
   const paramsParts: string[] = [];
   if (
-    usesAimLayer &&
-    !strikeBodyArt &&
-    !strikePlaneArt &&
-    !clusterBitArt &&
-    !clusterBitHomingArt
+    (usesAimLayer || hasAirstrikeGpuSheets) &&
+    (usesAirstrike || (!strikeBodyArt && !strikePlaneArt && !clusterBitArt && !clusterBitHomingArt))
   ) {
     paramsParts.push('gpu_prefix = "sprites/"');
   }
@@ -2578,6 +3017,12 @@ export function generateLuaCode(project: WeaponProject): string {
   if (usesExplosionSound) packSounds.push(luaQuote(explosionSoundPath!));
   if (usesIntervalSound) packSounds.push(luaQuote(intervalSoundPath!));
   if (shotSoundPath) packSounds.push(luaQuote(shotSoundPath));
+  if (usesAirstrike) {
+    for (const role of ['enter', 'loop', 'exit', 'release'] as const) {
+      const wav = airstrikeSoundPath(project, role);
+      if (wav && !packSounds.includes(luaQuote(wav))) packSounds.push(luaQuote(wav));
+    }
+  }
   // WAVs the carried code plays by path: the claim's `sounds` list is the
   // registry `wa.sound.play(…, path, …)` resolves through, so a carried
   // `sounds/<mod>/zap.wav` has to be named here or the play is a nil sample.
@@ -2607,11 +3052,17 @@ export function generateLuaCode(project: WeaponProject): string {
   const baselineMatchesDonor =
     !donorBaseline?.slot || !donorSlot || donorBaseline.slot === donorSlot;
   const currentDonorBaseline = stockDonorBaseline(donorSlot) ?? donorBaseline;
-  const baseline = project.useWepFile
-    ? project.wepBaseline
-    : baselineMatchesDonor
-      ? (donorBaseline ?? currentDonorBaseline)
-      : currentDonorBaseline;
+  const projDonorSlot =
+    usesAirstrikeMissile && airstrikeCfg
+      ? (airstrikeCfg.payload.projectileDonor || 'bazooka').replace(/^stock\./, '')
+      : null;
+  const baseline = projDonorSlot
+    ? stockDonorBaseline(projDonorSlot)
+    : project.useWepFile
+      ? project.wepBaseline
+      : baselineMatchesDonor
+        ? (donorBaseline ?? currentDonorBaseline)
+        : currentDonorBaseline;
   const baseBody = baseline?.body;
   const baseOverrides = baseline?.recordOverrides || {};
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -2877,10 +3328,13 @@ export function generateLuaCode(project: WeaponProject): string {
     // An air strike is a missile record too: the engine reads the munition
     // body 0x14 bytes further in (record.rs STRIKE_SHIFT), and every
     // `missile.*` / `clusters.*` name resolves to that shifted slab.
-    (project.fireType === 'cursor' && !project.teleport)
+    // Under Lua airstrike takeover, non-missile payloads emit no missile table,
+    // while missile payloads wrap `missile` / `clusters` inside `projectile`.
+    (project.fireType === 'cursor' && !project.teleport && (!usesAirstrike || usesAirstrikeMissile))
   ) {
     // Missile family only. Arrow, spray and special records have their own
     // layouts; giving them `missile` tables is refused by the engine.
+    const projLinesStart = lines.length;
     const missileStart = lines.length;
     lines.push('      missile = {');
 
@@ -4024,7 +4478,9 @@ export function generateLuaCode(project: WeaponProject): string {
     // Air strike header: the plane drops `strike.count` munitions, whose body
     // is the `missile` / `clusters` tables above (the engine reads them from
     // the shifted strike slab). `strike.plane` is the plane's sprite.
-    if (project.fireType === 'cursor') {
+    // Omitted under Lua airstrike takeover because `wfws_airstrike` owns the
+    // aircraft and drops, and missile rounds move into `projectile = { ... }`.
+    if (project.fireType === 'cursor' && !usesAirstrike) {
       const strikeTouched =
         !baseline ||
         overrideTouched(
@@ -4066,6 +4522,31 @@ export function generateLuaCode(project: WeaponProject): string {
         lines.push('      },');
       }
     }
+
+    if (usesAirstrikeMissile && airstrikeCfg) {
+      const innerLines = lines.splice(projLinesStart);
+      const rawDonor = (airstrikeCfg.payload.projectileDonor || 'bazooka').replace(/^stock\./, '');
+      const projDonor = stockDonor(rawDonor) ? `stock.${rawDonor}` : 'stock.bazooka';
+      lines.push('      projectile = {');
+      lines.push(`        copy_from = ${luaQuote(projDonor)},`);
+      if (!usesMissileSprite && strikeBodyArt) {
+        lines.push(`        sprite = ${luaQuote(strikeBodyArt)},`);
+      }
+      if (clusterArt.length > 0) {
+        lines.push(`        cluster = { ${clusterArt.join(', ')} },`);
+      }
+      for (const inner of innerLines) {
+        lines.push(inner ? `  ${inner}` : '');
+      }
+      lines.push('      },');
+    }
+  }
+
+  // Non-directional airstrike takeover: enable plain cursor click without
+  // clobbering directional arrow strikes (emitting `on_select = { cursor = true }`
+  // on a directional strike triggers `apply_drop_fire` and zeroes `+0x38`).
+  if (usesAirstrike && airstrikeCfg?.direction === 'none' && !carriedHooks.has('on_select')) {
+    lines.push('      on_select = { cursor = true },');
   }
 
   // Native family parameters that are not part of `missile`/`clusters`: the
@@ -4330,15 +4811,24 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push('      end,');
   }
 
+  if (usesAirstrike) {
+    lines.push('      on_click = function(ev) air.strike(ev) end,');
+  }
+
   // Claim hooks the editor does not model: the value is written as the key it
   // was (`on_click`, `on_done`, `on_place`, `on_transport`, `on_select`), because
   // nothing here merges into them.
   for (const hook of verbatimHooks) {
+    if (usesAirstrike && hook.key === 'on_click') continue;
     // `reindentCode`, not a blind prefix: a re-import reads the body back with the
     // indentation the last export gave it, so a blind prefix would add six more
     // spaces every round trip.
     const [head, ...body] = hook.text.split('\n');
-    if (hook.key === 'on_select' && project.fireType === 'cursor' && project.teleport) {
+    if (
+      hook.key === 'on_select' &&
+      project.fireType === 'cursor' &&
+      (project.teleport || (usesAirstrike && airstrikeCfg?.direction === 'none'))
+    ) {
       lines.push(`      on_select = { cursor = true, on = ${head.trim()}`);
       if (body.length > 0) lines.push(...reindentCode(body.join('\n'), '      '));
       lines.push('      },');
@@ -4825,6 +5315,12 @@ export function generateLuaCode(project: WeaponProject): string {
       }
     }
 
+    // Under Lua airstrike takeover, `air.is_bit` separates cluster bits from
+    // tightly spaced multi-bomb drops cleanly without relying on spawn timing.
+    if (usesAirstrikeMissile) {
+      lines.push('      is_bit = air.is_bit,');
+    }
+
     // Identity debugging: one log line per missile's first frames, so the
     // zero-means-bit convention can be confirmed from the game log.
     if (m.logIdentity) {
@@ -5051,13 +5547,22 @@ export function autoDependenciesForProject(
   project: WeaponProject,
 ): { id: string; reason: string }[] {
   const usesHold = !!(project.hold && project.hold.enabled);
+  const usesAirstrike = airstrikeActive(project);
+  const usesAirstrikeMissile = takeoverMissileActive(project);
+  const usesAirstrikeStrafeTrail =
+    usesAirstrike &&
+    project.airstrike?.release?.mode === 'strafe' &&
+    !!project.airstrike?.strafe?.trailEnabled;
   const usesWfws = usesWfwsBuilder(project) || holdNeedsAimLayer(project);
   const usesElectricMelee = !!project.melee?.enabled && project.melee.kind === 'taze';
   const stampSheet = supportsTerrainStamp(project) ? terrainStampPath(project) : null;
   const usesRibbonTrail =
     !!project.ribbonTrail?.enabled &&
-    (project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse));
-  const explodesNatively = project.fireType === 'power' || project.fireType === 'drop';
+    (project.fireType === 'power' ||
+      (project.fireType === 'drop' && !!project.body.fuse) ||
+      usesAirstrikeMissile);
+  const explodesNatively =
+    project.fireType === 'power' || project.fireType === 'drop' || usesAirstrikeMissile;
   const usesExplosionEffect = !!project.explosionEffect?.enabled && explodesNatively;
   const usesEmitter = !!project.emitter?.enabled && project.fireType !== 'melee';
   const usesElectricBlast =
@@ -5088,7 +5593,9 @@ export function autoDependenciesForProject(
       reason: usesWfwsBuilder(project) ? 'flight sprite builder' : 'aim layer',
     });
   }
+  if (usesAirstrike) out.push({ id: 'wfws.sdk', reason: 'airstrike takeover' });
   if (usesRibbonTrail) out.push({ id: 'effects.sdk', reason: 'ribbon trail' });
+  if (usesAirstrikeStrafeTrail) out.push({ id: 'effects.sdk', reason: 'airstrike strafe trail' });
   if (usesExplosionEffect) out.push({ id: 'effects.sdk', reason: 'explosion burst' });
   if (usesEmitter) out.push({ id: 'effects.sdk', reason: 'emitter' });
   if (usesElectricBlast) out.push({ id: 'px.electric', reason: 'electric blast taze' });
@@ -5346,6 +5853,26 @@ export function weaponManifestPart(project: WeaponProject): WeaponManifestPart {
     if (frames > 1) lines.push(`frames = ${frames}`);
     lines.push('fps = 15');
     lines.push('play = "loop"');
+  }
+
+  // Airstrike takeover custom sheets (plane, child parts, strafe art, casings).
+  if (airstrikeActive(project)) {
+    const air = mergeAirstrikeConfig(project.airstrike);
+    const emitAirSprite = (path: string | null, frames: number, fps: number, play: string) => {
+      if (!path || emitted.has(path)) return;
+      emitted.add(path);
+      lines.push('');
+      lines.push(`[sprites.${luaQuote(path)}]`);
+      if (path.endsWith('.png') && frames > 1) lines.push(`frames = ${Math.max(1, Math.round(frames))}`);
+      lines.push(`fps = ${Math.max(1, Math.round(fps || 15))}`);
+      lines.push(`play = ${luaQuote(play || 'loop')}`);
+    };
+    emitAirSprite(airstrikePlaneSheetPath(project), air.plane.frames, air.plane.fps, air.plane.play);
+    air.plane.parts.forEach((part, idx) => {
+      emitAirSprite(airstrikePartSheetPath(project, part, idx), part.frames, part.fps, part.play);
+    });
+    emitAirSprite(airstrikeStrafeSheetPath(project), air.strafe.artFrames, 15, 'loop');
+    emitAirSprite(airstrikeCasingSheetPath(project), air.strafe.casingFrames, 15, 'loop');
   }
 
   for (const cs of Object.values(project.customSprites)) {

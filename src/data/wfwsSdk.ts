@@ -4,9 +4,13 @@
 // every export with no copy to keep in sync (the old hand copy drifted).
 import wfwsSdkToml from '../../spec/lua_sdk/wfws_sdk/mod.toml?raw';
 import wfwsSpriteBuilderLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua?raw';
+import wfwsAirstrikeLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_airstrike.lua?raw';
 
 /** mod.toml for the wfws.sdk library bundle. */
 export const WFWS_SDK_MOD_TOML = wfwsSdkToml;
 
 /** `wf-lib/wfws_sprite_builder`, the module the generated weapon requires. */
 export const WFWS_SPRITE_BUILDER_LUA = wfwsSpriteBuilderLua;
+
+/** `wf-lib/wfws_airstrike`, the lockstep airstrike takeover module. */
+export const WFWS_AIRSTRIKE_LUA = wfwsAirstrikeLua;

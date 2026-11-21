@@ -17,6 +17,19 @@
  * pixels/samples instead of the default art.
  */
 import type {
+  AirstrikeAltitudeMode,
+  AirstrikeCadenceUnit,
+  AirstrikeConfig,
+  AirstrikeDirectionMode,
+  AirstrikeEntryMode,
+  AirstrikePattern,
+  AirstrikePayloadKind,
+  AirstrikePlanePartConfig,
+  AirstrikePlayMode,
+  AirstrikeRecoverMode,
+  AirstrikeReleaseMode,
+  AirstrikeSheetAsset,
+  AirstrikeSoundSpec,
   BehaviorArtKey,
   CustomSoundsConfig,
   ExplosionEffectConfig,
@@ -35,6 +48,7 @@ import type {
   WormSpritePoseKey,
 } from '../../types/weapon';
 import { DEFAULT_MELEE } from '../../data/melee';
+import { cloneAirstrikeConfig, DEFAULT_AIRSTRIKE } from '../../data/airstrike';
 import { CLAIM_KEYS_CARRIED, CLAIM_KEYS_MODELLED } from '../../data/luaHooks';
 import { NOT_GENERATED_MARKER, maskLuaCode } from '../luaText';
 import type { MeleeHit, MeleeSound } from '../../types/weapon';
@@ -2141,6 +2155,330 @@ export async function readBundleFeatures(args: {
       // A stock icon name, not a bundle path.
       project.panel_icon = iconPath;
     }
+  }
+
+  // ---- Lua airstrike takeover (`air.install(ctx, { ... })`) ---------------
+  const airCall = readCallTable(moduleText, 'air.install');
+  if (airCall && isTable(airCall.table)) {
+    const t = airCall.table;
+    const air: AirstrikeConfig = cloneAirstrikeConfig(DEFAULT_AIRSTRIKE);
+    air.enabled = true;
+
+    const dirVal = str(t.direction);
+    if (
+      dirVal === 'arrows' ||
+      dirVal === 'facing' ||
+      dirVal === 'nearest' ||
+      dirVal === 'left' ||
+      dirVal === 'right' ||
+      dirVal === 'none'
+    ) {
+      air.direction = dirVal as AirstrikeDirectionMode;
+    }
+    const defDir = num(t.default_dir);
+    if (defDir !== undefined) air.defaultDir = defDir < 0 ? -1 : 1;
+    if (bool(t.zero_vx_uses_facing) !== undefined) {
+      air.zeroVxUsesFacing = bool(t.zero_vx_uses_facing)!;
+    }
+    if (bool(t.stop_on_turn_end) !== undefined) {
+      air.stopOnTurnEnd = bool(t.stop_on_turn_end)!;
+    }
+
+    const loadAirSheet = async (rawPath: string | undefined): Promise<AirstrikeSheetAsset | undefined> => {
+      if (!rawPath || !rawPath.includes('/')) return undefined;
+      const loaded = await readAsset(files, bundleDir, rawPath);
+      if (!loaded) return undefined;
+      return {
+        file: loaded.file,
+        fileName: loaded.file.name,
+        previewUrl: loaded.preview,
+        width: loaded.width,
+        height: loaded.height,
+      };
+    };
+
+    const loadAirSound = async (val: LuaValue | undefined): Promise<AirstrikeSoundSpec> => {
+      const id = num(val);
+      if (id !== undefined) return { id: Math.max(0, Math.round(id)) };
+      const wavPath = str(val);
+      if (wavPath) {
+        const loaded = await readAsset(files, bundleDir, wavPath);
+        if (loaded) {
+          return {
+            id: 0,
+            file: {
+              file: loaded.file,
+              fileName: loaded.file.name,
+              previewUrl: loaded.preview,
+              size: loaded.bytes.length,
+            },
+          };
+        }
+      }
+      return { id: 0 };
+    };
+
+    const entryT = isTable(t.entry) ? t.entry : undefined;
+    if (entryT) {
+      const em = str(entryT.mode);
+      if (em === 'offmap' || em === 'above' || em === 'payload') {
+        air.entry.mode = em as AirstrikeEntryMode;
+      }
+      if (num(entryT.y) !== undefined) air.entry.y = num(entryT.y)!;
+      if (num(entryT.side) !== undefined) air.entry.side = num(entryT.side)!;
+      const sa = str(entryT.spawn_at);
+      if (sa === 'sky' || sa === 'cursor') air.entry.spawnAt = sa;
+      if (num(entryT.drop_offset_x) !== undefined) air.entry.dropOffsetX = num(entryT.drop_offset_x)!;
+    }
+
+    const planeT = isTable(t.plane) ? t.plane : undefined;
+    if (planeT) {
+      const spr = str(planeT.sprite);
+      if (spr) {
+        const custom = await loadAirSheet(spr);
+        if (custom) {
+          air.plane.spriteMode = 'custom';
+          air.plane.sheet = custom;
+        } else {
+          air.plane.spriteMode = 'stock';
+          air.plane.stockSprite = spr;
+        }
+      }
+      if (num(planeT.frames) !== undefined) air.plane.frames = Math.max(1, Math.round(num(planeT.frames)!));
+      if (num(planeT.fps) !== undefined) air.plane.fps = num(planeT.fps)!;
+      const pl = str(planeT.play);
+      if (pl === 'loop' || pl === 'once' || pl === 'pingpong') air.plane.play = pl as AirstrikePlayMode;
+      if (num(planeT.scale) !== undefined) air.plane.scale = num(planeT.scale)!;
+      if (bool(planeT.facing_flip) !== undefined) air.plane.facingFlip = bool(planeT.facing_flip)!;
+      if (num(planeT.bank_angle_approach) !== undefined) air.plane.bankAngleApproach = num(planeT.bank_angle_approach)!;
+      if (num(planeT.bank_angle_release) !== undefined) air.plane.bankAngleRelease = num(planeT.bank_angle_release)!;
+      if (num(planeT.bank_rate) !== undefined) air.plane.bankRate = num(planeT.bank_rate)!;
+      if (bool(planeT.collide) !== undefined) air.plane.collide = bool(planeT.collide)!;
+      if (bool(planeT.as_object) !== undefined) air.plane.asObject = bool(planeT.as_object)!;
+      if (num(planeT.hp) !== undefined) air.plane.hp = num(planeT.hp)!;
+      if (num(planeT.dead_damage) !== undefined) air.plane.deadDamage = num(planeT.dead_damage)!;
+      if (num(planeT.boom_damage) !== undefined) air.plane.boomDamage = num(planeT.boom_damage)!;
+      if (num(planeT.boom_kind) !== undefined) air.plane.boomKind = num(planeT.boom_kind)!;
+      if (num(planeT.boom_fires) !== undefined) air.plane.boomFires = num(planeT.boom_fires)!;
+      if (bool(planeT.crash_on_water) !== undefined) air.plane.crashOnWater = bool(planeT.crash_on_water)!;
+      if (num(planeT.exit_margin) !== undefined) air.plane.exitMargin = num(planeT.exit_margin)!;
+      if (num(planeT.timeout_frames) !== undefined) air.plane.timeoutFrames = num(planeT.timeout_frames)!;
+      if (num(planeT.fade_out_frames) !== undefined) air.plane.fadeOutFrames = num(planeT.fade_out_frames)!;
+      if (planeT.sound_enter !== undefined) air.plane.soundEnter = await loadAirSound(planeT.sound_enter);
+      if (planeT.sound_loop !== undefined) air.plane.soundLoop = await loadAirSound(planeT.sound_loop);
+      if (num(planeT.sound_loop_ticks) !== undefined) air.plane.soundLoopTicks = num(planeT.sound_loop_ticks)!;
+      if (planeT.sound_exit !== undefined) air.plane.soundExit = await loadAirSound(planeT.sound_exit);
+
+      if (isTable(planeT.parts)) {
+        const parts: AirstrikePlanePartConfig[] = [];
+        for (let i = 1; planeT.parts[String(i)] !== undefined; i += 1) {
+          const row = planeT.parts[String(i)];
+          if (!isTable(row)) continue;
+          const pSpr = str(row.sprite);
+          const custom = await loadAirSheet(pSpr);
+          const pPlay = str(row.play);
+          parts.push({
+            id: `part_${i}`,
+            label: str(row.name) ?? `Part ${i}`,
+            spriteMode: custom ? 'custom' : 'stock',
+            stockSprite: custom ? 'airjetg' : (pSpr ?? 'airjetg'),
+            ...(custom ? { sheet: custom } : {}),
+            ox: num(row.ox) ?? 0,
+            oy: num(row.oy) ?? 0,
+            frames: Math.max(1, Math.round(num(row.frames) ?? 1)),
+            fps: num(row.fps) ?? 15,
+            play: (pPlay === 'once' || pPlay === 'pingpong' ? pPlay : 'loop') as AirstrikePlayMode,
+            scale: num(row.scale) ?? 1,
+            depthOffset: num(row.depth_offset) ?? -1,
+            bankScale: num(row.bank_scale) ?? 1,
+            angleOffset: num(row.angle_offset) ?? 0,
+            facingFlip: bool(row.facing_flip) ?? false,
+            aimSync: bool(row.aim_sync) ?? false,
+            trackGun: bool(row.track_gun) ?? false,
+            firingFrames: bool(row.firing_frames) ?? false,
+          });
+        }
+        air.plane.parts = parts;
+      }
+    }
+
+    const speedT = isTable(t.speed) ? t.speed : undefined;
+    if (speedT) {
+      if (num(speedT.cruise) !== undefined) air.speed.cruise = num(speedT.cruise)!;
+      if (num(speedT.release) !== undefined) air.speed.release = num(speedT.release)!;
+      if (num(speedT.min) !== undefined) air.speed.min = num(speedT.min)!;
+      if (num(speedT.exit) !== undefined) air.speed.exit = num(speedT.exit)!;
+      if (num(speedT.decel) !== undefined) air.speed.decel = num(speedT.decel)!;
+      if (num(speedT.damping) !== undefined) air.speed.damping = num(speedT.damping)!;
+      if (num(speedT.release_damping) !== undefined) air.speed.releaseDamping = num(speedT.release_damping)!;
+      if (num(speedT.accel) !== undefined) air.speed.accel = num(speedT.accel)!;
+      if (num(speedT.growth) !== undefined) air.speed.growth = num(speedT.growth)!;
+      const rm = str(speedT.recover_mode);
+      if (rm === 'ramp' || rm === 'snap' || rm === 'hold') air.speed.recoverMode = rm as AirstrikeRecoverMode;
+      if (num(speedT.recover_delay) !== undefined) air.speed.recoverDelay = num(speedT.recover_delay)!;
+      if (num(speedT.recover_min) !== undefined) air.speed.recoverMin = num(speedT.recover_min)!;
+      if (num(speedT.slow_distance) !== undefined) air.speed.slowDistance = num(speedT.slow_distance)!;
+      if (num(speedT.engage_range) !== undefined) air.speed.engageRange = num(speedT.engage_range)!;
+      const am = str(speedT.altitude_mode);
+      if (am === 'level' || am === 'dive' || am === 'climb') air.speed.altitudeMode = am as AirstrikeAltitudeMode;
+      if (num(speedT.dive_vy) !== undefined) air.speed.diveVy = num(speedT.dive_vy)!;
+    }
+
+    const relT = isTable(t.release) ? t.release : undefined;
+    if (relT) {
+      const rMode = str(relT.mode);
+      if (rMode === 'drop' || rMode === 'strafe') air.release.mode = rMode as AirstrikeReleaseMode;
+      const pat = str(relT.pattern);
+      if (
+        pat === 'sequential' ||
+        pat === 'burst' ||
+        pat === 'ripple' ||
+        pat === 'pairs' ||
+        pat === 'carpet' ||
+        pat === 'random_window' ||
+        pat === 'offsets'
+      ) {
+        air.release.pattern = pat as AirstrikePattern;
+      }
+      if (num(relT.count) !== undefined) air.release.count = Math.max(0, Math.round(num(relT.count)!));
+      const cu = str(relT.cadence_unit);
+      if (cu === 'distance' || cu === 'frames') air.release.cadenceUnit = cu as AirstrikeCadenceUnit;
+      if (num(relT.spacing) !== undefined) air.release.spacing = num(relT.spacing)!;
+      if (num(relT.frames_between) !== undefined) air.release.framesBetween = num(relT.frames_between)!;
+      if (num(relT.min_frames) !== undefined) air.release.minFrames = num(relT.min_frames)!;
+      if (num(relT.burst_size) !== undefined) air.release.burstSize = num(relT.burst_size)!;
+      if (num(relT.per_tick) !== undefined) air.release.perTick = num(relT.per_tick)!;
+      if (num(relT.window) !== undefined) air.release.window = num(relT.window)!;
+      if (isTable(relT.offsets)) {
+        const offs: number[] = [];
+        for (let i = 1; relT.offsets[String(i)] !== undefined; i += 1) {
+          const n = num(relT.offsets[String(i)]);
+          if (n !== undefined) offs.push(n);
+        }
+        if (offs.length > 0) air.release.offsets = offs;
+      }
+      if (num(relT.windup) !== undefined) air.release.windup = num(relT.windup)!;
+      if (bool(relT.lead) !== undefined) air.release.lead = bool(relT.lead)!;
+      if (num(relT.lead_max_back) !== undefined) air.release.leadMaxBack = num(relT.lead_max_back)!;
+      if (num(relT.lead_inertia_y) !== undefined) air.release.leadInertiaY = num(relT.lead_inertia_y)!;
+      if (num(relT.jitter_x) !== undefined) air.release.jitterX = num(relT.jitter_x)!;
+      if (num(relT.jitter_y) !== undefined) air.release.jitterY = num(relT.jitter_y)!;
+      if (num(relT.jitter_vx) !== undefined) air.release.jitterVx = num(relT.jitter_vx)!;
+      if (num(relT.jitter_vy) !== undefined) air.release.jitterVy = num(relT.jitter_vy)!;
+      if (relT.sound !== undefined) air.release.sound = await loadAirSound(relT.sound);
+      if (num(relT.sound_cooldown) !== undefined) air.release.soundCooldown = num(relT.sound_cooldown)!;
+    }
+
+    const strT = isTable(t.strafe) ? t.strafe : undefined;
+    if (strT) {
+      if (num(strT.muzzle_x) !== undefined) air.strafe.muzzleX = num(strT.muzzle_x)!;
+      if (num(strT.muzzle_y) !== undefined) air.strafe.muzzleY = num(strT.muzzle_y)!;
+      if (num(strT.muzzle_length) !== undefined) air.strafe.muzzleLength = num(strT.muzzle_length)!;
+      const sam = str(strT.aim_mode);
+      if (sam === 'target' || sam === 'fixed') air.strafe.aimMode = sam;
+      if (num(strT.aim_turn) !== undefined) air.strafe.aimTurn = num(strT.aim_turn)!;
+      if (num(strT.fixed_angle_deg) !== undefined) air.strafe.fixedAngleDeg = num(strT.fixed_angle_deg)!;
+      if (bool(strT.target_seek) !== undefined) air.strafe.targetSeek = bool(strT.target_seek)!;
+      if (isTable(strT.target_box)) {
+        if (num(strT.target_box.rx) !== undefined) air.strafe.targetBoxRx = num(strT.target_box.rx)!;
+        if (num(strT.target_box.up) !== undefined) air.strafe.targetBoxUp = num(strT.target_box.up)!;
+        if (num(strT.target_box.down) !== undefined) air.strafe.targetBoxDown = num(strT.target_box.down)!;
+      }
+      if (num(strT.bullet_speed) !== undefined) air.strafe.bulletSpeed = num(strT.bullet_speed)!;
+      if (num(strT.steer_frames) !== undefined) air.strafe.steerFrames = num(strT.steer_frames)!;
+      if (num(strT.max_fuse_ms) !== undefined) air.strafe.maxFuseMs = num(strT.max_fuse_ms)!;
+      if (num(strT.exit_margin_frames) !== undefined) air.strafe.exitMarginFrames = num(strT.exit_margin_frames)!;
+      const artSheet = await loadAirSheet(str(strT.art_sheet));
+      if (artSheet) {
+        air.strafe.artEnabled = true;
+        air.strafe.artSheet = artSheet;
+        if (num(strT.art_half) !== undefined) air.strafe.artHalf = num(strT.art_half)!;
+        if (num(strT.art_frames) !== undefined) air.strafe.artFrames = num(strT.art_frames)!;
+      }
+      if (isTable(strT.trail)) {
+        air.strafe.trailEnabled = true;
+        if (num(strT.trail.max) !== undefined) air.strafe.trailMax = num(strT.trail.max)!;
+        if (num(strT.trail.every) !== undefined) air.strafe.trailEvery = num(strT.trail.every)!;
+        if (num(strT.trail.core_w) !== undefined) air.strafe.trailCoreWidth = num(strT.trail.core_w)!;
+        if (num(strT.trail.glow_w) !== undefined) air.strafe.trailGlowWidth = num(strT.trail.glow_w)!;
+        const tr = num(strT.trail.r);
+        const tg = num(strT.trail.g);
+        const tb = num(strT.trail.b);
+        if (tr !== undefined && tg !== undefined && tb !== undefined) {
+          const hex = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+          air.strafe.trailColor = `#${hex(tr)}${hex(tg)}${hex(tb)}`;
+        }
+      }
+      if (isTable(strT.casing)) {
+        const casSheet = await loadAirSheet(str(strT.casing.sheet));
+        if (casSheet) {
+          air.strafe.casingEnabled = true;
+          air.strafe.casingSheet = casSheet;
+          if (num(strT.casing.frames) !== undefined) air.strafe.casingFrames = num(strT.casing.frames)!;
+          if (num(strT.casing.half) !== undefined) air.strafe.casingHalf = num(strT.casing.half)!;
+          if (num(strT.casing.life) !== undefined) air.strafe.casingLife = num(strT.casing.life)!;
+          if (num(strT.casing.speed_min) !== undefined) air.strafe.casingSpeedMin = num(strT.casing.speed_min)!;
+          if (num(strT.casing.speed_max) !== undefined) air.strafe.casingSpeedMax = num(strT.casing.speed_max)!;
+          if (num(strT.casing.jitter_deg) !== undefined) air.strafe.casingJitterDeg = num(strT.casing.jitter_deg)!;
+        }
+      }
+    }
+
+    const payT = isTable(t.payload) ? t.payload : undefined;
+    if (payT) {
+      const pk = str(payT.kind);
+      if (
+        pk === 'missile' ||
+        pk === 'mine' ||
+        pk === 'crate' ||
+        pk === 'actor' ||
+        pk === 'fire' ||
+        pk === 'bullet'
+      ) {
+        air.payload.kind = pk as AirstrikePayloadKind;
+      }
+      if (num(payT.inherit_vx) !== undefined) air.payload.inheritVx = num(payT.inherit_vx)!;
+      if (num(payT.vx) !== undefined) air.payload.vx = num(payT.vx)!;
+      if (num(payT.vy) !== undefined) air.payload.vy = num(payT.vy)!;
+      if (num(payT.spread_vx) !== undefined) air.payload.spreadVx = num(payT.spread_vx)!;
+      if (num(payT.spread_vy) !== undefined) air.payload.spreadVy = num(payT.spread_vy)!;
+      if (isTable(payT.mine)) {
+        if (num(payT.mine.fuse) !== undefined) air.payload.mine.fuse = num(payT.mine.fuse)!;
+        if (num(payT.mine.arm) !== undefined) air.payload.mine.arm = num(payT.mine.arm)!;
+        if (num(payT.mine.damage) !== undefined) air.payload.mine.damage = num(payT.mine.damage)!;
+        if (num(payT.mine.radius) !== undefined) air.payload.mine.radius = num(payT.mine.radius)!;
+        if (bool(payT.mine.dud_proof) !== undefined) air.payload.mine.dudProof = bool(payT.mine.dud_proof)!;
+      }
+      if (isTable(payT.crate)) {
+        const ck = str(payT.crate.kind);
+        if (ck === 'weapon' || ck === 'health' || ck === 'utility') air.payload.crate.kind = ck;
+        if (num(payT.crate.health) !== undefined) air.payload.crate.health = num(payT.crate.health)!;
+        const cd = str(payT.crate.drop);
+        if (cd === 'chute' || cd === 'fall') air.payload.crate.drop = cd;
+        if (str(payT.crate.contents) !== undefined) air.payload.crate.contents = str(payT.crate.contents)!;
+        if (num(payT.crate.amount) !== undefined) air.payload.crate.amount = num(payT.crate.amount)!;
+      }
+      if (isTable(payT.fire)) {
+        if (num(payT.fire.count) !== undefined) air.payload.fire.count = num(payT.fire.count)!;
+        if (num(payT.fire.duration) !== undefined) air.payload.fire.duration = num(payT.fire.duration)!;
+        if (num(payT.fire.up_power) !== undefined) air.payload.fire.upPower = num(payT.fire.up_power)!;
+        if (num(payT.fire.damage) !== undefined) air.payload.fire.damage = num(payT.fire.damage)!;
+      }
+      if (isTable(payT.bullet)) {
+        if (str(payT.bullet.weapon) !== undefined) air.payload.bullet.weapon = str(payT.bullet.weapon)!;
+        if (num(payT.bullet.damage) !== undefined) air.payload.bullet.damage = num(payT.bullet.damage)!;
+        if (num(payT.bullet.push_pct) !== undefined) air.payload.bullet.pushPct = num(payT.bullet.push_pct)!;
+      }
+    }
+
+    const projT = isTable(source?.projectile) ? source.projectile : undefined;
+    const projCopy = str(projT?.copy_from);
+    if (projCopy) {
+      air.payload.projectileDonor = projCopy.replace(/^stock\./, '');
+    }
+
+    project.airstrike = air;
+    notes.push(`airstrike takeover (${air.entry.mode} / ${air.release.mode})`);
   }
 
   return { project, notes, carriedHooks };

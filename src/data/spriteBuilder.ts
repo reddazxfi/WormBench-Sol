@@ -312,10 +312,17 @@ export function resolveBehaviorStates(project: WeaponProject): ResolvedBehaviorS
 
 /** True when the primary flight builder is on (bits and states hang off it). */
 export function primaryBuilderOn(project: WeaponProject): boolean {
-  // An air strike has no placed missile for the builder to follow: its
-  // munitions are built from the strike's own record copy. Keep the native
-  // 32-frame route there.
-  if (project.fireType === 'cursor' && !project.teleport) return false;
+  // A native air strike has no placed missile for the builder to follow: its
+  // munitions are built from the strike's own record copy. When Lua airstrike
+  // takeover is on with a missile payload, the rounds launch through this
+  // claim's `projectile` table and carry `m.weapon`, so the builder works.
+  if (
+    project.fireType === 'cursor' &&
+    !project.teleport &&
+    !(project.airstrike?.enabled && (project.airstrike.payload?.kind ?? 'missile') === 'missile')
+  ) {
+    return false;
+  }
   return !!project.missileSprite?.enabled && project.missileSprite.mode === 'custom';
 }
 

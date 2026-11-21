@@ -7,6 +7,11 @@
 // export needs for the effects SDK's sheets.
 import { PackProject, WeaponProject } from '../types/weapon';
 import {
+  airstrikeCasingSheetPath,
+  airstrikePartSheetPath,
+  airstrikePlaneSheetPath,
+  airstrikeSoundPath,
+  airstrikeStrafeSheetPath,
   roamSheetPath,
   roamSheetsOwnFlight,
   generateLuaCode,
@@ -35,6 +40,7 @@ import {
 } from './luaGenerator';
 import { supportsTerrainStamp } from '../data/terrainStamp';
 import { meleeStrikes } from '../data/melee';
+import { airstrikeActive, mergeAirstrikeConfig } from '../data/airstrike';
 import {
   bitBuilderMode,
   primaryBuilderOn,
@@ -265,6 +271,35 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
     }
   }
 
+  // Airstrike takeover custom sheets and WAVs.
+  if (airstrikeActive(project)) {
+    const air = mergeAirstrikeConfig(project.airstrike);
+    const planePath = airstrikePlaneSheetPath(project);
+    if (planePath && air.plane.sheet?.file) addSheet(planePath, air.plane.sheet.file);
+    air.plane.parts.forEach((part, idx) => {
+      const partPath = airstrikePartSheetPath(project, part, idx);
+      if (partPath && part.sheet?.file) addSheet(partPath, part.sheet.file);
+    });
+    const strafePath = airstrikeStrafeSheetPath(project);
+    if (strafePath && air.strafe.artSheet?.file) addSheet(strafePath, air.strafe.artSheet.file);
+    const casingPath = airstrikeCasingSheetPath(project);
+    if (casingPath && air.strafe.casingSheet?.file) {
+      addSheet(casingPath, air.strafe.casingSheet.file);
+    }
+    for (const role of ['enter', 'loop', 'exit', 'release'] as const) {
+      const wavPath = airstrikeSoundPath(project, role);
+      const spec =
+        role === 'enter'
+          ? air.plane.soundEnter
+          : role === 'loop'
+            ? air.plane.soundLoop
+            : role === 'exit'
+              ? air.plane.soundExit
+              : air.release.sound;
+      if (wavPath && spec?.file?.file) plain.push({ path: wavPath, source: spec.file.file });
+    }
+  }
+
   // WAVs a carried block plays by path (M6). The four roles above are the
   // editor's own; a bundle's sample that is neither is written where its code
   // names it, because the claim's `sounds` list and this file are one contract.
@@ -296,6 +331,7 @@ async function fileBytes(content: BundleFileContent): Promise<string | Uint8Arra
 export interface WfwsLibraries {
   modToml: string;
   spriteBuilderLua: string;
+  airstrikeLua?: string;
 }
 
 /** A library bundle an export ships when a weapon requires its modules. */
@@ -412,6 +448,9 @@ export async function emitPackFiles(
   // so the folder goes there and the ZIP unpacks straight into `Mods/`.
   await put('wf-lib/wfws_sdk/mod.toml', libraries.wfws.modToml);
   await put('wf-lib/wfws_sdk/lib/wfws_sprite_builder.lua', libraries.wfws.spriteBuilderLua);
+  if (libraries.wfws.airstrikeLua) {
+    await put('wf-lib/wfws_sdk/lib/wfws_airstrike.lua', libraries.wfws.airstrikeLua);
+  }
 
   // The effects SDK travels the same way when **any** weapon of the pack requires
   // it. A weapon whose ribbon trail, burst or emitter needs
@@ -566,6 +605,11 @@ export function validateBundle(
           problems.push(`${project.name || project.id}: declared sprite \`${spritePath}\` is not in the bundle`);
         }
       }
+    }
+    if (source.includes('air.strike(') && !source.includes('wf-lib/wfws_airstrike')) {
+      problems.push(
+        `${project.name || project.id}: calls \`air.strike\` without requiring \`wf-lib/wfws_airstrike\``,
+      );
     }
     const availableRequires = availableRequiresForCheck(source, manifestDeps, localLuaModules);
     const blocking = checkLua(source, { mode: 'module', availableRequires }).filter(

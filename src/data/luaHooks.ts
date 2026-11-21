@@ -77,6 +77,7 @@ export const CLAIM_KEYS_MODELLED = [
   'hold',
   'hold_as',
   'fires',
+  'projectile',
 ] as const;
 
 /**

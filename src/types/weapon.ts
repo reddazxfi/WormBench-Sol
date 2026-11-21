@@ -1083,6 +1083,222 @@ export interface WepBaseline {
   specialSubtype: number;
 }
 
+export type AirstrikeEntryMode = 'offmap' | 'above' | 'payload';
+export type AirstrikeDirectionMode = 'arrows' | 'cursor_side' | 'left' | 'right' | 'none';
+export type AirstrikeReleaseMode = 'drop' | 'strafe';
+export type AirstrikePattern =
+  | 'sequential'
+  | 'burst'
+  | 'ripple'
+  | 'pairs'
+  | 'carpet'
+  | 'random_window'
+  | 'offsets';
+export type AirstrikeCadenceUnit = 'distance' | 'frames';
+export type AirstrikeRecoverMode = 'ramp' | 'snap' | 'hold';
+export type AirstrikeAltitudeMode = 'level' | 'dive' | 'climb';
+export type AirstrikePayloadKind = 'missile' | 'mine' | 'crate' | 'actor' | 'fire' | 'bullet';
+export type AirstrikePlayMode = 'loop' | 'once' | 'pingpong';
+
+export interface AirstrikeSheetAsset {
+  file?: File;
+  fileName?: string;
+  previewUrl?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface AirstrikeSoundSpec {
+  /** WA stock sample id (0 = silent), used when no WAV is uploaded. */
+  id: number;
+  /** Uploaded custom WAV, wins over `id` when present. */
+  file?: CustomSoundAsset;
+}
+
+export interface AirstrikePlanePartConfig {
+  id: string;
+  label: string;
+  spriteMode: 'stock' | 'custom';
+  stockSprite: string;
+  sheet?: AirstrikeSheetAsset;
+  ox: number;
+  oy: number;
+  frames: number;
+  fps: number;
+  play: AirstrikePlayMode;
+  scale: number;
+  depthOffset: number;
+  facingFlip: boolean;
+  trackGun: boolean;
+  aimSync: boolean;
+  firingFrames: boolean;
+  bankScale: number;
+  angleOffset: number;
+}
+
+export interface AirstrikeConfig {
+  enabled: boolean;
+  direction: AirstrikeDirectionMode;
+  defaultDir: 1 | -1;
+  zeroVxUsesFacing: boolean;
+  stopOnTurnEnd: boolean;
+
+  entry: {
+    mode: AirstrikeEntryMode;
+    /** Explicit sky Y, or null/undefined to use WA's map sky height (`ev.sky`). */
+    y: number | null;
+    side: number;
+    spawnAt: 'sky' | 'cursor';
+    dropOffsetX: number;
+  };
+
+  plane: {
+    spriteMode: 'stock' | 'custom';
+    stockSprite: string;
+    sheet?: AirstrikeSheetAsset;
+    frames: number;
+    fps: number;
+    play: AirstrikePlayMode;
+    scale: number;
+    facingFlip: boolean;
+    bankAngleApproach: number;
+    bankAngleRelease: number;
+    bankRate: number;
+    collide: boolean;
+    asObject: boolean;
+    hp: number;
+    deadDamage: number;
+    boomDamage: number;
+    boomKind: number;
+    boomFires: number;
+    crashOnWater: boolean;
+    exitMargin: number;
+    timeoutFrames: number;
+    fadeOutFrames: number;
+    soundEnter: AirstrikeSoundSpec;
+    soundLoop: AirstrikeSoundSpec;
+    soundLoopTicks: number;
+    soundExit: AirstrikeSoundSpec;
+    parts: AirstrikePlanePartConfig[];
+  };
+
+  speed: {
+    cruise: number;
+    /** Optional release target speed (`null` keeps cruise). */
+    release: number | null;
+    min: number;
+    /** Optional exit target speed (`null` returns to cruise). */
+    exit: number | null;
+    decel: number;
+    damping: number;
+    releaseDamping: number;
+    accel: number;
+    growth: number;
+    recoverMode: AirstrikeRecoverMode;
+    recoverDelay: number;
+    recoverMin: number;
+    slowDistance: number;
+    engageRange: number;
+    altitudeMode: AirstrikeAltitudeMode;
+    diveVy: number;
+  };
+
+  release: {
+    mode: AirstrikeReleaseMode;
+    pattern: AirstrikePattern;
+    count: number;
+    cadenceUnit: AirstrikeCadenceUnit;
+    spacing: number;
+    framesBetween: number;
+    minFrames: number;
+    burstSize: number;
+    perTick: number;
+    window: number;
+    offsets: number[];
+    windup: number;
+    lead: boolean;
+    leadMaxBack: number;
+    leadInertiaY: number;
+    jitterX: number;
+    jitterY: number;
+    jitterVx: number;
+    jitterVy: number;
+    sound: AirstrikeSoundSpec;
+    soundCooldown: number;
+  };
+
+  strafe: {
+    muzzleX: number;
+    muzzleY: number;
+    muzzleLength: number;
+    aimMode: 'target' | 'fixed';
+    aimTurn: number;
+    fixedAngleDeg: number;
+    targetSeek: boolean;
+    targetBoxRx: number;
+    targetBoxUp: number;
+    targetBoxDown: number;
+    bulletSpeed: number;
+    steerFrames: number;
+    maxFuseMs: number;
+    exitMarginFrames: number;
+    artEnabled: boolean;
+    artSheet?: AirstrikeSheetAsset;
+    artHalf: number;
+    artFrames: number;
+    trailEnabled: boolean;
+    trailMax: number;
+    trailEvery: number;
+    trailCoreWidth: number;
+    trailGlowWidth: number;
+    trailColor: string;
+    casingEnabled: boolean;
+    casingSheet?: AirstrikeSheetAsset;
+    casingFrames: number;
+    casingHalf: number;
+    casingLife: number;
+    casingSpeedMin: number;
+    casingSpeedMax: number;
+    casingJitterDeg: number;
+  };
+
+  payload: {
+    kind: AirstrikePayloadKind;
+    /** Stock donor slot for `projectile = { copy_from = "stock.<donor>" }` when kind === 'missile'. */
+    projectileDonor: string;
+    inheritVx: number;
+    vx: number;
+    vy: number;
+    spreadVx: number;
+    spreadVy: number;
+    mine: {
+      fuse: number;
+      arm: number;
+      damage: number;
+      radius: number;
+      dudProof: boolean;
+    };
+    crate: {
+      kind: 'weapon' | 'utility' | 'health';
+      health: number;
+      drop: 'chute' | 'fall';
+      contents: string;
+      amount: number;
+    };
+    fire: {
+      count: number;
+      duration: number;
+      upPower: number;
+      damage: number;
+    };
+    bullet: {
+      weapon: string;
+      damage: number | null;
+      pushPct: number | null;
+    };
+  };
+}
+
 export interface WeaponProject {
   id: string; // e.g. "my_pack.heavy_bazooka"
   name: string;
@@ -1106,6 +1322,13 @@ export interface WeaponProject {
    * game tests.
    */
   melee?: MeleeConfig;
+  /**
+   * Lua airstrike takeover (`wf-lib/wfws_airstrike`). When enabled on a cursor
+   * air strike, `on_click` hands the flyover, speed curve, release pattern, and
+   * payload spawning to `wfws_airstrike`, unlocking `projectile = { ... }` and
+   * full missile effects/builder hooks for missile payloads.
+   */
+  airstrike?: AirstrikeConfig;
   /**
    * `hold_as = "stock.<weapon>"` on the claim: the stock weapon whose held pose
    * the worm aims this one in. Set by an import that carried one; otherwise the

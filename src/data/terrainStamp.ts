@@ -33,7 +33,13 @@ export const STAMP_MAX_CELL = 256;
  * the stamped picture, not in a `utility` record group.
  */
 export function supportsTerrainStamp(project: WeaponProject): boolean {
-  return project.fireType === 'power';
+  return (
+    project.fireType === 'power' ||
+    (project.fireType === 'cursor' &&
+      !project.teleport &&
+      !!project.airstrike?.enabled &&
+      (project.airstrike.payload?.kind ?? 'missile') === 'missile')
+  );
 }
 
 export const DEFAULT_TERRAIN_STAMP: TerrainStampConfig = {

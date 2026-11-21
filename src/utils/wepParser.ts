@@ -194,6 +194,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   const fireTypeRaw = rawOffsets[0x30] ?? 0;
   const fireMethod = rawOffsets[0x38] ?? 0;
   const subtype = rawOffsets[0x34] ?? 0;
+  const wepWeaponSprite = rawOffsets[0x2c] ?? 0;
   const shots = rawOffsets[0x14] ?? 1;
   const retreat = rawOffsets[0x1c] ?? 3000;
 
@@ -632,6 +633,32 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
       inferredDonor = 'homing_missile';
       summary.push('Identified Lock-on Homing missile (Homing Missile donor)');
     }
+  } else if (
+    subtype === 3 ||
+    subtype === 7 ||
+    subtype === 8 ||
+    subtype === 11 ||
+    subtype === 12
+  ) {
+    if (wepWeaponSprite === 11) {
+      inferredDonor = subtype === 7 ? 'homing_pigeon' : 'homing_missile';
+    } else if (wepWeaponSprite === 12) {
+      inferredDonor = 'sheep_launcher';
+    } else if (wepWeaponSprite === 7) {
+      inferredDonor = subtype === 11 ? 'mortar' : 'bazooka';
+    } else {
+      inferredDonor =
+        subtype === 11
+          ? 'mortar'
+          : subtype === 7
+            ? 'homing_pigeon'
+            : subtype === 8
+              ? 'sheep_launcher'
+              : subtype === 12
+                ? 'homing_missile'
+                : 'bazooka';
+    }
+    summary.push(`Identified Launched projectile (subtype ${subtype}, ${inferredDonor} donor)`);
   } else if (burstRaw === 1) {
     inferredDonor = 'cluster_bomb';
     summary.push('Identified Cluster Bomb (Cluster Bomb donor)');
@@ -643,6 +670,21 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
       inferredDonor = 'grenade';
       summary.push('Identified Timed Grenade (Grenade donor)');
     }
+  } else if (wepWeaponSprite === 4) {
+    inferredDonor = 'cluster_bomb';
+    summary.push('Identified Cluster Bomb (Cluster Bomb donor)');
+  } else if (wepWeaponSprite === 3) {
+    inferredDonor = 'banana_bomb';
+    summary.push('Identified Bouncy Bomb (Banana Bomb donor)');
+  } else if (wepWeaponSprite === 2) {
+    inferredDonor = 'grenade';
+    summary.push('Identified Timed Grenade (Grenade donor)');
+  } else if (wepWeaponSprite === 11) {
+    inferredDonor = 'homing_missile';
+    summary.push('Identified Blue-Launcher projectile (Homing Missile donor)');
+  } else if (wepWeaponSprite === 12) {
+    inferredDonor = 'sheep_launcher';
+    summary.push('Identified White-Launcher projectile (Sheep Launcher donor)');
   } else {
     inferredDonor = 'bazooka';
     summary.push('Identified Direct Ballistic Rocket (Bazooka donor)');
@@ -817,6 +859,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     fireType,
     teleport: false,
     specialSubtype: subtype,
+    wepWeaponSprite: wepWeaponSprite > 0 ? wepWeaponSprite : undefined,
     panel_icon: inferredDonor,
     defaults: {
       ammo: 3,

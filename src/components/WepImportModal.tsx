@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { parseWepBinary, WepParseResult } from '../utils/wepParser';
 import { sanitizeWepFileName } from '../utils/luaGenerator';
+import { holdFireModeForSubtype } from '../data/fireSubtypes';
 import { WeaponProject } from '../types/weapon';
 import { usePxlLibrary } from '../context/PxlLibraryContext';
 import { readWepManifest } from '../utils/pxl/readWepManifest';
@@ -551,9 +552,7 @@ end,`,
                     fps: 15,
                     animate: frames > 1,
                     drawHand: true,
-                    keepWhileFiring: false,
-                    thrown: true,
-                    putAway: false,
+                    ...holdFireModeForSubtype(parseResult.projectState.specialSubtype),
                     handRad: 10,
                     handRadLower: 0,
                     handRadUpper: 0,

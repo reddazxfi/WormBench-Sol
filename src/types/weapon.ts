@@ -1113,6 +1113,13 @@ export interface WeaponProject {
    * the builder zeroes still aims with full hands.
    */
   holdAs?: string;
+  /**
+   * PX `'Weapon Sprite'` index decoded from `.wep` offset `+0x2C` (2 grenade,
+   * 3 banana, 4 cluster, 7 bazooka, 11 homing/pigeon, 12 sheep launcher).
+   * Unmapped in WormForge Lua records, so kept only to pick `copy_from` /
+   * `hold_as` fallback poses on zeroed-sprite imports.
+   */
+  wepWeaponSprite?: number;
   panel_icon: string; // stock name or custom path
   customIconFile?: File;
   customIconPreview?: string;

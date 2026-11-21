@@ -11,6 +11,7 @@ import { missingLibraryRequires, parsePxlLibrary, resolvePxlArt } from '../src/u
 import { PxlReadError, readPxl } from '../src/utils/pxl/readPxl';
 import { importPxlWeapon } from '../src/utils/pxl/importPxlWeapon';
 import { readSpriteScripts } from '../src/utils/pxl/readSpriteScripts';
+import { holdFireModeForSubtype, wepWeaponSpriteToStockDonor } from '../src/data/fireSubtypes';
 import { emitPackFiles, type PackLibraries } from '../src/utils/packExporter';
 import { generateLuaCode, singleWeaponPack } from '../src/utils/luaGenerator';
 import { readBundles, readWeapons, type ModFile } from '../src/utils/modLib/scan';
@@ -718,6 +719,86 @@ if (!existsSync(LIBS_DIR)) {
     'cweps Burst Rifle retains direct 9-slot wormSprites (abrsp/pbrsp/fbrsp)',
     cwepsBurstImport?.project?.wormSprites?.enabled === true &&
       Object.keys(cwepsBurstImport?.project?.wormSprites?.poses ?? {}).length === 9,
+  );
+
+  // Fire subtype -> SPB hold mode & PX Weapon Sprite (+0x2C) fallback checks
+  const cwepsSkipper = cwepsReal.find((w) => w.name === 'Skipper');
+  const cwepsSkipperImport = cwepsSkipper ? importPxlWeapon(cwepsSkipper, cwepsLib, [cwepsLib, cwepsGfxLib]) : undefined;
+  check(
+    'cweps Skipper (subtype 1) sets SPB keepWhileFiring=true, putAway=true, thrown=false',
+    cwepsSkipperImport?.project?.hold?.keepWhileFiring === true &&
+      cwepsSkipperImport?.project?.hold?.putAway === true &&
+      cwepsSkipperImport?.project?.hold?.thrown === false,
+  );
+  const cwepsGravlerFd = cwepsReal.find((w) => w.name === 'Gravler FD');
+  const cwepsGravlerFdImport = cwepsGravlerFd
+    ? importPxlWeapon(cwepsGravlerFd, cwepsLib, [cwepsLib, cwepsGfxLib])
+    : undefined;
+  check(
+    'cweps Frag Grenade (subtype 0) and Gravler FD (subtype 2) set SPB thrown=true only',
+    cwepsFragImport?.project?.hold?.thrown === true &&
+      cwepsFragImport?.project?.hold?.keepWhileFiring === false &&
+      cwepsFragImport?.project?.hold?.putAway === false &&
+      cwepsGravlerFdImport?.project?.hold?.thrown === true &&
+      cwepsGravlerFdImport?.project?.hold?.keepWhileFiring === false &&
+      cwepsGravlerFdImport?.project?.hold?.putAway === false,
+  );
+  const cwepsPetrolRocket = cwepsReal.find((w) => w.name === 'Petrol Rocket');
+  const cwepsPetrolImport = cwepsPetrolRocket
+    ? importPxlWeapon(cwepsPetrolRocket, cwepsLib, [cwepsLib, cwepsGfxLib])
+    : undefined;
+  const cwepsPetrolLua = cwepsPetrolImport?.project ? generateLuaCode(cwepsPetrolImport.project as WeaponProject) : '';
+  check(
+    'cweps Petrol Rocket (subtype 3, 0x2c=7) infers bazooka donor without fruit hold_as',
+    cwepsPetrolImport?.project?.based_on === 'bazooka' && !/\bhold_as\s*=/.test(cwepsPetrolLua),
+    cwepsPetrolImport?.project?.based_on,
+  );
+  const cwepsHomingMortar = cwepsReal.find((w) => w.name === 'Homing Mortar');
+  const cwepsMortarImport = cwepsHomingMortar
+    ? importPxlWeapon(cwepsHomingMortar, cwepsLib, [cwepsLib, cwepsGfxLib])
+    : undefined;
+  const cwepsMortarLua = cwepsMortarImport?.project ? generateLuaCode(cwepsMortarImport.project as WeaponProject) : '';
+  check(
+    'cweps Homing Mortar (subtype 2, 0x2c=11, zero sprite) falls back hold_as = "stock.homing_missile"',
+    /hold_as = "stock\.homing_missile"/.test(cwepsMortarLua),
+  );
+}
+
+// Always verify subtype -> hold mode & +0x2C mapping independently of external PXL mount
+{
+  const fireSubtypes = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18];
+  const throwSubtypes = [0, 2];
+  const otherSubtypes = [13, 19, 24, 70, 200];
+  check(
+    'holdFireModeForSubtype maps fire subtypes (1,3..12,18) to keepWhileFiring + putAway',
+    fireSubtypes.every((s) => {
+      const m = holdFireModeForSubtype(s);
+      return m.keepWhileFiring && m.putAway && !m.thrown;
+    }),
+  );
+  check(
+    'holdFireModeForSubtype maps throw subtypes (0,2) to thrown=true only',
+    throwSubtypes.every((s) => {
+      const m = holdFireModeForSubtype(s);
+      return m.thrown && !m.keepWhileFiring && !m.putAway;
+    }),
+  );
+  check(
+    'holdFireModeForSubtype leaves strike/utility/special subtypes false',
+    otherSubtypes.every((s) => {
+      const m = holdFireModeForSubtype(s);
+      return !m.thrown && !m.keepWhileFiring && !m.putAway;
+    }),
+  );
+  check(
+    'wepWeaponSpriteToStockDonor maps PX Weapon Sprite ids (2,3,4,7,11,12)',
+    wepWeaponSpriteToStockDonor(7) === 'bazooka' &&
+      wepWeaponSpriteToStockDonor(11) === 'homing_missile' &&
+      wepWeaponSpriteToStockDonor(12) === 'sheep_launcher' &&
+      wepWeaponSpriteToStockDonor(2) === 'grenade' &&
+      wepWeaponSpriteToStockDonor(4) === 'cluster_bomb' &&
+      wepWeaponSpriteToStockDonor(3) === 'banana_bomb' &&
+      wepWeaponSpriteToStockDonor(0) === undefined,
   );
 }
 

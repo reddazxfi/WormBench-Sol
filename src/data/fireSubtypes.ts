@@ -43,6 +43,59 @@ export const FIRE_SUBTYPES: { value: number; label: string }[] = [
   { value: 260, label: '260, MB Bomb' },
 ];
 
+/**
+ * `fires.subtype` (+0x34) values whose Sprite Builder hold stays out through
+ * firing (`keep_while_firing = true`) and plays the put-away animation
+ * (`put_away = true`). Includes guns, launchers, bow, flamethrower and axe.
+ */
+export const HOLD_FIRE_MODE_SUBTYPES = new Set([1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18]);
+
+/**
+ * `fires.subtype` (+0x34) values whose Sprite Builder hold behaves as a thrown
+ * grenade (`thrown = true`, `0` plain/custom anim and `2` grenade).
+ */
+export const HOLD_THROW_MODE_SUBTYPES = new Set([0, 2]);
+
+export interface HoldFireMode {
+  keepWhileFiring: boolean;
+  putAway: boolean;
+  thrown: boolean;
+}
+
+/**
+ * Derive Sprite Builder hold flags (`keep_while_firing`, `put_away`, `thrown`)
+ * from the record's `fires.subtype` (+0x34). Strikes, utilities and specials
+ * leave all three false.
+ */
+export function holdFireModeForSubtype(subtype: number | undefined): HoldFireMode {
+  if (subtype !== undefined && HOLD_FIRE_MODE_SUBTYPES.has(subtype)) {
+    return { keepWhileFiring: true, putAway: true, thrown: false };
+  }
+  if (subtype !== undefined && HOLD_THROW_MODE_SUBTYPES.has(subtype)) {
+    return { keepWhileFiring: false, putAway: false, thrown: true };
+  }
+  return { keepWhileFiring: false, putAway: false, thrown: false };
+}
+
+/**
+ * PX's `'Weapon Sprite'` index (record +0x2C) mapped to the stock WA weapon
+ * whose held pose matches it. Used as a donor hint and `hold_as` fallback when
+ * a weapon has no SPB hold and a zeroed flight sprite.
+ */
+const WEP_WEAPON_SPRITE_DONOR: Record<number, string> = {
+  2: 'grenade',
+  3: 'banana_bomb',
+  4: 'cluster_bomb',
+  7: 'bazooka',
+  11: 'homing_missile',
+  12: 'sheep_launcher',
+};
+
+export function wepWeaponSpriteToStockDonor(weaponSprite: number | undefined): string | undefined {
+  if (weaponSprite === undefined) return undefined;
+  return WEP_WEAPON_SPRITE_DONOR[weaponSprite];
+}
+
 /** The label for a value, or `null` when it is not one of the stock subtypes. */
 export function fireSubtypeLabel(value: number): string | null {
   return FIRE_SUBTYPES.find((entry) => entry.value === value)?.label ?? null;

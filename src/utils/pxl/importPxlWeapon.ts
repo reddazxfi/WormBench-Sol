@@ -19,6 +19,7 @@ import type {
 } from '../../types/pxl';
 import { DEFAULT_ID_NAMESPACE, slugId } from '../weaponId';
 import { parseWepBinary } from '../wepParser';
+import { holdFireModeForSubtype } from '../../data/fireSubtypes';
 import {
   DEFAULT_DIG_ROLE_ART,
   DEFAULT_ROAM_ROLE_ART,
@@ -302,9 +303,7 @@ export function importPxlWeapon(
       fps: 15,
       animate: false,
       drawHand: true,
-      keepWhileFiring: false,
-      thrown: true,
-      putAway: false,
+      ...holdFireModeForSubtype(parsed.projectState.specialSubtype),
       handRad: 10,
       handRadLower: 0,
       handRadUpper: 0,

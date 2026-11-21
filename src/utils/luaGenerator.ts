@@ -17,6 +17,10 @@ import {
 } from '../types/weapon';
 import { getStockPanelPosition } from '../data/stockWeapons';
 import { stockDonor, stockDonorBaseline } from '../data/stockDonors';
+import {
+  HOLD_FIRE_MODE_SUBTYPES,
+  wepWeaponSpriteToStockDonor,
+} from '../data/fireSubtypes';
 import { resolveStockSprite, stockSpriteId, stockSpriteName } from '../data/stockSprites';
 import { supportsFireSequence } from '../data/fireSequence';
 import { STAMP_FRAMES, stampFrameForAngle, supportsTerrainStamp } from '../data/terrainStamp';
@@ -979,12 +983,34 @@ const POSE_BY_SPRITE_DONORS = new Set([
  */
 export function holdAsFor(project: WeaponProject): string | undefined {
   if (project.holdAs) return project.holdAs;
-  if (!primaryBuilderOn(project) || project.hold?.enabled || project.melee?.enabled) return undefined;
+  if (project.hold?.enabled || project.melee?.enabled) return undefined;
   const donorName = (project.based_on || project.slot || 'grenade').replace(/^stock\./, '');
-  // The sprite the record would carry without the builder: the author's own,
-  // unless that is the builder's zero, else the baseline's.
   const own = project.recordOverrides?.['missile.sprite'];
   const ownSet = own !== undefined && own !== '' && own !== 0 && own !== '0';
+  const ownZero = project.fireType === 'power' && (own === 0 || own === '0' || own === '');
+  if (!primaryBuilderOn(project) && !(ownZero && !packArtPath(project, 'strike_sprite'))) {
+    return undefined;
+  }
+
+  const rawSubtype =
+    project.recordOverrides?.['fires.subtype'] ??
+    project.specialSubtype ??
+    stockDonor(donorName)?.specialSubtype;
+  const effectiveSubtype =
+    rawSubtype !== undefined && Number.isFinite(Number(rawSubtype)) ? Number(rawSubtype) : undefined;
+  const launcherSubtype =
+    effectiveSubtype !== undefined && HOLD_FIRE_MODE_SUBTYPES.has(effectiveSubtype);
+
+  if (launcherSubtype && !POSE_BY_SPRITE_DONORS.has(donorName)) {
+    return undefined;
+  }
+  if (launcherSubtype && donorName !== 'mad_cow') {
+    const hint = wepWeaponSpriteToStockDonor(project.wepWeaponSprite);
+    return hint ? `stock.${hint}` : 'stock.bazooka';
+  }
+
+  // The sprite the record would carry without the builder: the author's own,
+  // unless that is the builder's zero, else the baseline's.
   const sprite = ownSet
     ? own
     : recordField(
@@ -998,7 +1024,15 @@ export function holdAsFor(project: WeaponProject): string | undefined {
   if (posed) return posed;
   // A sprite this table does not spell is still the donor's own on a weapon WA
   // poses by sprite, and a stock slot the engine does not know may not be named.
-  return stockDonor(donorName) && POSE_BY_SPRITE_DONORS.has(donorName) ? `stock.${donorName}` : undefined;
+  if (stockDonor(donorName) && POSE_BY_SPRITE_DONORS.has(donorName)) return `stock.${donorName}`;
+  if (
+    project.fireType === 'power' &&
+    (project.wepBaseline !== undefined || project.wepWeaponSprite !== undefined || ownZero)
+  ) {
+    const hint = wepWeaponSpriteToStockDonor(project.wepWeaponSprite);
+    return hint ? `stock.${hint}` : 'stock.cluster_bomb';
+  }
+  return undefined;
 }
 
 export function wfwsRoleFlags(project: WeaponProject) {

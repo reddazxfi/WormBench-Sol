@@ -801,6 +801,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     slot: inferredDonor,
     based_on: inferredDonor,
     fireType,
+    teleport: false,
     specialSubtype: subtype,
     panel_icon: inferredDonor,
     defaults: {

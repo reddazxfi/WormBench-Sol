@@ -339,6 +339,72 @@ export default function App() {
     />
   );
 
+  const buildImportedWeapon = (
+    prev: WeaponProject,
+    parsed: Partial<WeaponProject>,
+  ): WeaponProject => {
+    const body: WeaponProject['body'] = {
+      ...prev.body,
+      ...(parsed.body || {}),
+      clustlet: {
+        ...prev.body.clustlet,
+        ...(parsed.body?.clustlet || {}),
+      },
+    };
+    const defaults: WeaponProject['defaults'] = {
+      ...prev.defaults,
+      ...(parsed.defaults || {}),
+    };
+    const recordOverrides = { ...(parsed.recordOverrides || {}) };
+    const action = parsed.action ?? prev.action;
+    const burst = parsed.burst ?? prev.burst;
+    const missileSprite = parsed.missileSprite ?? prev.missileSprite;
+    const roamConfig = parsed.roamConfig ?? prev.roamConfig;
+    const digConfig = parsed.digConfig ?? prev.digConfig;
+    const fireConfig = parsed.fireConfig ?? prev.fireConfig;
+    const specialSubtype = parsed.specialSubtype ?? prev.specialSubtype;
+    const useWepFile = !!parsed.useWepFile && !!parsed.wepFile;
+
+    return {
+      ...prev,
+      ...parsed,
+      body,
+      defaults,
+      recordOverrides,
+      action,
+      burst,
+      missileSprite,
+      roamConfig,
+      digConfig,
+      fireConfig,
+      specialSubtype,
+      enableCustomLua: parsed.enableCustomLua ?? false,
+      customLuaSnippet: parsed.customLuaSnippet ?? '',
+      useWepFile,
+      wepFile: parsed.wepFile,
+      wepFileName: parsed.wepFileName,
+      wepBaseline:
+        parsed.wepBaseline ??
+        (parsed.wepFile
+          ? {
+              body: { ...body, clustlet: { ...body.clustlet } },
+              action,
+              burst,
+              recordOverrides: { ...recordOverrides },
+              missileSprite: { ...missileSprite },
+              roamConfig: { ...roamConfig },
+              digConfig: { ...digConfig },
+              fireConfig: { ...fireConfig },
+              specialSubtype,
+            }
+          : undefined),
+      donorBaseline:
+        parsed.donorBaseline ??
+        stockDonorBaseline(parsed.based_on ?? prev.based_on) ??
+        prev.donorBaseline,
+    };
+  };
+
   const handleApplyWepImport = (
     parsed: Partial<WeaponProject> & {
       replaceProject?: boolean;
@@ -356,7 +422,7 @@ export default function App() {
     // "Add to this bundle": the imported weapon joins the pack instead of
     // replacing the open one, with a free id and its art moved to its own folder.
     if (replace && importMode === 'append') {
-      const incoming = { ...INITIAL_PROJECT, ...parsed } as WeaponProject;
+      const incoming = buildImportedWeapon(INITIAL_PROJECT, parsed);
       const result = addWeaponToPack(pack, incoming);
       setPack(result.pack);
       setActiveIndex(result.index);
@@ -368,82 +434,7 @@ export default function App() {
     setPack((prevPack) => {
       const open = prevPack.weapons[activeIndex] ?? prevPack.weapons[0];
       const prev = replace ? INITIAL_PROJECT : open;
-      const body: WeaponProject['body'] = {
-        ...prev.body,
-        ...(parsed.body || {}),
-        clustlet: {
-          ...prev.body.clustlet,
-          ...(parsed.body?.clustlet || {}),
-        },
-      };
-      const defaults: WeaponProject['defaults'] = {
-        ...prev.defaults,
-        ...(parsed.defaults || {}),
-      };
-      // Importing a different weapon must not keep the previous weapon's
-      // record edits or callbacks. Those stale fields were a large part of why
-      // importing a .wep could "break" the weapon: old overrides were merged
-      // on top of the new record. Presets supply their own overrides.
-      const recordOverrides = { ...(parsed.recordOverrides || {}) };
-      const action = parsed.action ?? prev.action;
-      const burst = parsed.burst ?? prev.burst;
-      const missileSprite = parsed.missileSprite ?? prev.missileSprite;
-      const roamConfig = parsed.roamConfig ?? prev.roamConfig;
-      const digConfig = parsed.digConfig ?? prev.digConfig;
-      const fireConfig = parsed.fireConfig ?? prev.fireConfig;
-      const specialSubtype = parsed.specialSubtype ?? prev.specialSubtype;
-      const useWepFile = !!parsed.useWepFile && !!parsed.wepFile;
-
-      const merged: WeaponProject = {
-        ...prev,
-        ...parsed,
-        body,
-        defaults,
-        recordOverrides,
-        action,
-        burst,
-        missileSprite,
-        roamConfig,
-        digConfig,
-        fireConfig,
-        specialSubtype,
-        enableCustomLua: parsed.enableCustomLua ?? false,
-        customLuaSnippet: parsed.customLuaSnippet ?? '',
-        useWepFile,
-        // Keep the file even when the user applies the decoded record, so the
-        // settings toggle can switch back to `wep` without re-importing.
-        wepFile: parsed.wepFile,
-        wepFileName: parsed.wepFileName,
-        // The decoded model at import time. Fields that still match it are
-        // inherited from the .wep; only edits become named overrides. A bundle
-        // import supplies its own baseline (the decoded `.wep` *before* the
-        // module's declared tables), so those edits are what gets written.
-        // Snapshotted whenever a file came with the import, not only when it is
-        // used: the settings toggle can switch to the file later, and a baseline
-        // taken then would be the *edited* project, so every edit made in
-        // between would match it and silently drop from the export.
-        wepBaseline: parsed.wepBaseline ?? (parsed.wepFile
-          ? {
-              body: { ...body, clustlet: { ...body.clustlet } },
-              action,
-              burst,
-              recordOverrides: { ...recordOverrides },
-              missileSprite: { ...missileSprite },
-              roamConfig: { ...roamConfig },
-              digConfig: { ...digConfig },
-              fireConfig: { ...fireConfig },
-              specialSubtype,
-            }
-          : undefined),
-        // A preset (or any import without its own baseline) copies a donor, so
-        // its diff base has to be *that* donor's record -- not whatever donor
-        // the open project happened to be using.
-        donorBaseline:
-          parsed.donorBaseline ??
-          (useWepFile
-            ? prev.donorBaseline
-            : stockDonorBaseline(parsed.based_on ?? prev.based_on) ?? prev.donorBaseline),
-      };
+      const merged = buildImportedWeapon(prev, parsed);
       const next = withWeapon(prevPack, activeIndex, merged);
       return importedIcon
         ? { ...next, iconFile: importedIcon.file, iconPreview: importedIcon.preview }
@@ -533,7 +524,7 @@ export default function App() {
     scope: PxlActiveScope,
     summary: string[],
   ) => {
-    const incoming = { ...INITIAL_PROJECT, ...imported } as WeaponProject;
+    const incoming = buildImportedWeapon(INITIAL_PROJECT, imported);
     const result = addWeaponToPack(pack, incoming);
     setPack(result.pack);
     setActiveIndex(result.index);
@@ -556,7 +547,7 @@ export default function App() {
     let nextPack = pack;
     let firstAddedIndex = activeIndex;
     items.forEach((item, idx) => {
-      const incoming = { ...INITIAL_PROJECT, ...item.project } as WeaponProject;
+      const incoming = buildImportedWeapon(INITIAL_PROJECT, item.project);
       const res = addWeaponToPack(nextPack, incoming);
       nextPack = res.pack;
       if (idx === 0) firstAddedIndex = res.index;

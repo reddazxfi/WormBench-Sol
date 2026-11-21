@@ -42,6 +42,7 @@ interface PxlLibraryModalProps {
       scope: PxlActiveScope;
     }[],
     libName: string,
+    skipped?: string[],
   ) => void;
   onClose: () => void;
 }
@@ -288,7 +289,7 @@ export const PxlLibraryModal: React.FC<PxlLibraryModalProps> = ({
     }
     if (errs.length > 0) setErrors(errs);
     if (items.length > 0) {
-      onAddAllWeapons(items, activeLib.fileName);
+      onAddAllWeapons(items, activeLib.fileName, errs);
       onClose();
     }
   };

@@ -9,7 +9,6 @@ import {
   Upload,
 } from 'lucide-react';
 import type { PackProject } from '../types/weapon';
-import { hasProjectileBody } from '../data/recordTabs';
 
 const ARCHETYPE_BADGE: Record<string, string> = {
   power: 'Projectile',
@@ -61,16 +60,16 @@ export const PackRail: React.FC<PackRailProps> = ({
 }) => {
   const many = pack.weapons.length > 1;
   return (
-    <div className="mt-2 rounded-xl border border-stone-200 bg-white/70 p-2 dark:border-stone-800 dark:bg-stone-900/40">
-      <div className="flex items-center justify-between px-1 pb-1.5">
+    <div className="rounded-xl border border-stone-200 bg-white/70 p-2 dark:border-stone-800 dark:bg-stone-900/40">
+      <div className="flex items-center justify-between gap-1 px-0.5 pb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">
-          {many ? `Bundle · ${pack.weapons.length} weapons` : 'Bundle'}
+          {many ? `Bundle · ${activeIndex + 1}/${pack.weapons.length}` : 'Bundle · 1 weapon'}
         </span>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={onImportWeapon}
-            className="rounded-md border border-sky-300/80 bg-sky-50/75 p-1 text-sky-700 transition-colors hover:bg-sky-100 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-300 dark:hover:bg-sky-900/40"
+            className="rounded-md border border-sky-300/80 bg-sky-50/75 p-1 text-sky-700 transition-colors hover:bg-sky-100 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-300 dark:hover:bg-sky-900/40 cursor-pointer"
             title="Read an installed mod and add its weapon to this bundle"
             aria-label="Add a weapon from installed mods"
           >
@@ -79,7 +78,7 @@ export const PackRail: React.FC<PackRailProps> = ({
           <button
             type="button"
             onClick={onAddWeapon}
-            className="rounded-md border border-forge-300/80 bg-forge-50/75 p-1 text-forge-700 transition-colors hover:bg-forge-100 dark:border-forge-700/60 dark:bg-forge-950/30 dark:text-forge-300 dark:hover:bg-forge-900/40"
+            className="rounded-md border border-forge-300/80 bg-forge-50/75 p-1 text-forge-700 transition-colors hover:bg-forge-100 dark:border-forge-700/60 dark:bg-forge-950/30 dark:text-forge-300 dark:hover:bg-forge-900/40 cursor-pointer"
             title="Add a blank weapon (the stock Grenade record) to this bundle"
             aria-label="Add a blank weapon"
           >
@@ -88,105 +87,80 @@ export const PackRail: React.FC<PackRailProps> = ({
         </div>
       </div>
 
-      {/* A pack can hold a hundred weapons: the list scrolls inside the sidebar so
-          the workspace navigation under it stays reachable. */}
-      <ul className="max-h-[38vh] space-y-1 overflow-y-auto pr-0.5">
-        {pack.weapons.map((weapon, index) => {
-          const active = index === activeIndex;
-          return (
-            <li key={`${weapon.id}-${index}`}>
-              <button
-                type="button"
-                onClick={() => onSelect(index)}
-                aria-current={active ? 'true' : undefined}
-                className={`w-full rounded-lg px-2 py-1.5 text-left transition-colors ${
-                  active
-                    ? 'bg-forge-50 text-forge-900 ring-1 ring-forge-200 dark:bg-forge-950/40 dark:text-forge-100 dark:ring-forge-800'
-                    : 'text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800/60'
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      active ? 'bg-forge-500' : 'bg-stone-300 dark:bg-stone-600'
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">{weapon.name}</span>
-                  <span className="shrink-0 text-[9px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500">
-                    {weaponKindLabel(weapon)}
-                  </span>
-                </span>
-                <span className="mt-0.5 block truncate pl-3 font-mono text-[9px] text-stone-400 dark:text-stone-500">
-                  {weapon.id}
-                </span>
-                {hasProjectileBody(weapon.fireType, weapon.teleport, weapon.body?.fuse) && (
-                  <span className="mt-0.5 block truncate pl-3 text-[9px] text-stone-400 dark:text-stone-500">
-                    {weapon.useWepFile && weapon.wepFile ? '.wep base' : weapon.based_on}
-                    {' · '}
-                    {weapon.action && weapon.action !== 'none' ? weapon.action : 'direct'}
-                  </span>
-                )}
-              </button>
+      {many ? (
+        <div className="space-y-1.5">
+          <label className="block">
+            <span className="sr-only">Active weapon in bundle</span>
+            <select
+              value={activeIndex}
+              onChange={(event) => onSelect(Number(event.target.value))}
+              className="w-full truncate rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-semibold text-stone-800 focus:outline-hidden focus:ring-2 focus:ring-forge-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+            >
+              {pack.weapons.map((weapon, index) => (
+                <option key={`${weapon.id}-${index}`} value={index}>
+                  {`${index + 1}. ${weapon.name || weapon.id} (${weaponKindLabel(weapon)})`}
+                </option>
+              ))}
+            </select>
+          </label>
 
-              {active && (
-                <div className="mt-1 flex items-center gap-1 pl-1">
-                  <button
-                    type="button"
-                    onClick={() => onDuplicate(index)}
-                    className="flex items-center gap-1 rounded-md border border-stone-200 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
-                    title="Add a copy of this weapon to the bundle"
-                  >
-                    <Copy className="h-3 w-3" aria-hidden="true" />
-                    Copy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMove(index, -1)}
-                    disabled={index === 0}
-                    className="rounded-md border border-stone-200 p-1 text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-40 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
-                    title="Move up in the bundle"
-                    aria-label="Move this weapon up"
-                  >
-                    <ChevronUp className="h-3 w-3" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMove(index, 1)}
-                    disabled={index === pack.weapons.length - 1}
-                    className="rounded-md border border-stone-200 p-1 text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-40 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
-                    title="Move down in the bundle"
-                    aria-label="Move this weapon down"
-                  >
-                    <ChevronDown className="h-3 w-3" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemove(index)}
-                    disabled={pack.weapons.length <= 1}
-                    className="ml-auto rounded-md border border-rose-200 p-1 text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                    title={
-                      pack.weapons.length <= 1
-                        ? 'A bundle always holds one weapon'
-                        : 'Remove this weapon from the bundle'
-                    }
-                    aria-label="Remove this weapon from the bundle"
-                  >
-                    <Trash2 className="h-3 w-3" aria-hidden="true" />
-                  </button>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-
-      {!many && (
-        <p className="mt-1.5 px-1 text-[10px] leading-relaxed text-stone-400 dark:text-stone-500">
-          <FolderPlus className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden="true" />
-          One weapon: the bundle takes this weapon&apos;s id, name and folder. Add another to give the
-          bundle its own.
-        </p>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onDuplicate(activeIndex)}
+              className="flex items-center gap-1 rounded-md border border-stone-200 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800 cursor-pointer"
+              title="Add a copy of this weapon to the bundle"
+            >
+              <Copy className="h-3 w-3" aria-hidden="true" />
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={() => onMove(activeIndex, -1)}
+              disabled={activeIndex === 0}
+              className="rounded-md border border-stone-200 p-1 text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-40 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800 cursor-pointer disabled:cursor-not-allowed"
+              title="Move up in the bundle"
+              aria-label="Move this weapon up"
+            >
+              <ChevronUp className="h-3 w-3" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onMove(activeIndex, 1)}
+              disabled={activeIndex === pack.weapons.length - 1}
+              className="rounded-md border border-stone-200 p-1 text-stone-600 transition-colors hover:bg-stone-100 disabled:opacity-40 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800 cursor-pointer disabled:cursor-not-allowed"
+              title="Move down in the bundle"
+              aria-label="Move this weapon down"
+            >
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onRemove(activeIndex)}
+              className="ml-auto rounded-md border border-rose-200 p-1 text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40 cursor-pointer"
+              title="Remove this weapon from the bundle"
+              aria-label="Remove this weapon from the bundle"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 px-0.5 text-[10px] leading-snug text-stone-400 dark:text-stone-500">
+          <span>
+            <FolderPlus className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden="true" />
+            Add another weapon with + to make a pack.
+          </span>
+          <button
+            type="button"
+            onClick={() => onDuplicate(0)}
+            className="shrink-0 rounded-md border border-stone-200 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800 cursor-pointer"
+            title="Duplicate this weapon into a multi-weapon bundle"
+          >
+            <Copy className="mr-1 inline h-2.5 w-2.5 align-[-1px]" aria-hidden="true" />
+            Copy
+          </button>
+        </div>
       )}
     </div>
   );

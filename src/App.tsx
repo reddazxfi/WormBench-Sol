@@ -543,6 +543,7 @@ export default function App() {
       scope: PxlActiveScope;
     }[],
     libName: string,
+    skipped: string[] = [],
   ) => {
     let nextPack = pack;
     let firstAddedIndex = activeIndex;
@@ -555,7 +556,13 @@ export default function App() {
     setPack(nextPack);
     setActiveIndex(firstAddedIndex);
     setActivePxlScope(items[0]?.scope);
-    showToast(`Added ${items.length} weapon${items.length === 1 ? '' : 's'} from ${libName} to bundle.`);
+    const skipNote =
+      skipped.length > 0
+        ? ` (skipped ${skipped.length} blocked: ${skipped.slice(0, 2).join('; ')})`
+        : '';
+    showToast(
+      `Added ${items.length} weapon${items.length === 1 ? '' : 's'} from ${libName} to bundle${skipNote}.`,
+    );
   };
 
   const handleExportZip = async () => {
@@ -743,6 +750,25 @@ export default function App() {
                 {pageMeta.description}
               </p>
             </div>
+            {pack.weapons.length > 1 && (
+              <div className="flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 shadow-2xs dark:border-stone-800 dark:bg-stone-900">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  Weapon {activeIndex + 1}/{pack.weapons.length}
+                </span>
+                <select
+                  aria-label="Switch active weapon in bundle"
+                  value={activeIndex}
+                  onChange={(event) => selectWeapon(Number(event.target.value))}
+                  className="max-w-52 truncate rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-800 focus:outline-hidden focus:ring-2 focus:ring-forge-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100"
+                >
+                  {pack.weapons.map((weapon, index) => (
+                    <option key={`${weapon.id}-${index}`} value={index}>
+                      {`${index + 1}. ${weapon.name || weapon.id}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </header>
 
           {activeTab === 'editor' && (

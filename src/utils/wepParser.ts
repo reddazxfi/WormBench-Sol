@@ -208,6 +208,20 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   const isSpecial = fireTypeRaw === 4;
   const isMissile = !isGun && !isArrow && !isSpray && !isMine && !isStrike && !isSpecial;
 
+  if (isSpecial && subtype === 24) {
+    return {
+      success: false,
+      name: weaponName,
+      fireType: 'special',
+      inferredDonor: 'armageddon',
+      rawOffsets,
+      projectState: {},
+      summary: [],
+      error:
+        'Armageddon weapon mode (Special subtype 24) is not supported in WormForge yet and causes crashes; import is blocked.',
+    };
+  }
+
   let damage = 0;
   let pushPct = 100;
   let gravityPct = 100;

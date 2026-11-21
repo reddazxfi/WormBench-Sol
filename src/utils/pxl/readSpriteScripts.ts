@@ -123,50 +123,66 @@ export function readSpriteScripts(scripts: readonly string[]): PxlParsedScripts 
     if (!frameCountsRaw.has(assetName)) frameCountsRaw.set(assetName, count);
   };
 
+  // Share file/sprite declarations across scripts in the same library so split
+  // InitGraphic + Message scripts still resolve sprite variables cleanly.
+  const fileVars = new Map<string, string>();
+  const spriteVars = new Map<string, string>();
+
   for (const rawScript of scripts) {
     const clean = stripCScriptComments(rawScript);
-    // Track `fileVar -> attachment filename` and `spriteVar -> attachment filename`.
-    const fileVars = new Map<string, string>();
-    const spriteVars = new Map<string, string>();
     let currentWeapon: string | undefined;
 
-    let activeHold: PxlScriptHoldParams | null = null;
-    let activeHoldVar: string | null = null;
-    let activeFlight: PxlScriptFlightParams | null = null;
-    let activeFlightVar: string | null = null;
+    const holdVars = new Map<string, PxlScriptHoldParams>();
+    const emittedHoldVars = new Set<string>();
+    let lastHoldVar: string | null = null;
+
+    const flightVars = new Map<string, PxlScriptFlightParams>();
+    const emittedFlightVars = new Set<string>();
+    let lastFlightVar: string | null = null;
     const stringVars = new Map<string, string>();
 
-    const flushHold = (spriteRef?: string, weapArg?: string) => {
-      if (!activeHold) return;
-      const out: PxlScriptHoldParams = { ...activeHold };
-      if (!out.weaponName) {
-        if (weapArg) {
-          const lit = weapArg.match(/^"([^"]+)"$/);
-          out.weaponName = lit ? unescapeStringLiteral(lit[1]) : stringVars.get(weapArg) ?? currentWeapon;
-        } else {
-          out.weaponName = currentWeapon;
-        }
+    const hasHoldFields = (p: PxlScriptHoldParams): boolean =>
+      Object.entries(p).some(([k, v]) => k !== 'weaponName' && v !== undefined);
+    const hasFlightFields = (p: PxlScriptFlightParams): boolean =>
+      Object.entries(p).some(([k, v]) => k !== 'weaponName' && v !== undefined);
+
+    const resolveWeaponArg = (weapArg?: string, fallback?: string): string | undefined => {
+      if (weapArg) {
+        const lit = weapArg.match(/^"((?:[^"\\]|\\.)*)"$/);
+        if (lit) return unescapeStringLiteral(lit[1]);
+        const fromVar = stringVars.get(weapArg);
+        if (fromVar !== undefined) return fromVar;
       }
-      if (spriteRef && !out.sheetName) {
-        const key = spriteRef.replace(/->Index$/i, '').trim();
-        out.sheetName = spriteVars.get(key) ?? spriteVars.get(spriteRef);
-      }
-      holdParams.push(out);
-      activeHold = null;
-      activeHoldVar = null;
+      return fallback ?? currentWeapon;
     };
 
-    const flushFlight = (spriteRef?: string) => {
-      if (!activeFlight) return;
-      const out: PxlScriptFlightParams = { ...activeFlight };
-      if (!out.weaponName) out.weaponName = currentWeapon;
-      if (spriteRef && !out.sheetName) {
+    const resolveSpriteArg = (spriteRef?: string, fallback?: string): string | undefined => {
+      if (spriteRef) {
         const key = spriteRef.replace(/->Index$/i, '').trim();
-        out.sheetName = spriteVars.get(key) ?? spriteVars.get(spriteRef);
+        const found = spriteVars.get(key) ?? spriteVars.get(spriteRef);
+        if (found) return found;
       }
+      return fallback;
+    };
+
+    const emitHold = (varName: string, spriteRef?: string, weapArg?: string) => {
+      const target = holdVars.get(varName);
+      if (!target) return;
+      const out: PxlScriptHoldParams = { ...target };
+      out.weaponName = resolveWeaponArg(weapArg, out.weaponName);
+      out.sheetName = resolveSpriteArg(spriteRef, out.sheetName);
+      holdParams.push(out);
+      emittedHoldVars.add(varName);
+    };
+
+    const emitFlight = (varName: string, spriteRef?: string) => {
+      const target = flightVars.get(varName);
+      if (!target) return;
+      const out: PxlScriptFlightParams = { ...target };
+      out.weaponName = currentWeapon ?? out.weaponName;
+      out.sheetName = resolveSpriteArg(spriteRef, out.sheetName);
       flightParams.push(out);
-      activeFlight = null;
-      activeFlightVar = null;
+      emittedFlightVars.add(varName);
     };
 
     // Extract `require a, b, c;` before statement splitting so multi-line `require` lists stay intact.
@@ -274,18 +290,28 @@ export function readSpriteScripts(scripts: readonly string[]): PxlParsedScripts 
       // `CWormAnimParams* Params = new CWormAnimParams`
       const cwInit = stmt.match(/CWormAnimParams\s*\*?\s*(\w+)\s*=\s*new\s+CWormAnimParams/);
       if (cwInit) {
-        flushHold();
-        activeHoldVar = cwInit[1];
-        activeHold = { weaponName: currentWeapon };
+        const varName = cwInit[1];
+        const prev = holdVars.get(varName);
+        if (prev && !emittedHoldVars.has(varName) && hasHoldFields(prev)) {
+          emitHold(varName);
+        }
+        holdVars.set(varName, { weaponName: currentWeapon });
+        emittedHoldVars.delete(varName);
+        lastHoldVar = varName;
         continue;
       }
 
       // `WeapSpriteParams* Params = new WeapSpriteParams`
       const wsInit = stmt.match(/WeapSpriteParams\s*\*?\s*(\w+)\s*=\s*new\s+WeapSpriteParams/);
       if (wsInit) {
-        flushFlight();
-        activeFlightVar = wsInit[1];
-        activeFlight = { weaponName: currentWeapon };
+        const varName = wsInit[1];
+        const prev = flightVars.get(varName);
+        if (prev && !emittedFlightVars.has(varName) && hasFlightFields(prev)) {
+          emitFlight(varName);
+        }
+        flightVars.set(varName, { weaponName: currentWeapon });
+        emittedFlightVars.delete(varName);
+        lastFlightVar = varName;
         continue;
       }
 
@@ -293,48 +319,50 @@ export function readSpriteScripts(scripts: readonly string[]): PxlParsedScripts 
       const paramAssign = stmt.match(/^\s*(\w+)->(\w+)\s*=\s*(.+?)\s*$/);
       if (paramAssign) {
         const [, varName, field, rawVal] = paramAssign;
-        if (activeHold && (!activeHoldVar || activeHoldVar === varName)) {
+        const holdTarget = holdVars.get(varName);
+        if (holdTarget) {
           switch (field) {
-            case 'hand_radius': activeHold.handRadius = parseNum(rawVal); break;
-            case 'hand_rotation': activeHold.handRotation = parseNum(rawVal); break;
-            case 'hand_radial_rotation': activeHold.handRadialRotation = parseNum(rawVal); break;
-            case 'hand_scale': activeHold.handScale = parseNum(rawVal); break;
-            case 'hand_type': activeHold.handType = parseHandType(rawVal); break;
-            case 'scale': activeHold.scale = parseNum(rawVal); break;
-            case 'weap_rotation': activeHold.weapRotation = parseNum(rawVal); break;
-            case 'weap_radial_rotation': activeHold.weapRadialRotation = parseNum(rawVal); break;
-            case 'weap_radius': activeHold.weapRadius = parseNum(rawVal); break;
-            case 'draw_hand': activeHold.drawHand = parseBool(rawVal); break;
-            case 'animate': activeHold.animate = parseBool(rawVal); break;
-            case 'anim_speed': activeHold.animSpeed = parseNum(rawVal); break;
-            case 'zplane': activeHold.zplane = parseNum(rawVal); break;
-            case 'useSpriteSystem': activeHold.useSpriteSystem = parseBool(rawVal); break;
-            case 'subSpriteNumber': activeHold.subSpriteNumber = parseNum(rawVal); break;
-            case 'subSpriteFiring': activeHold.subSpriteFiring = parseNum(rawVal); break;
-            case 'numSpritesInSheet': activeHold.numSpritesInSheet = parseNum(rawVal); break;
+            case 'hand_radius': holdTarget.handRadius = parseNum(rawVal); break;
+            case 'hand_rotation': holdTarget.handRotation = parseNum(rawVal); break;
+            case 'hand_radial_rotation': holdTarget.handRadialRotation = parseNum(rawVal); break;
+            case 'hand_scale': holdTarget.handScale = parseNum(rawVal); break;
+            case 'hand_type': holdTarget.handType = parseHandType(rawVal); break;
+            case 'scale': holdTarget.scale = parseNum(rawVal); break;
+            case 'weap_rotation': holdTarget.weapRotation = parseNum(rawVal); break;
+            case 'weap_radial_rotation': holdTarget.weapRadialRotation = parseNum(rawVal); break;
+            case 'weap_radius': holdTarget.weapRadius = parseNum(rawVal); break;
+            case 'draw_hand': holdTarget.drawHand = parseBool(rawVal); break;
+            case 'animate': holdTarget.animate = parseBool(rawVal); break;
+            case 'anim_speed': holdTarget.animSpeed = parseNum(rawVal); break;
+            case 'zplane': holdTarget.zplane = parseNum(rawVal); break;
+            case 'useSpriteSystem': holdTarget.useSpriteSystem = parseBool(rawVal); break;
+            case 'subSpriteNumber': holdTarget.subSpriteNumber = parseNum(rawVal); break;
+            case 'subSpriteFiring': holdTarget.subSpriteFiring = parseNum(rawVal); break;
+            case 'numSpritesInSheet': holdTarget.numSpritesInSheet = parseNum(rawVal); break;
             case 'FSprite': {
               const key = rawVal.replace(/->Index$/i, '').trim();
               const sheet = spriteVars.get(key) ?? spriteVars.get(rawVal.trim());
-              if (sheet) activeHold.firingSheetName = sheet;
+              if (sheet) holdTarget.firingSheetName = sheet;
               break;
             }
           }
         }
-        if (activeFlight && (!activeFlightVar || activeFlightVar === varName)) {
+        const flightTarget = flightVars.get(varName);
+        if (flightTarget) {
           switch (field) {
-            case 'animate': activeFlight.animate = parseBool(rawVal); break;
-            case 'anim_speed': activeFlight.animSpeed = parseNum(rawVal); break;
-            case 'ZPlane': activeFlight.zplane = parseNum(rawVal); break;
-            case 'scale': activeFlight.scale = parseNum(rawVal); break;
-            case 'hideWorm': activeFlight.hideWorm = parseBool(rawVal); break;
-            case 'rotation': activeFlight.rotation = parseNum(rawVal); break;
-            case 'dont_rotate_by_speed': activeFlight.dontRotateBySpeed = parseBool(rawVal); break;
-            case 'animate_by_speed': activeFlight.animateBySpeed = parseBool(rawVal); break;
-            case 'play_backwards': activeFlight.playBackwards = parseBool(rawVal); break;
-            case 'ang_if_dont_rotate': activeFlight.angIfDontRotate = parseNum(rawVal); break;
-            case 'useSpriteSystem': activeFlight.useSpriteSystem = parseBool(rawVal); break;
-            case 'subSpriteNumber': activeFlight.subSpriteNumber = parseNum(rawVal); break;
-            case 'numSpritesInSheet': activeFlight.numSpritesInSheet = parseNum(rawVal); break;
+            case 'animate': flightTarget.animate = parseBool(rawVal); break;
+            case 'anim_speed': flightTarget.animSpeed = parseNum(rawVal); break;
+            case 'ZPlane': flightTarget.zplane = parseNum(rawVal); break;
+            case 'scale': flightTarget.scale = parseNum(rawVal); break;
+            case 'hideWorm': flightTarget.hideWorm = parseBool(rawVal); break;
+            case 'rotation': flightTarget.rotation = parseNum(rawVal); break;
+            case 'dont_rotate_by_speed': flightTarget.dontRotateBySpeed = parseBool(rawVal); break;
+            case 'animate_by_speed': flightTarget.animateBySpeed = parseBool(rawVal); break;
+            case 'play_backwards': flightTarget.playBackwards = parseBool(rawVal); break;
+            case 'ang_if_dont_rotate': flightTarget.angIfDontRotate = parseNum(rawVal); break;
+            case 'useSpriteSystem': flightTarget.useSpriteSystem = parseBool(rawVal); break;
+            case 'subSpriteNumber': flightTarget.subSpriteNumber = parseNum(rawVal); break;
+            case 'numSpritesInSheet': flightTarget.numSpritesInSheet = parseNum(rawVal); break;
           }
         }
       }
@@ -343,22 +371,37 @@ export function readSpriteScripts(scripts: readonly string[]): PxlParsedScripts 
       const wormSpriteCall = stmt.match(
         /new\s+WormSprite\s*\(\s*([^,]+?)\s*,\s*([^,]+?)\s*,\s*(\w+)\s*\)/,
       );
-      if (wormSpriteCall && activeHold) {
-        flushHold(wormSpriteCall[2].trim(), wormSpriteCall[1].trim());
+      if (wormSpriteCall) {
+        const paramVar = wormSpriteCall[3];
+        if (holdVars.has(paramVar)) {
+          emitHold(paramVar, wormSpriteCall[2].trim(), wormSpriteCall[1].trim());
+        } else if (lastHoldVar) {
+          emitHold(lastHoldVar, wormSpriteCall[2].trim(), wormSpriteCall[1].trim());
+        }
       }
 
       // `new WeapSprite(this, sprite, Params)` or `ApplyWeapSpriteParams(sprite, Params)`
       const weapSpriteCall = stmt.match(
         /new\s+WeapSprite\s*\(\s*[^,]+?\s*,\s*([^,]+?)\s*,\s*(\w+)\s*\)/,
       );
-      if (weapSpriteCall && activeFlight) {
-        flushFlight(weapSpriteCall[1].trim());
+      if (weapSpriteCall) {
+        const paramVar = weapSpriteCall[2];
+        if (flightVars.has(paramVar)) {
+          emitFlight(paramVar, weapSpriteCall[1].trim());
+        } else if (lastFlightVar) {
+          emitFlight(lastFlightVar, weapSpriteCall[1].trim());
+        }
       }
       const applyWsCall = stmt.match(
         /ApplyWeapSpriteParams\s*\(\s*([^,]+?)\s*,\s*(\w+)\s*\)/,
       );
-      if (applyWsCall && activeFlight) {
-        flushFlight(applyWsCall[1].trim());
+      if (applyWsCall) {
+        const paramVar = applyWsCall[2];
+        if (flightVars.has(paramVar)) {
+          emitFlight(paramVar, applyWsCall[1].trim());
+        } else if (lastFlightVar) {
+          emitFlight(lastFlightVar, applyWsCall[1].trim());
+        }
       }
 
       // `SetCustomAnim(speed)` / `SetSpriteMultiplex(num, sub)` from `red_sprite_builder`
@@ -395,8 +438,12 @@ export function readSpriteScripts(scripts: readonly string[]): PxlParsedScripts 
       }
     }
 
-    flushHold();
-    flushFlight();
+    for (const [varName, p] of holdVars) {
+      if (!emittedHoldVars.has(varName) && hasHoldFields(p)) emitHold(varName);
+    }
+    for (const [varName, p] of flightVars) {
+      if (!emittedFlightVars.has(varName) && hasFlightFields(p)) emitFlight(varName);
+    }
   }
 
   return { frameCounts, frameCountsRaw, holdParams, flightParams, sounds, requires, spriteOverrides };

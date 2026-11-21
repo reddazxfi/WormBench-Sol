@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Boxes, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Boxes, ChevronDown, ChevronUp, Image as ImageIcon, Trash2 } from 'lucide-react';
 import type { PackProject } from '../types/weapon';
 import { sanitizeModFolder } from '../utils/luaGenerator';
 import { SpritePickButton } from './SpritePickButton';
@@ -32,6 +32,7 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
   onRemoveWeapon,
 }) => {
   const many = pack.weapons.length > 1;
+  const [expanded, setExpanded] = useState(false);
   const folder = sanitizeModFolder(pack.id);
   const replaces = (pack.replaces ?? []).join(', ');
   // The text as typed: re-rendering the parsed list on each keystroke swallowed
@@ -92,25 +93,59 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
       aria-label="Bundle Settings"
       className="overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/80 bg-stone-50/80 px-4 py-2.5 dark:border-stone-800 dark:bg-stone-950/60">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50/80 px-4 py-2 dark:bg-stone-950/60">
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-left cursor-pointer"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900">
+            {iconPreview ? (
+              <img
+                src={iconPreview}
+                alt=""
+                className="h-5 w-5 object-contain"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            ) : (
+              <Boxes className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
+            )}
+          </span>
           <h2 className="font-heading text-xs font-bold uppercase tracking-wider text-stone-900 dark:text-stone-100">
             Bundle Settings
           </h2>
           <span className="text-stone-300 dark:text-stone-700" aria-hidden="true">
             ·
           </span>
-          <span className="text-[11px] text-stone-500 dark:text-stone-400 tabular-nums">
-            {pack.weapons.length} weapon{pack.weapons.length === 1 ? '' : 's'} · one mod.toml, one profile
+          <span className="truncate text-[11px] font-medium text-stone-700 dark:text-stone-200">
+            {pack.name || pack.id}
           </span>
+          <span className="text-[11px] text-stone-500 dark:text-stone-400 tabular-nums">
+            ({pack.weapons.length} weapon{pack.weapons.length === 1 ? '' : 's'})
+          </span>
+        </button>
+        <div className="flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-0.5 font-mono text-[10px] text-stone-500 sm:inline-flex dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
+            <Boxes className="h-3 w-3" aria-hidden="true" />
+            WormForge/Mods/{folder}/
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 py-1 text-[11px] font-semibold text-stone-600 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 cursor-pointer"
+          >
+            <span>{expanded ? 'Hide' : 'Edit'}</span>
+            {expanded ? (
+              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+          </button>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1 font-mono text-[10px] text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
-          <Boxes className="h-3 w-3" aria-hidden="true" />
-          WormForge/Mods/{folder}/
-        </span>
       </div>
 
-      <div className="space-y-3 p-4">
+      {expanded && <div className="space-y-3 border-t border-stone-200/80 p-4 dark:border-stone-800">
 
         {/* The bundle's one icon. */}
         <div className="flex items-end gap-2.5">
@@ -295,7 +330,7 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
             Remove selected weapon
           </button>
         )}
-      </div>
+      </div>}
     </section>
   );
 };

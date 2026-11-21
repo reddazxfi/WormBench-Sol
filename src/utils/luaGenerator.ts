@@ -1024,6 +1024,14 @@ export function wfwsRoleFlags(project: WeaponProject) {
     // A roaming animal's flown art can be its own role. `native` (or no row)
     // keeps the primary sheet, which is what every bundle written so far does.
     roam: builderOn && project.action === 'roam' && mode('roam') === 'builder',
+    zeroMainHoming:
+      builderOn && project.action === 'homing' && (mode('homing') ?? 'inherit') !== 'native',
+    zeroBitHoming:
+      builderOn &&
+      bitMode !== null &&
+      clusters &&
+      bitAction === 'homing' &&
+      (mode('homing_bit') ?? 'inherit') !== 'native',
     zeroMainDig: builderOn && digUsesBuilder && project.action === 'dig',
     zeroBitDig:
       builderOn && digUsesBuilder && bitMode !== null && clusters && bitAction === 'dig',
@@ -1385,6 +1393,8 @@ export function generateLuaCode(project: WeaponProject): string {
     homing: homingBuilder,
     bitHoming: bitHomingBuilder,
     roam: roamRole,
+    zeroMainHoming,
+    zeroBitHoming,
     zeroMainDig,
     zeroBitDig,
   } = wfwsRoleFlags(project);
@@ -3174,6 +3184,7 @@ export function generateLuaCode(project: WeaponProject): string {
       action === 'homing' &&
       (!!homingState ||
         homingBuilder ||
+        zeroMainHoming ||
         actionChanged ||
         bodyChanged('homing') ||
         bodyChanged('homing_arm_ms') ||
@@ -3192,9 +3203,10 @@ export function generateLuaCode(project: WeaponProject): string {
       lines.push(`          arm = ${body.homing_arm_ms ?? 1000},`);
       lines.push(`          time = ${body.homing_time_ms ?? 8000},`);
 
-      // The builder draws the homing sheet in the arm/time window, so WA's own
-      // homing sprite has to go or it draws under ours (0xAC is art only).
-      const homingSprite = homingBuilder
+      // The builder draws the homing sheet (or keeps the flight sheet when set
+      // to `inherit`), so WA's own homing sprite has to go or it draws under
+      // ours (0xAC is art only). `native` keeps the record's own homing sprite.
+      const homingSprite = zeroMainHoming
         ? 0
         : homingState?.assigned.homing_sprite !== undefined
           ? homingState.assigned.homing_sprite
@@ -3783,6 +3795,7 @@ export function generateLuaCode(project: WeaponProject): string {
           bitAction === 'homing' &&
           (!!homingBitState ||
             bitHomingBuilder ||
+            zeroBitHoming ||
             clustletChanged('homing') ||
             clustletChanged('homing_arm_ms') ||
             clustletChanged('homing_time_ms') ||
@@ -3797,7 +3810,7 @@ export function generateLuaCode(project: WeaponProject): string {
           if (clustletChanged('homing')) {
             lines.push(`            kind = ${luaQuote(c.homing)},`);
           }
-          const bitHomingSprite = bitHomingBuilder
+          const bitHomingSprite = zeroBitHoming
             ? 0
             : homingBitState?.assigned.bit_homing_sprite !== undefined
               ? homingBitState.assigned.bit_homing_sprite

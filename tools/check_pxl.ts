@@ -620,13 +620,104 @@ if (!existsSync(LIBS_DIR)) {
     homingImport?.project?.missileSprite?.enabled === true &&
       homingImport?.project?.behaviorArt?.homing?.mode === 'inherit',
   );
+  check(
+    'Homing Arrow falls back numeric-only homing trail #259 to ID 131',
+    homingImport?.project?.recordOverrides?.['missile.homing.trail.sprite'] === '131',
+  );
+  if (homingImport?.project) {
+    const homingLua = generateLuaCode({
+      ...javProject,
+      ...homingImport.project,
+      body: {
+        ...DEFAULT_BODY,
+        ...homingImport.project.body,
+        clustlet: {
+          ...DEFAULT_BODY.clustlet,
+          ...homingImport.project.body?.clustlet,
+        },
+      },
+    } as WeaponProject);
+    check(
+      'Homing Arrow Lua zeroes homing.sprite (inherit uses sb.flight) and emits homing trail 131',
+      homingLua.includes('          sprite = 0,') &&
+        homingLua.includes('            sprite = 131,'),
+    );
+  }
   const explosiveArrow = bowsLib.weapons.find((w) => w.name.includes('Explosive Arrow'));
+  const explosiveBlind = explosiveArrow ? importPxlWeapon(explosiveArrow, bowsLib, [bowsLib]) : undefined;
+  check(
+    'Blind Explosive Arrow (no sprite_curtis_259) falls back missile.trail.sprite -> 131',
+    explosiveBlind?.project?.recordOverrides?.['missile.trail.sprite'] === '131',
+  );
+  const multiBolt = bowsLib.weapons.find((w) => w.name === 'Multi-Bolt');
+  const multiBoltBlind = multiBolt ? importPxlWeapon(multiBolt, bowsLib, [bowsLib]) : undefined;
+  check(
+    'Blind Multi-Bolt falls back both missile.trail.sprite (451->131) and clustlet.trail (261->131)',
+    multiBoltBlind?.project?.recordOverrides?.['missile.trail.sprite'] === '131' &&
+      multiBoltBlind?.project?.body?.clustlet?.trail === '131',
+  );
+  const smartBomb = cwepsLib.weapons.find((w) => w.name.trim() === 'S.M.A.R.T Bomb');
+  const smartImport = smartBomb ? importPxlWeapon(smartBomb, cwepsLib, [cwepsLib, cwepsGfxLib]) : undefined;
+  check(
+    'S.M.A.R.T Bomb falls back clustlet homing_trail_sprite #246 -> 131',
+    smartImport?.project?.body?.clustlet?.homing_trail_sprite === 131,
+  );
+  const beesPath = resolve(LIBS_DIR, 'weapon_bees_sb.pxl');
+  if (existsSync(beesPath)) {
+    const beesLib = parsePxlLibrary(toArrayBuffer(readFileSync(beesPath)), 'weapon_bees_sb.pxl');
+    const queenBee = beesLib.weapons.find((w) => w.name === 'Queen Bee');
+    const queenImport = queenBee ? importPxlWeapon(queenBee, beesLib, [beesLib]) : undefined;
+    check(
+      'Queen Bee falls back clustlet homing_trail_sprite #712 -> 131',
+      queenImport?.project?.body?.clustlet?.homing_trail_sprite === 131,
+    );
+  }
   const expArrowImport = explosiveArrow
     ? importPxlWeapon(explosiveArrow, bowsLib, bowsGroup)
     : undefined;
   check(
     'Explosive Arrow SPB leaves bitFlight unset/native (SPB is main-only)',
     expArrowImport?.project?.missileSprite?.enabled === true && !expArrowImport?.project?.bitFlight,
+  );
+
+  // cweps multi-variable Params1..54 + weapName1..72 + sprite1..48 SPB resolution + sbthr* blank pose guard
+  const cwepsReal = cwepsLib.weapons.filter((w) => !w.isSectionHeading);
+  const cwepsRazor = cwepsReal.find((w) => w.name === 'Razor Storm');
+  const cwepsRazorImport = cwepsRazor
+    ? importPxlWeapon(cwepsRazor, cwepsLib, [cwepsLib, cwepsGfxLib])
+    : undefined;
+  check(
+    'Razor Storm (Armageddon Special subtype 24) import is blocked',
+    cwepsRazorImport?.success === false && /armageddon/i.test(cwepsRazorImport.error ?? ''),
+    cwepsRazorImport?.error,
+  );
+  const cwepsMissingHold = cwepsReal.filter((w) => {
+    const hasSb = w.holdSlots.some((s) => /^sb/i.test(s));
+    if (!hasSb) return false;
+    const res = importPxlWeapon(w, cwepsLib, [cwepsLib, cwepsGfxLib]);
+    return !res.project?.hold?.enabled || !res.project?.hold?.sheetFile;
+  });
+  check(
+    'cweps multi-var CWormAnimParams resolves hold SPB sheet for every sb* weapon',
+    cwepsMissingHold.length === 0,
+    cwepsMissingHold.map((w) => w.name).join(', '),
+  );
+  const cwepsFrag = cwepsReal.find((w) => w.name === 'Frag Grenade');
+  const cwepsFragImport = cwepsFrag ? importPxlWeapon(cwepsFrag, cwepsLib, [cwepsLib, cwepsGfxLib]) : undefined;
+  check(
+    'cweps Frag Grenade uses SPB hold fraga.png and filters blank sbthr* wormSprites',
+    cwepsFragImport?.project?.hold?.enabled === true &&
+      cwepsFragImport?.project?.hold?.sheetFile?.name === 'fraga.png' &&
+      !cwepsFragImport?.project?.wormSprites?.enabled,
+  );
+  const cwepsBurstRifle = cwepsReal.find((w) => w.name === 'Burst Rifle');
+  const cwepsBurstImport = cwepsBurstRifle
+    ? importPxlWeapon(cwepsBurstRifle, cwepsLib, [cwepsLib, cwepsGfxLib])
+    : undefined;
+  check(
+    'cweps Burst Rifle retains direct 9-slot wormSprites (abrsp/pbrsp/fbrsp)',
+    cwepsBurstImport?.project?.wormSprites?.enabled === true &&
+      Object.keys(cwepsBurstImport?.project?.wormSprites?.poses ?? {}).length === 9,
   );
 }
 

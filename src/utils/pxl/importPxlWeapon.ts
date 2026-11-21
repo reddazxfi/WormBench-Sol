@@ -64,6 +64,8 @@ function matchesWeaponName(candidate: string | undefined, weapon: PxlWeapon): bo
 }
 
 function pickScriptHoldParams(lib: PxlLibrary, weapon: PxlWeapon): PxlScriptHoldParams | undefined {
+  const exactRaw = lib.parsedScripts.holdParams.find((p) => p.weaponName === weapon.name);
+  if (exactRaw) return exactRaw;
   const exact = lib.parsedScripts.holdParams.find((p) => matchesWeaponName(p.weaponName, weapon));
   if (exact) return exact;
   const realWeapons = lib.weapons.filter((w) => !w.isSectionHeading);
@@ -77,6 +79,8 @@ function pickScriptFlightParams(
   lib: PxlLibrary,
   weapon: PxlWeapon,
 ): PxlScriptFlightParams | undefined {
+  const exactRaw = lib.parsedScripts.flightParams.find((p) => p.weaponName === weapon.name);
+  if (exactRaw) return exactRaw;
   const exact = lib.parsedScripts.flightParams.find((p) => matchesWeaponName(p.weaponName, weapon));
   if (exact) return exact;
   const realWeapons = lib.weapons.filter((w) => !w.isSectionHeading);
@@ -103,11 +107,13 @@ function nativeAnimToBuilder(raw: unknown): MissileAnimType {
 function isPxDefaultHoldName(name: string): boolean {
   const base = basenameOfAsset(name).toLowerCase();
   return (
-    base.startsWith('def_shot_aim_') ||
+    /^def_shot_aim_[pud](?:\.[^.]+)?$/.test(base) ||
     base.startsWith('default_pick_') ||
     base.startsWith('def_put_') ||
     base.startsWith('sbaim') ||
-    base.startsWith('sbpic')
+    base.startsWith('sbpic') ||
+    base.startsWith('sbthr') ||
+    base.startsWith('sbdraw')
   );
 }
 
@@ -116,6 +122,11 @@ function numericRecordId(raw: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0 || n === 34464) return undefined;
   return Math.round(n);
+}
+
+/** WA stock sprites (240..470: `wsv*`/`w*lnk*`) or PX extended slots (>690) repurposed via `SetSpriteOverride`. */
+function isPxOverrideSlotId(id: number | undefined): id is number {
+  return id !== undefined && ((id >= 240 && id <= 470) || id > 690);
 }
 
 /**
@@ -375,6 +386,15 @@ export function importPxlWeapon(
     parsed.fireType === 'cursor' && !parsed.projectState.teleport;
   const packArt: Partial<Record<PackArtSlot, PackArtAsset>> = {};
   const overrides = parsed.projectState.recordOverrides ?? {};
+  const recordOverrides = { ...overrides };
+  const body = parsed.projectState.body
+    ? {
+        ...parsed.projectState.body,
+        clustlet: parsed.projectState.body.clustlet
+          ? { ...parsed.projectState.body.clustlet }
+          : undefined,
+      }
+    : undefined;
   const missileId = numericRecordId(overrides['missile.sprite']);
   const trailId = numericRecordId(overrides['missile.trail.sprite']);
   const bitSpriteId = numericRecordId(parsed.projectState.body?.clustlet?.sprite);
@@ -560,25 +580,38 @@ export function importPxlWeapon(
     }
   }
 
-  // Trails resolved via SetSpriteOverride (for both air strikes and projectiles)
+  // Trails resolved via SetSpriteOverride (for both air strikes and projectiles).
+  // Unresolved PX override IDs (240..470 or >690) fall back to WA ID 131 (`hexhaust`)
+  // instead of leaving dark/empty stock slots like `wsv*` in the `.wep`.
   if (trailId) {
     const trailHit = resolveSpriteOverride(trailId, allLibraries, library.key);
     if (trailHit && trailHit.art.kind === 'image') {
       const asset = makePackArt(trailHit.art, trailHit.lib.key);
       packArt.missile_trail = asset;
       summary.push(`missile trail: ${trailHit.art.name} (override #${trailId}, ${asset.frames}f)`);
-    } else if (trailId >= 240 && trailId <= 470 || trailId > 690) {
+    } else if (isPxOverrideSlotId(trailId)) {
       unresolvedOverride = true;
+      recordOverrides['missile.trail.sprite'] = '131';
+      recordOverrides['missile.trail.enabled'] = true;
+      project.recordOverrides = recordOverrides as WeaponProject['recordOverrides'];
+      summary.push(
+        `missile trail: override #${trailId} not in open libraries -> fallback #131 (hexhaust)`,
+      );
     }
   }
-  if (bitTrailId) {
+  if (parsed.projectState.burst === 'clusters' && bitTrailId) {
     const bitTrailHit = resolveSpriteOverride(bitTrailId, allLibraries, library.key);
     if (bitTrailHit && bitTrailHit.art.kind === 'image') {
       const asset = makePackArt(bitTrailHit.art, bitTrailHit.lib.key);
       packArt.cluster_trail = asset;
       summary.push(`cluster trail: ${bitTrailHit.art.name} (override #${bitTrailId}, ${asset.frames}f)`);
-    } else if (bitTrailId >= 240 && bitTrailId <= 470 || bitTrailId > 690) {
+    } else if (isPxOverrideSlotId(bitTrailId) && body?.clustlet) {
       unresolvedOverride = true;
+      body.clustlet.trail = '131';
+      project.body = body as WeaponProject['body'];
+      summary.push(
+        `cluster trail: override #${bitTrailId} not in open libraries -> fallback #131 (hexhaust)`,
+      );
     }
   }
 
@@ -645,23 +678,73 @@ export function importPxlWeapon(
     }
   }
 
-  // Record sprite fields WormForge only takes as numeric IDs (gas/farting, dig
-  // frames, homing trails, and their clustlet twins): resolve SetSpriteOverride
-  // so missing/unmodelled overrides are surfaced honestly in the summary.
-  const clustlet = parsed.projectState.body?.clustlet;
+  // Trail fields WormForge only takes as numeric IDs (homing trails): replace any PX
+  // SetSpriteOverride slot with ID 131 (`hexhaust`) so dark/unloaded `wsv*` or
+  // >690 slots are not drawn while homing.
+  const clustlet = body?.clustlet;
+  const bitAction =
+    clustlet?.bit_action ??
+    (clustlet?.homing && clustlet.homing !== 'off'
+      ? 'homing'
+      : clustlet?.contact === 'bounce'
+        ? 'bounce'
+        : 'none');
+
+  if (parsed.projectState.action === 'homing') {
+    const homingTrailId = numericRecordId(overrides['missile.homing.trail.sprite']);
+    if (isPxOverrideSlotId(homingTrailId)) {
+      const hit = resolveSpriteOverride(homingTrailId, allLibraries, library.key);
+      if (!hit || hit.art.kind !== 'image') unresolvedOverride = true;
+      recordOverrides['missile.homing.trail.sprite'] = '131';
+      project.recordOverrides = recordOverrides as WeaponProject['recordOverrides'];
+      summary.push(
+        `missile.homing.trail.sprite: override #${homingTrailId}${hit ? ` (${hit.art.name})` : ''} uses numeric IDs only -> fallback #131 (hexhaust)`,
+      );
+    }
+  }
+
+  if (parsed.projectState.burst === 'clusters' && bitAction === 'homing' && clustlet) {
+    const bitHomingTrailId = numericRecordId(clustlet.homing_trail_sprite);
+    if (isPxOverrideSlotId(bitHomingTrailId)) {
+      const hit = resolveSpriteOverride(bitHomingTrailId, allLibraries, library.key);
+      if (!hit || hit.art.kind !== 'image') unresolvedOverride = true;
+      clustlet.homing_trail_sprite = 131;
+      project.body = body as WeaponProject['body'];
+      summary.push(
+        `clusters.bit.homing_trail_sprite: override #${bitHomingTrailId}${hit ? ` (${hit.art.name})` : ''} uses numeric IDs only -> fallback #131 (hexhaust)`,
+      );
+    }
+  }
+
+  // Remaining numeric-only sprite fields (gas/farting, dig frames, and their clustlet twins)
   const numericOnlyFields: [string, unknown][] = [
-    ['missile.homing.trail.sprite', overrides['missile.homing.trail.sprite']],
-    ['roam.gas.animal_sprite', parsed.projectState.roamConfig?.gas_animal_sprite],
-    ['dig.dive_sprite', parsed.projectState.digConfig?.dive_sprite],
-    ['dig.sprite_1', parsed.projectState.digConfig?.sprite_1],
-    ['dig.sprite_2', parsed.projectState.digConfig?.sprite_2],
-    ['dig.sprite_3', parsed.projectState.digConfig?.sprite_3],
-    ['clusters.bit.homing_trail_sprite', clustlet?.homing_trail_sprite],
-    ['clusters.bit.roam.gas_animal_sprite', clustlet?.roam?.gas_animal_sprite],
-    ['clusters.bit.dig.dive_sprite', clustlet?.dig?.dive_sprite],
-    ['clusters.bit.dig.sprite_1', clustlet?.dig?.sprite_1],
-    ['clusters.bit.dig.sprite_2', clustlet?.dig?.sprite_2],
-    ['clusters.bit.dig.sprite_3', clustlet?.dig?.sprite_3],
+    ...(parsed.projectState.action === 'roam'
+      ? ([['roam.gas.animal_sprite', parsed.projectState.roamConfig?.gas_animal_sprite]] as [
+          string,
+          unknown,
+        ][])
+      : []),
+    ...(parsed.projectState.action === 'dig'
+      ? ([
+          ['dig.dive_sprite', parsed.projectState.digConfig?.dive_sprite],
+          ['dig.sprite_1', parsed.projectState.digConfig?.sprite_1],
+          ['dig.sprite_2', parsed.projectState.digConfig?.sprite_2],
+          ['dig.sprite_3', parsed.projectState.digConfig?.sprite_3],
+        ] as [string, unknown][])
+      : []),
+    ...(parsed.projectState.burst === 'clusters' && bitAction === 'roam'
+      ? ([
+          ['clusters.bit.roam.gas_animal_sprite', clustlet?.roam?.gas_animal_sprite],
+        ] as [string, unknown][])
+      : []),
+    ...(parsed.projectState.burst === 'clusters' && bitAction === 'dig'
+      ? ([
+          ['clusters.bit.dig.dive_sprite', clustlet?.dig?.dive_sprite],
+          ['clusters.bit.dig.sprite_1', clustlet?.dig?.sprite_1],
+          ['clusters.bit.dig.sprite_2', clustlet?.dig?.sprite_2],
+          ['clusters.bit.dig.sprite_3', clustlet?.dig?.sprite_3],
+        ] as [string, unknown][])
+      : []),
   ];
   for (const [field, rawVal] of numericOnlyFields) {
     const id = numericRecordId(rawVal);
@@ -671,7 +754,7 @@ export function importPxlWeapon(
       summary.push(
         `override #${id} (${field}): ${hit.art.name} (WormForge ${field} uses numeric IDs only)`,
       );
-    } else if (id > 690 || (id >= 240 && id <= 470)) {
+    } else if (isPxOverrideSlotId(id)) {
       unresolvedOverride = true;
     }
   }

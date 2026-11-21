@@ -708,6 +708,7 @@ export function terrainStampPath(project: WeaponProject): string | null {
 /** Every record slot that accepts pack art during installation. */
 export const PACK_ART_SLOTS: PackArtSlot[] = [
   'strike_sprite',
+  'strike_plane',
   'missile_trail',
   'cluster_sprite',
   'cluster_homing_sprite',
@@ -722,6 +723,7 @@ const PACK_ART_STEM: Record<PackArtSlot, string> = {
   cluster_homing_sprite: 'bit_homing',
   cluster_trail: 'bit_trail',
   strike_sprite: 'body',
+  strike_plane: 'plane',
 };
 
 /** Whether an uploaded sheet for this slot reaches the record at all. The
@@ -732,6 +734,9 @@ const PACK_ART_STEM: Record<PackArtSlot, string> = {
 export function packArtSlotApplies(project: WeaponProject, slot: PackArtSlot): boolean {
   if (slot === 'cluster_homing_sprite') {
     return !(project.fireType === 'cursor' && !project.teleport);
+  }
+  if (slot === 'strike_plane') {
+    return project.fireType === 'cursor' && !project.teleport;
   }
   return true;
 }
@@ -1345,6 +1350,7 @@ export function generateLuaCode(project: WeaponProject): string {
   // this weapon only (the path is an installation declaration, not something a
   // simulation-time `launch` override can use).
   const strikeBodyArt = packArtPath(project, 'strike_sprite');
+  const strikePlaneArt = packArtPath(project, 'strike_plane');
   const missileTrailArt = packArtPath(project, 'missile_trail');
   const clusterBitArt = packArtPath(project, 'cluster_sprite');
   const clusterBitHomingArt = packArtPath(project, 'cluster_homing_sprite');
@@ -2397,6 +2403,9 @@ export function generateLuaCode(project: WeaponProject): string {
   if (strikeBodyArt) {
     lines.push(`      sprite = ${luaQuote(strikeBodyArt)},`);
   }
+  if (strikePlaneArt) {
+    lines.push(`      plane = ${luaQuote(strikePlaneArt)},`);
+  }
 
   // Pack art the claim uses. `sb.flight` (below) reads its sheet through this
   // field; the hold sheet is registered the same way so both paths agree.
@@ -2482,7 +2491,13 @@ export function generateLuaCode(project: WeaponProject): string {
   // `gpu_prefix` moves every matching path to a virtual atlas id, and a body or
   // cluster sheet needs the stock id the record points at.
   const paramsParts: string[] = [];
-  if (usesAimLayer && !strikeBodyArt && !clusterBitArt && !clusterBitHomingArt) {
+  if (
+    usesAimLayer &&
+    !strikeBodyArt &&
+    !strikePlaneArt &&
+    !clusterBitArt &&
+    !clusterBitHomingArt
+  ) {
     paramsParts.push('gpu_prefix = "sprites/"');
   }
   if (usesWormSprites && project.wormSprites?.animate) {

@@ -561,9 +561,56 @@ if (!existsSync(LIBS_DIR)) {
     alienImport.project?.packArt?.cluster_sprite?.fileName,
   );
   check(
-    'Alien Invasion resolves SetSpriteOverride 701 -> ufo.png on customSprites.plane',
-    alienImport.project?.customSprites?.plane?.file?.name === 'ufo.png',
+    'Alien Invasion resolves SetSpriteOverride 701 -> ufo.png on packArt.strike_plane',
+    alienImport.project?.packArt?.strike_plane?.fileName === 'ufo.png',
+    alienImport.project?.packArt?.strike_plane?.fileName,
   );
+
+  // Banana Express: SetSpriteOverride 704 -> packArt.strike_plane -> plane = "..." -> modLib round-trip
+  const bananaBuf = toArrayBuffer(readFileSync(resolve(LIBS_DIR, 'weapon_air_banana_express.pxl')));
+  const bananaLib = parsePxlLibrary(bananaBuf, 'weapon_air_banana_express.pxl');
+  const bananaImport = importPxlWeapon(bananaLib.weapons[0], bananaLib, [bananaLib]);
+  check(
+    'Banana Express resolves SetSpriteOverride 704 -> banana plane.png on packArt.strike_plane',
+    bananaImport.project?.packArt?.strike_plane?.fileName === 'banana plane.png' &&
+      bananaImport.project?.packArt?.strike_plane?.frames === 1,
+    JSON.stringify(bananaImport.project?.packArt?.strike_plane),
+  );
+  if (bananaImport.project) {
+    const bananaProject: WeaponProject = {
+      ...javProject,
+      ...bananaImport.project,
+    } as WeaponProject;
+    const bananaLua = generateLuaCode(bananaProject);
+    check(
+      'Banana Express Lua emits top-level plane = "sprites/banana_express/plane.png"',
+      bananaLua.includes('plane = "sprites/banana_express/plane.png",'),
+    );
+    const bananaEmitted = await emitPackFiles(
+      singleWeaponPack(bananaProject),
+      libsForExport,
+      async () => null,
+    );
+    const bananaModFiles: ModFile[] = [...bananaEmitted.entries()].map(([path, content]) => ({
+      path,
+      text: typeof content === 'string' ? content : '',
+      bytes: content instanceof Uint8Array ? content : undefined,
+    }));
+    check(
+      'Banana Express export writes sprites/banana_express/plane.png',
+      bananaModFiles.some((f) => f.path.endsWith('/sprites/banana_express/plane.png')),
+    );
+    const bananaBundles = readBundles(bananaModFiles);
+    const bananaWeapons = readWeapons(bananaBundles, bananaModFiles);
+    const bananaReimported = bananaWeapons[0]
+      ? await importBundleWeapon(bananaWeapons[0], bananaModFiles)
+      : undefined;
+    check(
+      'Banana Express bundle round-trips packArt.strike_plane back from plane = "..."',
+      bananaReimported?.project.packArt?.strike_plane?.frames === 1 &&
+        !!bananaReimported?.project.packArt?.strike_plane?.file,
+    );
+  }
 
   // PX SPB main-only rule: homing/roam/dig inherit main missile; clusters stay native unless explicit
   const homingArrow = bowsLib.weapons.find((w) => w.name.includes('Homing Arrow'));

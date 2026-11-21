@@ -65,6 +65,7 @@ export const CLAIM_KEYS_MODELLED = [
   'truecolor',
   'cluster',
   'sprite',
+  'plane',
   'sheep_sprites',
   'worm_sprites',
   'worm_sprites_animate',

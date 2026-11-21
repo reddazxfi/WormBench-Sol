@@ -1,6 +1,5 @@
 import type {
   BehaviorArtKey,
-  CustomSpriteAsset,
   FlightRoleArt,
   HoldConfig,
   MissileAnimType,
@@ -20,7 +19,6 @@ import type {
 } from '../../types/pxl';
 import { DEFAULT_ID_NAMESPACE, slugId } from '../weaponId';
 import { parseWepBinary } from '../wepParser';
-import { sanitizeModFolder } from '../luaGenerator';
 import {
   DEFAULT_DIG_ROLE_ART,
   DEFAULT_ROAM_ROLE_ART,
@@ -150,7 +148,6 @@ export function importPxlWeapon(
   const displayName = weapon.name || parsed.name || weapon.itemName;
   const idSlug = slugId(weapon.id || displayName, 'pxl_weapon');
   const fullId = `${DEFAULT_ID_NAMESPACE}.${idSlug}`;
-  const modFolder = sanitizeModFolder(fullId);
 
   const summary: string[] = [...parsed.summary];
   const project: Partial<WeaponProject> & { replaceProject: true } = {
@@ -189,7 +186,6 @@ export function importPxlWeapon(
   // when the library scripts declare `CWormAnimParams` (`scriptHold`); otherwise
   // non-default pose sheets populate `project.wormSprites`.
   const scriptHold = pickScriptHoldParams(library, weapon);
-  const customSprites: Record<string, CustomSpriteAsset> = {};
 
   if (scriptHold) {
     const candidateHoldNames: string[] = [];
@@ -438,21 +434,10 @@ export function importPxlWeapon(
         ? resolvePxlArt(weapon.planeSprite, allLibraries, library.key)
         : undefined) ?? resolveSpriteOverride(planeId, allLibraries, library.key);
     if (planeHit && planeHit.art.kind === 'image') {
-      const planeFile = pxlArtToFile(planeHit.art);
-      const frames = inferStripFrames(planeHit.art, allLibraries, planeHit.lib.key);
-      customSprites.plane = {
-        purpose: 'plane',
-        name: 'plane',
-        path: `sprites/${modFolder}/plane.png`,
-        file: planeFile,
-        previewUrl: objectUrl(planeFile),
-        frames,
-        fps: 15,
-        play: 'loop',
-      };
-      project.customSprites = customSprites;
+      const asset = makePackArt(planeHit.art, planeHit.lib.key);
+      packArt.strike_plane = asset;
       summary.push(
-        `strike plane: ${planeHit.art.name} (${frames} frames, attached in customSprites; top-level plane key not modelled)`,
+        `strike plane: ${planeHit.art.name} (${asset.frames} frame${asset.frames === 1 ? '' : 's'} -> plane = ...)`,
       );
     } else if (weapon.planeSprite || (planeId && planeId > 690)) {
       unresolvedOverride = true;

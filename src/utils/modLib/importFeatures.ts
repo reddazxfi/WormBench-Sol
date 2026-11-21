@@ -1912,6 +1912,7 @@ export async function readBundleFeatures(args: {
   setPackPath('cluster_sprite', str(claimCluster?.sprite));
   setPackPath('cluster_homing_sprite', str(claimCluster?.homing_sprite));
   setPackPath('strike_sprite', str(source?.sprite));
+  setPackPath('strike_plane', str(source?.plane));
 
   const packArt: Partial<Record<PackArtSlot, PackArtAsset>> = {};
   for (const [slot, path] of Object.entries(packPaths) as [PackArtSlot, string][]) {

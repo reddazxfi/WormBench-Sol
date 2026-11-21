@@ -867,6 +867,14 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 {numField('strike.munition_speed', 'Drop Forward Speed', 0, 'Horizontal speed multiplier inherited from the aircraft.', { step: 0.01 })}
                 {numField('strike.plane_sound', 'Plane Sound ID', 0, 'Native sound ID played for the flyover aircraft.')}
               </div>
+              <PackSpriteUpload
+                project={project}
+                onChange={onChange}
+                slot="strike_plane"
+                label="Aircraft Plane Sheet"
+                code="plane"
+                hint="Optional pack PNG replacing the flyover plane (top-level plane claim key, as in PX SetSpriteOverride 704 / Banana Express)."
+              />
             </div>
           )}
 

@@ -495,7 +495,7 @@ export interface CustomSpriteAsset {
  * Native record art that also accepts a pack-relative image during weapon
  * installation (weapon-records.md, "Sprites and other declarations"): the
  * weapon's own body sheet (`sprite`, the only art path for an air strike's
- * munition), `missile.trail.sprite`, `cluster.sprite`,
+ * munition), `plane` (strike flyover plane), `missile.trail.sprite`, `cluster.sprite`,
  * `cluster.homing_sprite` and `clusters.bit.trail.sprite`. Unlike
  * `CustomSpriteAsset`, the bundle path is derived at export time from the
  * weapon id, so renaming the weapon cannot leave the declaration pointing at
@@ -506,7 +506,8 @@ export type PackArtSlot =
   | 'cluster_sprite'
   | 'cluster_homing_sprite'
   | 'cluster_trail'
-  | 'strike_sprite';
+  | 'strike_sprite'
+  | 'strike_plane';
 
 export interface PackArtAsset {
   file?: File;

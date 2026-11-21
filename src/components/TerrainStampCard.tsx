@@ -18,6 +18,7 @@ import {
 } from '../data/terrainStamp';
 import { buildRotationSheet } from '../utils/rotateSheet';
 import { NumberInput } from './NumberInput';
+import { SpritePickButton } from './SpritePickButton';
 import {
   SectionHeader,
   SubSectionTitle,
@@ -154,9 +155,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
   // the blast outright, so either one leaves the stamp in place.
   const blastRelies = !(fx?.enabled && fx.mode === 'blast') && !impact.enabled;
 
-  const pick = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
+  const pickFile = async (file: File) => {
     setBaking(true);
     setError(null);
     try {
@@ -191,6 +190,12 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
       setBaking(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const pick = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    await pickFile(file);
   };
 
   const remove = () => {
@@ -303,6 +308,12 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                 >
                   Replace
                 </button>
+                <SpritePickButton
+                  accept="image"
+                  label="Pick Stamp Sprite"
+                  disabled={baking}
+                  onPick={(file) => void pickFile(file)}
+                />
                 <button
                   type="button"
                   onClick={remove}
@@ -314,24 +325,34 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={baking}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-4 text-xs font-semibold text-stone-600 transition-colors hover:border-sky-400 hover:text-sky-700 disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300 dark:hover:border-sky-600 dark:hover:text-sky-300"
-              >
-                {baking ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    Baking 32 frames…
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4" aria-hidden="true" />
-                    Upload a sprite <span className="font-normal">(it must point up)</span>
-                  </>
-                )}
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={baking}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-4 text-xs font-semibold text-stone-600 transition-colors hover:border-sky-400 hover:text-sky-700 disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300 dark:hover:border-sky-600 dark:hover:text-sky-300"
+                >
+                  {baking ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Baking 32 frames…
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4" aria-hidden="true" />
+                      Upload a sprite <span className="font-normal">(it must point up)</span>
+                    </>
+                  )}
+                </button>
+                <div className="flex justify-end">
+                  <SpritePickButton
+                    accept="image"
+                    label="Pick Stamp Sprite"
+                    disabled={baking}
+                    onPick={(file) => void pickFile(file)}
+                  />
+                </div>
+              </div>
             )}
             {error && (
               <p className="mt-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400">

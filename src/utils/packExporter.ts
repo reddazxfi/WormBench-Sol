@@ -31,6 +31,7 @@ import {
   sanitizeModFolder,
   terrainStampPath,
   wepBundlePath,
+  wormSpriteEntries,
 } from './luaGenerator';
 import { supportsTerrainStamp } from '../data/terrainStamp';
 import { meleeStrikes } from '../data/melee';
@@ -134,6 +135,14 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
     if (holdNeedsAimLayer(project)) {
       addSheet(silentHoldSheetPath(project), await createSilentSheet());
     }
+  }
+
+  // Direct worm pose sheets (`worm_sprites = { weaponlnk = ... }`)
+  const seenWormPaths = new Set<string>();
+  for (const entry of wormSpriteEntries(project)) {
+    if (seenWormPaths.has(entry.path) || !entry.asset.file) continue;
+    seenWormPaths.add(entry.path);
+    addSheet(entry.path, entry.asset.file);
   }
 
   // Missile/Projectile Sprite Sheet (custom mode always declares the sheet).

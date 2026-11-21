@@ -1550,6 +1550,17 @@ gets an amber note (`nothing keeps it from colliding with an installed mod`), an
 the export refuses it by name. The **bundle** id field edits the whole id, and a
 rename moves the weapons that lived under the old prefix with it.
 
+## 8b. Reading Project X `.pxl` libraries (`src/utils/pxl/`)
+
+The editor can open Project X `.pxl` libraries from `Libs/` (Sidebar -> **Sprite libraries**, also the mobile bar), browse their art and WAVs, and pick sprites or open `.wep` records directly into a project:
+
+- **`readPxl.ts`** matches `spec/PX/pxl_extract.py` byte for byte (`02 01 CD 1B` magic, `u8` version, `u32` item count `<= 4096`). `file` (`0x02`) and `script` (`0x04`) items carry a `u32` length; `weapon` (`0x08`) items have no length stored and are recovered by resyncing against the next valid item head that consumes the buffer to EOF, with `(offset, remaining)` failure memoisation. Payloads stay as `{ offset, length }` views into one `ArrayBuffer` per library rather than copying bytes; `PxlArtTile` creates thumbnail Blob URLs lazily and revokes them on unmount, chunked 50 tiles at a time.
+- **`readWepManifest.ts`** decodes the PX trailer starting at `0x1E4` (`name`, `id`, `icon`, `artDir`, 29 flag bytes, and up to 9 `u32`-length-prefixed hold/aim/fire slots, with a bounded 256-byte fallback scan) on both `.pxl` weapon blocks and standalone `.wep` files. Menu dividers (`------------------------------- Zooks:`) are flagged via `isSectionHeadingName`.
+- **`readSpriteScripts.ts`** strips `//` and `/* ... */` comments (preserving `"..."` strings) and scans PX C-script for `GetAttachment` -> `LoadSprite` frame counts (1477 pairs measured across 383 scripts in the installed corpus), `CWormAnimParams` hold geometry, `WeapSpriteParams` / `SetCustomAnim` / `SetSpriteMultiplex` flight settings, and `CSoundFile` WAV attachments.
+- **`loadPxl.ts` & `importPxlWeapon.ts`**: `resolvePxlArt` / `resolvePxlFrames` check the active library first, then every other open library (closing the `cweps` -> `cweps_gfx` split). `importPxlWeapon` runs `parseWepBinary` (`useWepFile: true`), attaches icon, attaches Sprite Builder `hold` + geometry only when `CWormAnimParams` (`scriptHold`) is declared in scripts, and otherwise maps non-default `.wep` aim/pick/fire trailer slots (`weaponlnk*`, `wthrow*`, `weaponfire*`) onto `project.wormSprites` (`worm_sprites` direct full-worm replacements with matching 50 Hz preview, Lua/ZIP deduplication, and bundle round-trip in `importFeatures.ts`), plus script flight geometry, strike/override sprites, and offered WAVs with an explicit import summary; `.img` icons are reported as not decoded.
+- **`SpritePickButton` & `PxlPickerModal`** (`PxlLibraryContext`): every image and WAV upload control carries a `Library` picker button that synthesizes a `File` and prefills `frames` from `LoadSprite` when present.
+- **Validation**: `bun run tools/check_pxl.ts` (no server, exits 1 on failure) checks the `spec/PX/*.pxl` script fixtures, error codes, Python `--digest` parity, and (when `I:\...\Libs\` is mounted) `weapon_tazer.pxl`, `weapon_javelin_sb.pxl`, `cweps.pxl`, `cweps_gfx.pxl`, cross-library resolution, and round-trip export.
+
 ## 9. UI and design system
 
 - Tailwind v4, no component library. The layout is Chakra-dashboard-inspired but

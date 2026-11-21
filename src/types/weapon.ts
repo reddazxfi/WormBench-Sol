@@ -309,6 +309,39 @@ export interface AimClampConfig {
   down: number;
 }
 
+export type WormSpritePoseKey =
+  | 'weaponlnk'
+  | 'weaponlnku'
+  | 'weaponlnkd'
+  | 'wthrow'
+  | 'wthrowu'
+  | 'wthrowd'
+  | 'weaponfire'
+  | 'weaponfireu'
+  | 'weaponfired';
+
+export interface WormSpritePoseAsset {
+  file?: File;
+  fileName?: string;
+  preview?: string;
+  /** Vertical frames in the sheet (e.g. 32 for aim/fire, 10 for pick/draw). */
+  frames?: number;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Direct full-worm pose sheet overrides (`worm_sprites = { weaponlnk = ... }`)
+ * for weapons that carry their own worm-holding/pick/firing strips instead of
+ * the Sprite Builder hold overlay.
+ */
+export interface WormSpritesConfig {
+  enabled: boolean;
+  /** Play `weaponlnk*` as a one-shot equip animation instead of aim-angle phase. */
+  animate?: boolean;
+  poses: Partial<Record<WormSpritePoseKey, WormSpritePoseAsset>>;
+}
+
 /** How the strike throws its victim. */
 export type MeleePushMode = 'aim' | 'fixed';
 
@@ -1117,6 +1150,8 @@ export interface WeaponProject {
   /** Extra library bundles (`effects.sdk`, …) the exported mod.toml depends on. */
   extraDependencies: string[];
   hold: HoldConfig;
+  /** Direct worm pose sheet overrides (`worm_sprites`), exclusive with `hold.enabled`. */
+  wormSprites?: WormSpritesConfig;
   /** Uploaded PNG/GIF art for the record fields that accept pack paths. */
   packArt: Partial<Record<PackArtSlot, PackArtAsset>>;
   customSprites: Record<string, CustomSpriteAsset>;

@@ -2,6 +2,15 @@ import React, { useState, useRef } from 'react';
 import { parseWepBinary, WepParseResult } from '../utils/wepParser';
 import { sanitizeWepFileName } from '../utils/luaGenerator';
 import { WeaponProject } from '../types/weapon';
+import { usePxlLibrary } from '../context/PxlLibraryContext';
+import { readWepManifest } from '../utils/pxl/readWepManifest';
+import {
+  imageSizeOfBytes,
+  pxlArtToFile,
+  resolvePxlArt,
+  resolvePxlFrames,
+} from '../utils/pxl/loadPxl';
+import type { PxlWepManifest } from '../types/pxl';
 import { Upload, FileCode2, Check, AlertCircle, X, Sparkles, ArrowRight } from 'lucide-react';
 
 interface WepImportModalProps {
@@ -11,8 +20,10 @@ interface WepImportModalProps {
 }
 
 export const WepImportModal: React.FC<WepImportModalProps> = ({ isOpen, onClose, onApply }) => {
+  const { libraries } = usePxlLibrary();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parseResult, setParseResult] = useState<WepParseResult | null>(null);
+  const [wepManifest, setWepManifest] = useState<PxlWepManifest | null>(null);
   const [fileName, setFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   // Default to the file itself: it preserves every native field. Unchecking
@@ -26,9 +37,27 @@ export const WepImportModal: React.FC<WepImportModalProps> = ({ isOpen, onClose,
     try {
       const buffer = await file.arrayBuffer();
       const result = parseWepBinary(buffer, file.name);
-      setParseResult({ ...result, wepFile: file, wepFileName: file.name });
+      const manifest = readWepManifest(new Uint8Array(buffer));
+      const extraSummary: string[] = [];
+      if (manifest.art.length > 0 && libraries.length > 0) {
+        const matched = manifest.art.filter((name) => {
+          const hit = resolvePxlArt(name, libraries);
+          return hit && hit.art.kind === 'image';
+        });
+        if (matched.length > 0) {
+          extraSummary.push(`Matched ${matched.length} manifest image(s) from open .pxl libraries`);
+        }
+      }
+      setWepManifest(manifest);
+      setParseResult({
+        ...result,
+        summary: [...result.summary, ...extraSummary],
+        wepFile: file,
+        wepFileName: file.name,
+      });
       setUseWepFile(result.success);
     } catch (err: any) {
+      setWepManifest(null);
       setParseResult({
         success: false,
         name: '',
@@ -487,6 +516,49 @@ end,`,
                 patch.wepFile = undefined;
                 patch.wepFileName = undefined;
                 patch.wepBaseline = undefined;
+              }
+              if (wepManifest && libraries.length > 0) {
+                if (wepManifest.icon && !/\.img$/i.test(wepManifest.icon)) {
+                  const iconHit = resolvePxlArt(wepManifest.icon, libraries);
+                  if (iconHit && iconHit.art.kind === 'image') {
+                    const iconFile = pxlArtToFile(iconHit.art);
+                    patch.customIconFile = iconFile;
+                    patch.customIconPreview = URL.createObjectURL(iconFile);
+                    patch.panel_icon = 'custom';
+                  }
+                }
+                const holdName = wepManifest.holdSlots[0];
+                const holdHit = holdName ? resolvePxlArt(holdName, libraries) : undefined;
+                if (holdHit && holdHit.art.kind === 'image') {
+                  const sheetFile = pxlArtToFile(holdHit.art);
+                  const size = imageSizeOfBytes(holdHit.art.bytesOf());
+                  const frames =
+                    holdHit.art.frames ?? resolvePxlFrames(holdHit.art.name, libraries) ?? 1;
+                  patch.hold = {
+                    enabled: true,
+                    sheet: '',
+                    sheetFile,
+                    sheetPreview: URL.createObjectURL(sheetFile),
+                    sheetWidth: size?.width,
+                    sheetHeight: size?.height,
+                    handType: 'mid',
+                    handRadius: 10,
+                    weapRadius: -8,
+                    weapRotation: 0,
+                    scale: 1,
+                    handScale: 1,
+                    frames,
+                    fps: 15,
+                    animate: frames > 1,
+                    drawHand: true,
+                    keepWhileFiring: false,
+                    thrown: true,
+                    putAway: false,
+                    handRad: 10,
+                    handRadLower: 0,
+                    handRadUpper: 0,
+                  };
+                }
               }
               onApply(patch);
               onClose();

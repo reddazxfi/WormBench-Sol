@@ -3,7 +3,20 @@ import type {
   FlightRoleArt,
   MissileAnimType,
   WeaponProject,
+  WormSpritePoseKey,
 } from '../types/weapon';
+
+export const WORM_SPRITE_POSE_ORDER: readonly WormSpritePoseKey[] = [
+  'weaponlnk',
+  'weaponlnku',
+  'weaponlnkd',
+  'wthrow',
+  'wthrowu',
+  'wthrowd',
+  'weaponfire',
+  'weaponfireu',
+  'weaponfired',
+];
 
 /**
  * Defaults for the extra WFWS builder roles. The primary round keeps its own

@@ -152,7 +152,7 @@ Drop the extracted folder into `WormForge/Mods/` next to `wf-lib/` and launch Wo
 
 **Worms Armageddon and its artwork belong to Team17.** The stock art this editor displays is Team17's, used only to preview a mod: the sprite-builder tab icons (Main, Home, Bits, HomeBit, Sheep, Dig), the frozen worm preview, and the terrain preview backdrop. The fallback sprite that fills an untouched export is hand-drawn for this project, not taken from the game. WormForge, the engine these bundles run on, is a separate community project, and this editor is a separate fan tool again.
 
-**What an export contains:** the art you upload and, when you leave it in place, this project's own hand-drawn fallback sprite. No game art is copied into your mod, and nothing is uploaded anywhere: the editor runs entirely on your machine.
+**What an export contains:** the art you upload and, when you leave it in place, this project's own hand-drawn fallback sprite. You can also import weapons, sprites and WAVs locally from Project X `.pxl` libraries into your own bundle. No game art is copied into your mod, and nothing is uploaded anywhere: the editor runs entirely on your machine.
 
 **You own what you make here, and you are responsible for it.** Weapons, bundles and anything else you build with this page are yours to publish or keep, and it is your call whether they are legal, appropriate and safe to share.
 

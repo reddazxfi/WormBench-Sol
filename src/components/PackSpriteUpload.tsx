@@ -5,6 +5,7 @@ import { packArtPath } from '../utils/luaGenerator';
 import { buildRotationSheet } from '../utils/rotateSheet';
 import { NumberInput } from './NumberInput';
 import { SheetFrameWarning } from './SheetFrameWarning';
+import { SpritePickButton } from './SpritePickButton';
 
 interface PackSpriteUploadProps {
   project: WeaponProject;
@@ -67,9 +68,7 @@ export const PackSpriteUpload: React.FC<PackSpriteUploadProps> = ({
     onChange({ packArt: { ...(project.packArt || {}), [slot]: next } });
   };
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const applyFile = (file: File, framesHint?: number) => {
     if (asset?.previewUrl) URL.revokeObjectURL(asset.previewUrl);
     // A GIF carries its own frame timing, so it cannot be sliced by `frames`.
     updateAsset({
@@ -80,10 +79,16 @@ export const PackSpriteUpload: React.FC<PackSpriteUploadProps> = ({
       sourceFile: file,
       sourceName: file.name,
       rotationFrames: undefined,
-      frames: 1,
+      frames: framesHint && framesHint > 0 ? framesHint : 1,
     });
     setRotateError(null);
     onUpload?.();
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    applyFile(file);
   };
 
   const makeRotationSheet = async () => {
@@ -204,6 +209,11 @@ export const PackSpriteUpload: React.FC<PackSpriteUploadProps> = ({
           <Upload className="w-3.5 h-3.5 text-forge-600 dark:text-forge-400" />
           <span>{asset ? 'Change PNG' : 'Upload PNG'}</span>
         </button>
+        <SpritePickButton
+          accept="image"
+          label={`Pick ${label}`}
+          onPick={(file, framesHint) => applyFile(file, framesHint)}
+        />
 
         <div className="text-[11px] text-stone-500 dark:text-stone-400 min-w-0">
           {asset?.fileName && path ? (

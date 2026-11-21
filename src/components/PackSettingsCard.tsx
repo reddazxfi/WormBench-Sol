@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Boxes, Image as ImageIcon, Trash2 } from 'lucide-react';
 import type { PackProject } from '../types/weapon';
 import { sanitizeModFolder } from '../utils/luaGenerator';
+import { SpritePickButton } from './SpritePickButton';
 import { renamespaceWeapons } from '../utils/pack';
 import { slugId } from '../utils/weaponId';
 
@@ -59,13 +60,17 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
     : fallbackIcon
       ? `${fallbackIcon.name || 'A weapon'}'s panel icon`
       : 'None: the mod loader shows initials';
-  const uploadPackIcon = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const applyPackIconFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () =>
       onChange({ iconFile: file, iconPreview: reader.result as string });
     reader.readAsDataURL(file);
+  };
+
+  const uploadPackIcon = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    applyPackIconFile(file);
     event.target.value = '';
   };
   const clearPackIcon = () => onChange({ iconFile: undefined, iconPreview: undefined, modIcon: undefined });
@@ -147,6 +152,11 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
                 <ImageIcon className="h-3 w-3 text-sky-600 dark:text-sky-400" aria-hidden="true" />
                 <span>{pack.iconFile ? 'Replace' : 'Upload PNG'}</span>
               </button>
+              <SpritePickButton
+                accept="image"
+                label="Pick Bundle Icon"
+                onPick={(file) => applyPackIconFile(file)}
+              />
               {pack.iconFile && (
                 <button
                   type="button"

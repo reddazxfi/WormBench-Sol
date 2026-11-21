@@ -13,6 +13,7 @@ import { DEFAULT_CUSTOM_SOUNDS, INTERVAL_PRESETS, SOUND_PRIORITIES } from '../da
 import { ExplosionPreview } from './ExplosionPreview';
 import { NumberInput } from './NumberInput';
 import { RibbonTrailPreview } from './RibbonTrailPreview';
+import { SpritePickButton } from './SpritePickButton';
 import {
   SectionHeader,
   SubSectionTitle,
@@ -884,9 +885,7 @@ export function SoundUpload({ id, asset, disabled, onPick, onRemove }: SoundUplo
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const pick = (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
+  const pickFile = (file: File) => {
     if (!/\.wav$/i.test(file.name)) {
       setError('Use a .wav file, WormForge loads PCM WAVs only.');
       return;
@@ -903,6 +902,12 @@ export function SoundUpload({ id, asset, disabled, onPick, onRemove }: SoundUplo
       size: file.size,
       previewUrl: URL.createObjectURL(file),
     });
+  };
+
+  const pick = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    pickFile(file);
   };
 
   const remove = () => {
@@ -936,6 +941,12 @@ export function SoundUpload({ id, asset, disabled, onPick, onRemove }: SoundUplo
           <Volume2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
           <span>{asset?.file ? 'Replace WAV' : 'Upload WAV'}</span>
         </button>
+        <SpritePickButton
+          accept="sound"
+          label="Pick WAV from .pxl Library"
+          disabled={disabled}
+          onPick={(file) => pickFile(file)}
+        />
         {asset?.file && (
           <>
             <span className="max-w-[200px] truncate font-mono text-[10px] text-stone-500 dark:text-stone-400">

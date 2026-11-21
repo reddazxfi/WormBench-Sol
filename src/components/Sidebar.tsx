@@ -10,6 +10,7 @@ import {
   Wand2,
   FolderSearch,
   ChevronRight,
+  Library,
 } from 'lucide-react';
 import { WeaponProject } from '../types/weapon';
 import { hasProjectileBody, type RecordTabId } from '../data/recordTabs';
@@ -25,6 +26,8 @@ interface SidebarProps {
   setActiveSubTab?: (tab: RecordTabId) => void;
   onImportWep: () => void;
   onBrowseMods: () => void;
+  onBrowsePxl: () => void;
+  pxlLibraryCount: number;
   onExportZip: () => void;
   isDark: boolean;
   setIsDark: (dark: boolean) => void;
@@ -123,6 +126,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   onImportWep,
   onBrowseMods,
+  onBrowsePxl,
+  pxlLibraryCount,
   onExportZip,
   isDark,
   setIsDark,
@@ -146,6 +151,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="px-3 pt-3">
       <ProjectCard project={project} onCopyId={onCopyId} />
       {rail}
+      <button
+        type="button"
+        onClick={onBrowsePxl}
+        className="mt-2 flex w-full items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-2.5 py-1.5 text-xs font-semibold text-stone-700 transition-colors hover:border-amber-400 hover:bg-amber-50/70 dark:border-stone-800 dark:bg-stone-900/60 dark:text-stone-200 dark:hover:border-amber-700 dark:hover:bg-amber-950/30 cursor-pointer"
+      >
+        <Library className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+        <span className="flex-1 text-left">Sprite libraries</span>
+        {pxlLibraryCount > 0 && (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            {pxlLibraryCount}
+          </span>
+        )}
+        <ChevronRight className="h-3 w-3 opacity-50" aria-hidden="true" />
+      </button>
     </div>
 
     <nav className="mt-4 flex-1 overflow-y-auto px-3 pb-4" aria-label="Workspace">
@@ -252,6 +271,8 @@ interface MobileBarProps {
   setActiveSubTab?: (tab: RecordTabId) => void;
   onImportWep: () => void;
   onBrowseMods: () => void;
+  onBrowsePxl: () => void;
+  pxlLibraryCount: number;
   onExportZip: () => void;
   isDark: boolean;
   setIsDark: (dark: boolean) => void;
@@ -265,6 +286,8 @@ export const MobileBar: React.FC<MobileBarProps> = ({
   setActiveTab,
   onImportWep,
   onBrowseMods,
+  onBrowsePxl,
+  pxlLibraryCount,
   onExportZip,
   isDark,
   setIsDark,
@@ -286,6 +309,20 @@ export const MobileBar: React.FC<MobileBarProps> = ({
         title="Import .wep"
       >
         <Upload className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={onBrowsePxl}
+        className="relative rounded-md border border-amber-300/80 bg-amber-50/75 p-1.5 text-amber-700 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-300"
+        aria-label="Sprite libraries"
+        title="Sprite libraries (.pxl)"
+      >
+        <Library className="h-4 w-4" aria-hidden="true" />
+        {pxlLibraryCount > 0 && (
+          <span className="absolute -right-1 -top-1 rounded-full bg-amber-600 px-1 font-mono text-[8px] font-bold leading-tight text-white">
+            {pxlLibraryCount}
+          </span>
+        )}
       </button>
       <button
         type="button"

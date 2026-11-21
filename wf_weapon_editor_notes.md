@@ -5019,3 +5019,19 @@ bomb written as id 55, the builder's own zero falling back to the donor's sprite
 a launcher, no builder, hold art, an imported value) and `check_copyfrom.ts` the
 donor ones (cluster bomb, dynamite, bazooka, an untouched weapon).
 
+### Project X `.pxl` library reader (`src/utils/pxl/`)
+
+Measured on the installed `Libs/` corpus: 740 libraries, 1236 scripts, 4046
+files (3521 PNG, 473 WAV, 2 GIF, 47 other; 168.5 MB), 846 weapon blocks, 1477
+`GetAttachment` -> `LoadSprite` frame pairs across 383 scripts, and 640 of 1012
+manifest art names resolving inside the same library (with the rest mostly PX
+defaults or sibling art libraries such as `cweps` -> `cweps_gfx`).
+
+`readPxl` matches `spec/PX/pxl_extract.py` (with `--digest` parity verified by
+`tools/check_pxl.ts`), parsing all 740 libraries in ~664 ms via zero-copy
+buffer slices and `(offset, remaining)` resync memoisation. `readWepManifest`
+reads the `0x1E4` header and hold-slot trailer on both `.pxl` blocks and
+standalone `.wep` files, and `readSpriteScripts` extracts `LoadSprite` frame
+counts, `CWormAnimParams` hold geometry, `WeapSpriteParams` flight parameters,
+and `CSoundFile` WAVs without executing PX C-script.
+

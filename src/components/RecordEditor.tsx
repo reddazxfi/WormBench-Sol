@@ -2227,12 +2227,12 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 </div>
               </div>
 
-              {/* An air strike's own bomb art, and any weapon whose claim names a
-                  pack sheet as its `sprite` (an imported bundle writes `sprite =
-                  ART .. "body"`): the second case has a sheet the panels would
-                  otherwise not show at all, so an author could not tell it was
-                  there or replace it. */}
-              {(isStrike || project.packArt?.strike_sprite) && (
+              {/* An air strike's own bomb art, or any native weapon whose claim
+                  names a pack sheet as its `sprite` (replaces the weapon's
+                  record sprite id cleanly without Sprite Builder). */}
+              {(isStrike ||
+                !(project.missileSprite?.enabled && project.missileSprite?.mode === 'custom') ||
+                !!project.packArt?.strike_sprite) && (
                 <div className="space-y-3 rounded-xl bg-stone-50/70 p-4 dark:bg-stone-950/40">
                   <SubSectionTitle
                     title={isStrike ? 'Strike Munition Art' : 'Weapon Art Sheet'}
@@ -2240,7 +2240,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                     desc={
                       isStrike
                         ? 'Air strikes fire created munitions without a primary launcher missile, so custom bomb art goes here.'
-                        : 'This weapon ships a sheet of its own as its `sprite`, which the record would otherwise take from the donor. Remove it to fall back to the stock sprite.'
+                        : 'Optional pack PNG installed via top-level `sprite` to replace WA\'s stock missile sprite (such as a 32-frame directional or spinning strip) without using Sprite Builder.'
                     }
                   />
                   <PackSpriteUpload

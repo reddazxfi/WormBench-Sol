@@ -7,6 +7,7 @@ import { TooltipLabel, UnitNumberInput, buildTooltip } from './RecordEditor';
 import { NumberInput } from './NumberInput';
 import { recordField } from '../utils/recordField';
 import { DEFAULT_MELEE } from '../data/melee';
+import { SpritePickButton } from './SpritePickButton';
 import {
   AlertTriangle,
   Image as ImageIcon,
@@ -126,9 +127,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
     []
   );
 
-  const handleIconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const applyIconFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       onChange({
@@ -138,6 +137,12 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
       });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleIconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    applyIconFile(file);
   };
 
   const removeCustomIcon = () => {
@@ -268,6 +273,11 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
                   <ImageIcon className="h-3 w-3 text-sky-600 dark:text-sky-400" aria-hidden="true" />
                   <span>{project.customIconFile ? 'Replace' : 'Upload PNG'}</span>
                 </button>
+                <SpritePickButton
+                  accept="image"
+                  label="Pick Panel Icon"
+                  onPick={(file) => applyIconFile(file)}
+                />
                 {project.customIconFile && (
                   <button
                     type="button"

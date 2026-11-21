@@ -12,6 +12,8 @@ import {
   RoamActionConfig,
   WeaponOptionConfig,
   WeaponProject,
+  WormSpritePoseAsset,
+  WormSpritePoseKey,
 } from '../types/weapon';
 import { getStockPanelPosition } from '../data/stockWeapons';
 import { stockDonor, stockDonorBaseline } from '../data/stockDonors';
@@ -26,6 +28,7 @@ import { recordField } from './recordField';
 import { defaultArtFor } from './defaultArt';
 import {
   DEFAULT_ROAM_TILT,
+  WORM_SPRITE_POSE_ORDER,
   bitActionOf,
   bitBuilderMode,
   primaryBuilderOn,
@@ -603,6 +606,42 @@ export function extraHandSheetPath(project: WeaponProject): string | null {
  */
 export function silentHoldSheetPath(project: WeaponProject): string {
   return `sprites/${sanitizeModFolder(project.id)}/silent.png`;
+}
+
+export { WORM_SPRITE_POSE_ORDER };
+
+export interface WormSpriteBundleEntry {
+  key: WormSpritePoseKey;
+  path: string;
+  asset: WormSpritePoseAsset;
+}
+
+/**
+ * Direct full-worm pose sprite replacements (`worm_sprites = { weaponlnk = ... }`).
+ * Can be combined freely with Sprite Builder (`hold.enabled`), or used alone.
+ * Poses that reference the same file share one exported sheet path.
+ */
+export function wormSpriteEntries(project: WeaponProject): WormSpriteBundleEntry[] {
+  if (!project.wormSprites?.enabled) return [];
+  const poses = project.wormSprites.poses;
+  if (!poses) return [];
+  const folder = sanitizeModFolder(project.id);
+  const pathByFile = new WeakMap<File, string>();
+  const pathBySig = new Map<string, string>();
+  const out: WormSpriteBundleEntry[] = [];
+  for (const key of WORM_SPRITE_POSE_ORDER) {
+    const asset = poses[key];
+    if (!asset?.file) continue;
+    const sig = `${asset.file.name}:${asset.file.size}:${asset.file.lastModified}`;
+    let path = pathByFile.get(asset.file) ?? pathBySig.get(sig);
+    if (!path) {
+      path = `sprites/${folder}/worm_${key}.png`;
+      pathByFile.set(asset.file, path);
+      pathBySig.set(sig, path);
+    }
+    out.push({ key, path, asset });
+  }
+  return out;
 }
 
 /**
@@ -1312,6 +1351,8 @@ export function generateLuaCode(project: WeaponProject): string {
   const clusterBitTrailArt = packArtPath(project, 'cluster_trail');
 
   const usesHold = project.hold && project.hold.enabled;
+  const wormPoseEntries = wormSpriteEntries(project);
+  const usesWormSprites = wormPoseEntries.length > 0;
   // Set where the missile table writes `sprite = 0` for a real shot.
   let zeroedSprite = false;
   const missileSpriteEnabled = !!project.missileSprite?.enabled;
@@ -2440,8 +2481,15 @@ export function generateLuaCode(project: WeaponProject): string {
   // It is skipped when the claim has art WA itself has to draw from a real slot:
   // `gpu_prefix` moves every matching path to a virtual atlas id, and a body or
   // cluster sheet needs the stock id the record points at.
+  const paramsParts: string[] = [];
   if (usesAimLayer && !strikeBodyArt && !clusterBitArt && !clusterBitHomingArt) {
-    lines.push('      params = { gpu_prefix = "sprites/" },');
+    paramsParts.push('gpu_prefix = "sprites/"');
+  }
+  if (usesWormSprites && project.wormSprites?.animate) {
+    paramsParts.push('worm_sprites_animate = true');
+  }
+  if (paramsParts.length > 0) {
+    lines.push(`      params = { ${paramsParts.join(', ')} },`);
   }
 
   // Pack WAVs are declared by path in `sounds`; the engine loads them into
@@ -4036,9 +4084,44 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push('      },');
   }
 
-  // Hold Art
+  // Hold Art & Direct Worm Pose Sprites (can be enabled individually or combined)
   if (usesHold) {
-    lines.push('      worm_sprites = holds.PX_POSTURE,');
+    if (usesWormSprites) {
+      const customByKey = new Map(wormPoseEntries.map((e) => [e.key, e.path]));
+      const hasCustomLnk = customByKey.has('weaponlnk');
+      const hasCustomThrow = customByKey.has('wthrow');
+      const baseKeys: WormSpritePoseKey[] = [
+        'weaponlnk',
+        'weaponlnku',
+        'weaponlnkd',
+        'wthrow',
+        'wthrowu',
+        'wthrowd',
+      ];
+      lines.push('      worm_sprites = {');
+      for (const key of baseKeys) {
+        const customPath = customByKey.get(key);
+        if (customPath) {
+          lines.push(`        ${key} = ${luaQuote(customPath)},`);
+        } else {
+          const skipUpDown =
+            ((key === 'weaponlnku' || key === 'weaponlnkd') && hasCustomLnk) ||
+            ((key === 'wthrowu' || key === 'wthrowd') && hasCustomThrow);
+          if (!skipUpDown) {
+            lines.push(`        ${key} = holds.PX_POSTURE.${key},`);
+          }
+        }
+      }
+      for (const key of ['weaponfire', 'weaponfireu', 'weaponfired'] as const) {
+        const customPath = customByKey.get(key);
+        if (customPath) {
+          lines.push(`        ${key} = ${luaQuote(customPath)},`);
+        }
+      }
+      lines.push('      },');
+    } else {
+      lines.push('      worm_sprites = holds.PX_POSTURE,');
+    }
     if (usesHoldLocal) {
       // The table itself is declared before the claim (`sb.hold` builds it
       // there, and the claim reads the same values the layer draws with).
@@ -4048,6 +4131,12 @@ export function generateLuaCode(project: WeaponProject): string {
       for (const row of holdRows) lines.push(`        ${row}`);
       lines.push('      },');
     }
+  } else if (usesWormSprites) {
+    lines.push('      worm_sprites = {');
+    for (const entry of wormPoseEntries) {
+      lines.push(`        ${entry.key} = ${luaQuote(entry.path)},`);
+    }
+    lines.push('      },');
   }
 
   // Custom Lua callback (only when checkbox is explicitly enabled)
@@ -5184,6 +5273,17 @@ export function weaponManifestPart(project: WeaponProject): WeaponManifestPart {
     if (path.endsWith('.png') && asset.frames > 1) lines.push(`frames = ${asset.frames}`);
     lines.push(`fps = ${asset.fps || 15}`);
     lines.push(`play = ${luaQuote(asset.play || 'loop')}`);
+  }
+
+  for (const entry of wormSpriteEntries(project)) {
+    if (emitted.has(entry.path)) continue;
+    emitted.add(entry.path);
+    const frames = Math.max(1, Math.round(entry.asset.frames ?? 1));
+    lines.push('');
+    lines.push(`[sprites.${luaQuote(entry.path)}]`);
+    if (frames > 1) lines.push(`frames = ${frames}`);
+    lines.push('fps = 15');
+    lines.push('play = "loop"');
   }
 
   for (const cs of Object.values(project.customSprites)) {

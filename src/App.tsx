@@ -8,9 +8,18 @@ import { HoldPreview } from './components/HoldPreview';
 import { EffectsWorkspace } from './components/EffectsWorkspace';
 import { WepImportModal } from './components/WepImportModal';
 import { ModBrowserModal } from './components/ModBrowserModal';
+import { PxlLibraryModal } from './components/PxlLibraryModal';
+import { PxlPickerModal } from './components/PxlPickerModal';
 import { LuaPreviewModal } from './components/LuaPreviewModal';
 import { BundleDependencies } from './components/BundleDependencies';
 import { CarriedLuaPanel } from './components/CarriedLuaPanel';
+import {
+  PxlLibraryContext,
+  type PxlActiveScope,
+  type PxlPickerRequest,
+} from './context/PxlLibraryContext';
+import type { PxlLibrary } from './types/pxl';
+import { parsePxlLibrary } from './utils/pxl/loadPxl';
 import { exportPackZip, downloadBlob } from './utils/modExporter';
 import { DEFAULT_ID_NAMESPACE } from './utils/weaponId';
 import { generateLuaCode, sanitizeModFolder } from './utils/luaGenerator';
@@ -170,6 +179,10 @@ export default function App() {
   const [activeSubTab, setActiveSubTab] = useState<RecordTabId>('missile');
   const [isWepModalOpen, setIsWepModalOpen] = useState(false);
   const [isModBrowserOpen, setIsModBrowserOpen] = useState(false);
+  const [isPxlModalOpen, setIsPxlModalOpen] = useState(false);
+  const [pxlLibraries, setPxlLibraries] = useState<PxlLibrary[]>([]);
+  const [activePxlScope, setActivePxlScope] = useState<PxlActiveScope | undefined>(undefined);
+  const [pickerRequest, setPickerRequest] = useState<PxlPickerRequest | null>(null);
   // The mod browser either replaces the active weapon (the old behaviour, and
   // what "import this weapon" means) or appends one to the bundle, which is how a
   // pack is built out of weapons that already exist.
@@ -460,6 +473,100 @@ export default function App() {
     );
   };
 
+  const addPxlFiles = async (
+    files: File[],
+  ): Promise<{ added: PxlLibrary[]; errors: string[] }> => {
+    const added: PxlLibrary[] = [];
+    const errors: string[] = [];
+    const existingKeys = new Set(pxlLibraries.map((l) => l.key));
+
+    for (const file of files) {
+      const key = `${file.name}:${file.size}`;
+      if (existingKeys.has(key)) {
+        const existing = pxlLibraries.find((l) => l.key === key);
+        if (existing) added.push(existing);
+        continue;
+      }
+      try {
+        const buf = await file.arrayBuffer();
+        const lib = parsePxlLibrary(buf, file.name);
+        existingKeys.add(lib.key);
+        added.push(lib);
+      } catch (err) {
+        errors.push((err as Error).message || `Failed to parse ${file.name}`);
+      }
+    }
+
+    if (added.length > 0) {
+      setPxlLibraries((prev) => {
+        const seen = new Set(prev.map((l) => l.key));
+        const fresh = added.filter((l) => !seen.has(l.key));
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
+    }
+    return { added, errors };
+  };
+
+  const removePxlLibrary = (key: string) => {
+    setPxlLibraries((prev) => prev.filter((l) => l.key !== key));
+    setActivePxlScope((prev) => (prev?.libraryKey === key ? undefined : prev));
+  };
+
+  const handleOpenPxlWeapon = (
+    imported: Partial<WeaponProject> & { replaceProject: true },
+    scope: PxlActiveScope,
+    summary: string[],
+  ) => {
+    setImportMode('replace');
+    handleApplyWepImport(imported);
+    setActivePxlScope(scope);
+    const notes = summary.filter((s) => /^(icon|hold|firing|flight|sounds)/.test(s));
+    showToast(
+      notes.length > 0
+        ? `Opened ${imported.name || 'weapon'}: ${notes.slice(0, 3).join('; ')}`
+        : `Opened ${imported.name || 'weapon'} from .pxl library.`,
+    );
+  };
+
+  const handleAddPxlWeaponToBundle = (
+    imported: Partial<WeaponProject> & { replaceProject: true },
+    scope: PxlActiveScope,
+    summary: string[],
+  ) => {
+    const incoming = { ...INITIAL_PROJECT, ...imported } as WeaponProject;
+    const result = addWeaponToPack(pack, incoming);
+    setPack(result.pack);
+    setActiveIndex(result.index);
+    setActivePxlScope(scope);
+    const notes = summary.filter((s) => /^(icon|hold|firing|flight|sounds)/.test(s));
+    showToast(
+      notes.length > 0
+        ? `Added ${imported.name || 'weapon'} to bundle: ${notes.slice(0, 2).join('; ')}`
+        : `Added ${imported.name || 'weapon'} to the bundle.`,
+    );
+  };
+
+  const handleAddAllPxlWeapons = (
+    items: {
+      project: Partial<WeaponProject> & { replaceProject: true };
+      scope: PxlActiveScope;
+    }[],
+    libName: string,
+  ) => {
+    let nextPack = pack;
+    let firstAddedIndex = activeIndex;
+    items.forEach((item, idx) => {
+      const incoming = { ...INITIAL_PROJECT, ...item.project } as WeaponProject;
+      const res = addWeaponToPack(nextPack, incoming);
+      nextPack = res.pack;
+      if (idx === 0) firstAddedIndex = res.index;
+    });
+    setPack(nextPack);
+    setActiveIndex(firstAddedIndex);
+    setActivePxlScope(items[0]?.scope);
+    showToast(`Added ${items.length} weapon${items.length === 1 ? '' : 's'} from ${libName} to bundle.`);
+  };
+
   const handleExportZip = async () => {
     setIsExporting(true);
     try {
@@ -539,6 +646,14 @@ export default function App() {
   }[activeTab];
 
   return (
+    <PxlLibraryContext.Provider
+      value={{
+        libraries: pxlLibraries,
+        activeScope: activePxlScope,
+        openPicker: (req) => setPickerRequest(req),
+        openLibraryModal: () => setIsPxlModalOpen(true),
+      }}
+    >
     <div className="min-h-screen bg-stone-100 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
       <a
         href="#main"
@@ -555,6 +670,8 @@ export default function App() {
         setActiveSubTab={setActiveSubTab}
         onImportWep={() => setIsWepModalOpen(true)}
         onBrowseMods={() => setIsModBrowserOpen(true)}
+        onBrowsePxl={() => setIsPxlModalOpen(true)}
+        pxlLibraryCount={pxlLibraries.length}
         onExportZip={handleExportZip}
         isDark={isDark}
         setIsDark={setIsDark}
@@ -571,6 +688,8 @@ export default function App() {
           setActiveSubTab={setActiveSubTab}
           onImportWep={() => setIsWepModalOpen(true)}
           onBrowseMods={() => setIsModBrowserOpen(true)}
+          onBrowsePxl={() => setIsPxlModalOpen(true)}
+          pxlLibraryCount={pxlLibraries.length}
           onExportZip={handleExportZip}
           isDark={isDark}
           setIsDark={setIsDark}
@@ -738,6 +857,31 @@ export default function App() {
         />
       )}
 
+      {isPxlModalOpen && (
+        <PxlLibraryModal
+          libraries={pxlLibraries}
+          onAddFiles={addPxlFiles}
+          onRemoveLibrary={removePxlLibrary}
+          onOpenWeapon={handleOpenPxlWeapon}
+          onAddWeaponToBundle={handleAddPxlWeaponToBundle}
+          onAddAllWeapons={handleAddAllPxlWeapons}
+          onClose={() => setIsPxlModalOpen(false)}
+        />
+      )}
+
+      {pickerRequest && (
+        <PxlPickerModal
+          request={pickerRequest}
+          libraries={pxlLibraries}
+          activeScope={activePxlScope}
+          onAddFiles={async (list) => {
+            const res = await addPxlFiles(Array.from(list));
+            if (res.errors.length > 0) showToast(res.errors[0]);
+          }}
+          onClose={() => setPickerRequest(null)}
+        />
+      )}
+
       <WepImportModal
         isOpen={isWepModalOpen}
         onClose={() => setIsWepModalOpen(false)}
@@ -760,5 +904,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </PxlLibraryContext.Provider>
   );
 }

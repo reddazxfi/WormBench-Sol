@@ -7,6 +7,7 @@ import {
   FlightRoleArt,
   RoamSheetAsset,
   ExtraHandConfig,
+  WormSpritePoseKey,
 } from '../types/weapon';
 import {
   bitFlightSheetPath,
@@ -20,6 +21,15 @@ import {
 import { StockSpriteInput } from './StockSpriteInput';
 import { NumberInput, UnitNumberInput } from './NumberInput';
 import { SheetFrameWarning } from './SheetFrameWarning';
+import { SpritePickButton } from './SpritePickButton';
+import { WormSpritesPanel } from './WormSpritesPanel';
+import {
+  HAND_LOWER_SRC,
+  HAND_MID_SRC,
+  HAND_UPPER_SRC,
+  WORM_AIM_SRC,
+  drawHoldOverlay,
+} from '../utils/drawHoldLayer';
 import { imagePixelSize } from '../utils/imagePixelSize';
 import { stockSpriteName } from '../data/stockSprites';
 import { assetUrl } from '../utils/assetUrl';
@@ -69,6 +79,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  Flame,
 } from 'lucide-react';
 
 interface HoldPreviewProps {
@@ -98,13 +109,13 @@ const RoamSheetField: React.FC<{
   const frames = asset?.frames ?? 1;
   const isGif = /\.gif$/i.test(asset?.fileName || asset?.file?.name || '');
 
-  const handleUpload = (file: File) => {
+  const handleUpload = (file: File, framesHint?: number) => {
     if (asset?.preview) URL.revokeObjectURL(asset.preview);
     onChange({
       file,
       fileName: file.name,
       preview: URL.createObjectURL(file),
-      frames: 1,
+      frames: framesHint && framesHint > 0 ? framesHint : 1,
       rotationFrames: undefined,
       sourceFile: undefined,
       sourceName: undefined,
@@ -186,6 +197,11 @@ const RoamSheetField: React.FC<{
         >
           {asset?.file ? 'Change' : 'Upload'}
         </button>
+        <SpritePickButton
+          accept="image"
+          label={`Pick ${label}`}
+          onPick={(file, framesHint) => handleUpload(file, framesHint)}
+        />
         {asset?.file && (
           <button
             type="button"
@@ -287,12 +303,6 @@ const RoamSheetField: React.FC<{
     </div>
   );
 };
-
-const WORM_AIM_SRC = assetUrl('assets/worm/aim.png');
-
-const HAND_MID_SRC = assetUrl('assets/worm/hand_rad.png');
-const HAND_LOWER_SRC = assetUrl('assets/worm/hand_rad_lower.png');
-const HAND_UPPER_SRC = assetUrl('assets/worm/hand_rad_upper.png');
 
 /**
  * Flight preview zoom. The canvas draws the sheet at `missileZoom / 4`, so 4 is
@@ -430,8 +440,65 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
   // same gun with the same geometry; the tab keeps the firing controls from
   // crowding the aim ones.
   const [aimTab, setAimTab] = useState<'aim' | 'firing'>('aim');
+  const [postureTab, setPostureTab] = useState<'hold' | 'wormSprites'>(() =>
+    !project.hold?.enabled && !!project.wormSprites?.enabled ? 'wormSprites' : 'hold',
+  );
+  const prevPostureProjectIdRef = useRef(project.id);
+  const prevWormOnlyRef = useRef(!project.hold?.enabled && !!project.wormSprites?.enabled);
   const [swingStart, setSwingStart] = useState<number | null>(null);
   const [swingTick, setSwingTick] = useState(0);
+  const [fireDemoTick, setFireDemoTick] = useState<number | null>(null);
+  const [wormAnimTick, setWormAnimTick] = useState(0);
+  const wormPoseImgsRef = useRef<Partial<Record<WormSpritePoseKey, HTMLImageElement>>>({});
+  const [wormPoseSeq, setWormPoseSeq] = useState(0);
+
+  useEffect(() => {
+    const wormOnly = !project.hold?.enabled && !!project.wormSprites?.enabled;
+    if (
+      project.id !== prevPostureProjectIdRef.current ||
+      (wormOnly && !prevWormOnlyRef.current)
+    ) {
+      prevPostureProjectIdRef.current = project.id;
+      setPostureTab(wormOnly ? 'wormSprites' : 'hold');
+    }
+    prevWormOnlyRef.current = wormOnly;
+  }, [project.id, project.hold?.enabled, project.wormSprites?.enabled]);
+
+  // Preload enabled custom worm pose sheets so combined preview shows them too.
+  useEffect(() => {
+    if (!project.wormSprites?.enabled) {
+      wormPoseImgsRef.current = {};
+      return;
+    }
+    const poses = project.wormSprites.poses ?? {};
+    const keys: WormSpritePoseKey[] = ['weaponlnk', 'wthrow', 'weaponfire'];
+    let alive = true;
+    for (const k of keys) {
+      const url = poses[k]?.preview;
+      if (!url) {
+        delete wormPoseImgsRef.current[k];
+        continue;
+      }
+      const existing = wormPoseImgsRef.current[k];
+      if (existing && existing.dataset.src === url && existing.complete) continue;
+      const img = new Image();
+      img.dataset.src = url;
+      img.onload = () => {
+        if (!alive) return;
+        wormPoseImgsRef.current[k] = img;
+        setWormPoseSeq((n) => n + 1);
+      };
+      img.src = url;
+    }
+    return () => {
+      alive = false;
+    };
+  }, [
+    project.wormSprites?.enabled,
+    project.wormSprites?.poses?.weaponlnk?.preview,
+    project.wormSprites?.poses?.wthrow?.preview,
+    project.wormSprites?.poses?.weaponfire?.preview,
+  ]);
 
   const triggerPutAwayDemo = () => {
     setPutAwayCounter(20);
@@ -513,6 +580,30 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
   // One whole strip cycle is the default window, the same number the generator
   // falls back to: WA's own two firing frames are too short to see a strip.
   const fireTickDefault = Math.max(2, Math.ceil((fireStripFrames * 50) / fireFps));
+  const fireDemoDuration =
+    hold.enabled && (hold.fireTicks || hold.flashFile)
+      ? Math.max(4, Math.min(120, Math.round(hold.fireTicks || fireTickDefault)))
+      : 4;
+
+  // 50 Hz Preview Fire burst (~4 WA frames for weaponfire*, plus Sprite Builder fire ticks).
+  useEffect(() => {
+    if (fireDemoTick === null) return;
+    if (fireDemoTick >= fireDemoDuration) {
+      const done = setTimeout(() => setFireDemoTick(null), 0);
+      return () => clearTimeout(done);
+    }
+    const timer = setTimeout(() => {
+      setFireDemoTick((t) => (t !== null ? t + 1 : null));
+    }, 20);
+    return () => clearTimeout(timer);
+  }, [fireDemoTick, fireDemoDuration]);
+
+  // 50 Hz clock for animated `worm_sprites_animate` base worm sheets.
+  useEffect(() => {
+    if (!project.wormSprites?.enabled || !project.wormSprites?.animate) return;
+    const timer = setInterval(() => setWormAnimTick((t) => t + 1), 20);
+    return () => clearInterval(timer);
+  }, [project.wormSprites?.enabled, project.wormSprites?.animate]);
   const updateClip = (patch: Partial<AimClipConfig>) => {
     onChange({ aimClip: { ...playerClip, ...patch } });
   };
@@ -1015,332 +1106,93 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     // The layer's aim clamp (`aim_clamp`): the pose stops that many degrees
     // short of straight up/down, the same numbers the Lua clamps with. The
     // worm's own posture strip still follows the real aim, exactly as in game.
-    const clamp = hold.aimClamp;
-    const aimDrawn = clamp?.enabled
-      ? Math.min(
-          0.5 + Math.max(0, Math.min(90, Number(clamp.up) || 0)) / 180,
-          Math.max(0.5 - Math.max(0, Math.min(90, Number(clamp.down) || 0)) / 180, aimT),
-        )
-      : aimT;
+    const firingView = aimTab === 'firing' || fireDemoTick !== null;
+    const useWeaponFirePose =
+      aimTab === 'firing' || (fireDemoTick !== null && fireDemoTick < 4);
 
-    // worm_hold.rs: `rot = (1.0 - aim) * PI`.  Aim 0 is straight down and 1
-    // is straight up; level aim (16/31) is PI/2.  The posture and hold sheets
-    // are drawn right-facing, so the whole cell is mirrored below for the
-    // left-facing pose, exactly as `SPRITE_MIRROR_X` mirrors the hold.
-    const rot = (1 - aimDrawn) * Math.PI;
-    // The firing tab previews the firing role: the numbers the game blits on WA's
-    // 0x6A/0x6B frames, with the firing sheet where the held art would be and
-    // only the strip looping. Every other tab is the aim role.
-    const firingView = aimTab === 'firing';
-    const aimWeapRotation = Number(hold.weapRotation) || 0;
-    const roleWeapRotation = firingView
-      ? Number(hold.fireWeapRotation ?? aimWeapRotation) || 0
-      : aimWeapRotation;
-    const weapRotRad = (roleWeapRotation * Math.PI) / 180;
+    // 1. Base Worm aiming/firing/draw posture.
+    // When `worm_sprites` is enabled, composite the author's custom full-worm
+    // sheet underneath the Sprite Builder hold/hand overlay; otherwise draw `aim.png`.
+    const wormPoses = project.wormSprites?.poses;
+    const requestedPoseKey: WormSpritePoseKey = useWeaponFirePose
+      ? 'weaponfire'
+      : putAwayCounter !== null
+        ? 'wthrow'
+        : 'weaponlnk';
+    const customPoseKey: WormSpritePoseKey =
+      wormPoses?.[requestedPoseKey]?.preview
+        ? requestedPoseKey
+        : 'weaponlnk';
+    const customWormAsset = project.wormSprites?.enabled
+      ? wormPoses?.[customPoseKey]
+      : undefined;
+    const customWormImg =
+      customWormAsset?.preview ? wormPoseImgsRef.current[customPoseKey] : undefined;
 
-    // 1. Base Worm aiming posture (PX_POSTURE.weaponlnk: 32 rows of 60x60).
-    // `aim.png` is natively left-facing, while the hold math below places the
-    // weapon on the left for the unmirrored cell.  Flip the posture inside the
-    // cell so the worm faces the weapon; the whole cell is still mirrored for
-    // the left-facing preview.
-    const aimImg = aimImgRef.current;
-    if (aimImg && aimImg.complete && aimImg.naturalHeight >= 60) {
-      const sy = Math.min(31, Math.max(0, aimAngleIndex)) * 60;
+    if (customWormImg && customWormImg.complete && customWormImg.naturalWidth > 0 && customWormAsset) {
+      const wf = Math.max(1, Math.round(customWormAsset.frames ?? 32));
+      const cellW = customWormImg.naturalWidth;
+      const cellH = Math.max(1, Math.floor(customWormImg.naturalHeight / wf));
+      let frameIdx: number;
+      if (customPoseKey === 'wthrow') {
+        const tPut = putAwayCounter !== null ? 1.0 - putAwayCounter / 20.0 : 0;
+        frameIdx = Math.min(wf - 1, Math.max(0, Math.round((1 - tPut) * (wf - 1))));
+      } else if (customPoseKey === 'weaponlnk' && project.wormSprites?.animate) {
+        frameIdx = Math.floor(wormAnimTick / 2) % wf;
+      } else {
+        frameIdx = wf <= 1 ? 0 : Math.min(wf - 1, Math.max(0, Math.round((aimAngleIndex / 31) * (wf - 1))));
+      }
+      const sy = frameIdx * cellH;
+      const drawY = CELL_OFF + (CELL - cellH) / 2;
       offCtx.save();
-      offCtx.translate(CELL_OFF + CELL, CELL_OFF);
+      offCtx.translate(cx, 0);
       offCtx.scale(-1, 1);
-      offCtx.drawImage(aimImg, 0, sy, 60, 60, 0, 0, 60, 60);
+      offCtx.drawImage(customWormImg, 0, sy, cellW, cellH, -cellW / 2, drawY, cellW, cellH);
       offCtx.restore();
     } else {
-      offCtx.fillStyle = '#f472b6';
-      offCtx.beginPath();
-      offCtx.arc(cx, cy, 12, 0, Math.PI * 2);
-      offCtx.fill();
-    }
-
-    // 2. Weapon Sprite
-    const weapRadius = Number(
-      firingView ? (hold.fireWeapRadius ?? hold.weapRadius ?? 6) : (hold.weapRadius ?? 6),
-    );
-    // A swing's `scale` multiplies the art, exactly as the layer does. The firing
-    // role has no clip, so its scale is its own.
-    const poseScale = swingPose?.scale ?? 1;
-    const roleScale = firingView
-      ? Number(hold.fireScale ?? hold.scale) || 1
-      : Number(hold.scale) || 1;
-    const scale = roleScale * putAwayShrink * poseScale;
-
-    // worm_hold.rs: `rot_w = rot + PI * weap_radial_rotation`, and the generator
-    // writes the hold's own value (1 for the editor's default, PX's 0 or 0.22
-    // for a port that hangs the arm elsewhere).
-    const rotW = rot + Math.PI * Number(hold.weapRadialRotation ?? 1);
-    const weapX = cx + Math.sin(rotW) * weapRadius;
-    const weapY = cy - Math.cos(rotW) * weapRadius;
-    // worm_hold.rs: `PI - PI*aim - PI*(1 - weap_rotation)`, which is
-    // `(1 - aim)*PI + weapRotation`.  PX hold art points up natively, so at
-    // level aim this is 90 degrees clockwise and the barrel points forward.
-    // The swing's `angle` is added before the side mirror, as the layer does
-    // (`(base + swing) * facing`), so the art cuts the same way on both sides.
-    const weapAngle = rot + weapRotRad + ((swingPose?.angle ?? 0) * Math.PI) / 180;
-
-    // The held art for one pose. The swing's ghost trail calls this again with an
-    // earlier pose, a lower alpha and the additive blend, so the preview shows
-    // the same smear the layer draws in game (a ghost is the clip at an earlier
-    // tick, never a copy of the live pose).
-    const drawHeldArt = (pose: ClipPose | null, alphaMul = 1, additive = false) => {
-    const poseScaleLocal = pose?.scale ?? 1;
-    const localScale = roleScale * putAwayShrink * poseScaleLocal;
-    const localAngle = rot + weapRotRad + ((pose?.angle ?? 0) * Math.PI) / 180;
-    offCtx.save();
-    offCtx.imageSmoothingEnabled = false;
-    offCtx.globalAlpha = (pose?.alpha ?? 1) * alphaMul;
-    if (additive) offCtx.globalCompositeOperation = 'lighter';
-    offCtx.translate(weapX, weapY);
-    offCtx.rotate(localAngle);
-    offCtx.scale(localScale, localScale);
-    // `offset` (`sb.hold`): the art nudged inside its own cell, in sheet pixels,
-    // scaled with the art. Translating inside the scaled, rotated frame is the
-    // same nudge the aiming manager draws, and the cell's mirror carries it to
-    // the left-facing pose exactly as the game's `facing` does.
-    // `offset` (`sb.hold`) and the swing's `dx`/`dy` share one frame: sheet
-    // pixels, scaled with the art, turned with the drawn angle.
-    const holdOffsetX = firingView ? 0 : Number(hold.offsetX ?? 0) + (pose?.dx ?? 0);
-    const holdOffsetY = firingView ? 0 : Number(hold.offsetY ?? 0) + (pose?.dy ?? 0);
-    if (holdOffsetX || holdOffsetY) offCtx.translate(holdOffsetX, holdOffsetY);
-
-    // `fire.hide_main`: the firing role replaces the held weapon, so its tab
-    // shows what the game blits instead of the gun under the sheet.
-    const hideMain = firingView && !!hold.fireHideMain;
-    const weaponImg = weaponLoadedImg || weaponImgRef.current;
-    if (!hideMain && weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
-      // The engine slices the picture by its `[sprites]` declaration (`gpu_frame`)
-      // and uses `hold.frames` only to pick an index against that count, so a
-      // 20-cell strip held as one frame draws cell 0, not the whole strip. The
-      // editor's own uploads declare exactly what they play, so `sheetFrames` only
-      // appears on an import that says otherwise (PX's buffalo).
-      const cells = Math.max(1, Math.round(hold.sheetFrames ?? hold.frames ?? 1));
-      const totalFrames = Math.max(1, hold.frames || 1);
-      const frameHeight = weaponImg.naturalHeight / cells;
-      const frameWidth = weaponImg.naturalWidth;
-      // A clip key can name a frame (`frame = 3`), which steps the strip on a
-      // beat of its own instead of the engine's loop.
-      const shownFrame =
-        pose?.frame !== undefined
-          ? Math.min(totalFrames - 1, Math.max(0, Math.round(pose.frame)))
-          : currentFrame;
-      const sy = (Math.min(shownFrame, cells - 1) % cells) * frameHeight;
-
-      offCtx.drawImage(
-        weaponImg,
-        0,
-        sy,
-        frameWidth,
-        frameHeight,
-        -frameWidth / 2,
-        -frameHeight / 2,
-        frameWidth,
-        frameHeight
-      );
-    } else if (
-      !hideMain &&
-      defaultHoldLoaded &&
-      defaultHoldLoaded.complete &&
-      defaultHoldLoaded.naturalWidth > 0
-    ) {
-      // Stock-style default art (spec/default_*.png), drawn like an uploaded
-      // single-frame sheet.
-      offCtx.drawImage(
-        defaultHoldLoaded,
-        -defaultHoldLoaded.naturalWidth / 2,
-        -defaultHoldLoaded.naturalHeight / 2
-      );
-    } else if (!hideMain) {
-      // Placeholder in PX's orientation: barrel up, grip at the bottom.
-      offCtx.fillStyle = '#d65443';
-      offCtx.strokeStyle = '#85271e';
-      offCtx.lineWidth = 1;
-      offCtx.fillRect(-3, -10, 6, 20);
-      offCtx.strokeRect(-3, -10, 6, 20);
-
-      offCtx.fillStyle = '#f0a99e';
-      offCtx.beginPath();
-      offCtx.moveTo(-3, -10);
-      offCtx.lineTo(0, -15);
-      offCtx.lineTo(3, -10);
-      offCtx.closePath();
-      offCtx.fill();
-    }
-    offCtx.restore();
-    };
-
-    // The ghost trail: farthest first, so the live art lands on its own smear.
-    for (const ghost of echoPoses) {
-      drawHeldArt(ghost.pose, ghost.alpha, ghost.additive);
-    }
-    drawHeldArt(swingPose);
-
-    // 3. Firing sheet. PX's FAMAS pattern, which the generator emits: a firing
-    // role (`fire` in the `sb.hold` spec) drawn on WA's firing frames with the
-    // same placement as the gun, same pivot, radius, rotation and `weap_scale`,
-    // mirrored by the worm's facing with the rest of the cell. It has its own
-    // picture, so it is drawn at its own pixel size, not stretched to the gun.
-    // It goes down before the hand because that is the order `sb.hold` uses:
-    // the firing sheet, then its hand on top of it.
-    const flashImg = flashLoadedImg || flashImgRef.current;
-    if (firingView && flashImg && flashImg.complete && flashImg.naturalWidth > 0) {
-      // The firing sheet is a vertical strip: `fireFrames` slices it, and the
-      // frame walks at `fireFps`, the same rate `sb.hold` uses in game
-      // (one frame every 50/fps ticks). It draws where the held art would be,
-      // which is why `weapX`/`weapY`/`weapAngle`/`scale` above are the firing
-      // role's own numbers on this tab.
-      const cellH = flashImg.naturalHeight / fireStripFrames;
-      const cellW = flashImg.naturalWidth;
-      const flashFrame = fireStripFrames > 1 ? firePreviewFrame : 0;
-      offCtx.save();
-      offCtx.imageSmoothingEnabled = false;
-      offCtx.translate(weapX, weapY);
-      offCtx.rotate(weapAngle);
-      offCtx.scale(scale, scale);
-      // `fire.offset`: the firing art nudged inside its own cell, in sheet
-      // pixels, scaled with its own `scale`, mirrored with the cell and turned
-      // with the drawn angle, exactly like the held art's offset.
-      const fireOffX = Number(hold.fireOffsetX ?? 0);
-      const fireOffY = Number(hold.fireOffsetY ?? 0);
-      if (fireOffX || fireOffY) offCtx.translate(fireOffX, fireOffY);
-      offCtx.drawImage(
-        flashImg,
-        0,
-        flashFrame * cellH,
-        cellW,
-        cellH,
-        -cellW / 2,
-        -cellH / 2,
-        cellW,
-        cellH
-      );
-      offCtx.restore();
-    }
-
-    // 4. Hand Sprite, over the sheet it holds: the engine draws the hand after
-    // the weapon, and `sb.hold`'s firing pass does the same.
-    if ((firingView ? (hold.fireDrawHand ?? hold.drawHand) : hold.drawHand) !== false) {
-      const handRadius = Number(
-        firingView
-          ? (hold.fireHandRadius ?? hold.handRadius ?? 10)
-          : (hold.handRadius ?? 10),
-      );
-      const roleHandRotation = Number(
-        (firingView
-          ? (hold.fireHandRotation ?? hold.handRotation)
-          : hold.handRotation) || 0,
-      );
-      const roleHandScale = Number(
-        (firingView ? (hold.fireHandScale ?? hold.handScale) : hold.handScale) || 1,
-      );
-      // worm_hold.rs: `rot_h = rot - PI * hand_radial_rotation`.
-      const rotH = rot - Math.PI * Number(hold.handRadialRotation ?? 1);
-      let handX = cx + Math.sin(rotH) * handRadius;
-      let handY = cy - Math.cos(rotH) * handRadius;
-      // `hand_rotation` is in turns of PI (`rot + PI*hand_rotation`), and the
-      // panel's degrees become `1 + deg/180` the way `weap_rotation` does.
-      const handAngle = rot + Math.PI * (1 + roleHandRotation / 180);
-      // The hand offset and a swing's carry ride the hand's own size, which
-      // already includes `hand_scale` and the clip's `scale`. Each role has its
-      // own nudge: `hand_offset` for the held art, `fire.hand_offset` for the
-      // hand on WA's firing frames. Neither needs the quad layer's permision,
-      // the layer is drawing this hand already.
-      // The engine places the hand at `grow(counter) * hand_scale`: no
-      // `weap_scale`, no clip scale. `sb.hold` matches it exactly, so the
-      // hand here is the one the game draws.
-      const handCarry = roleHandScale * putAwayShrink;
-      const handNudgeX = firingView
-        ? Number(hold.fireHandOffsetX ?? 0)
-        : Number(hold.handOffsetX ?? 0) + (swingPose?.dx ?? 0);
-      const handNudgeY = firingView
-        ? Number(hold.fireHandOffsetY ?? 0)
-        : Number(hold.handOffsetY ?? 0) + (swingPose?.dy ?? 0);
-      const hox = handNudgeX * handCarry;
-      const hoy = handNudgeY * handCarry;
-      if (hox || hoy) {
-        handX += hox * Math.cos(handAngle) - hoy * Math.sin(handAngle);
-        handY += hox * Math.sin(handAngle) + hoy * Math.cos(handAngle);
-      }
-
-      let handImg = handMidImgRef.current;
-      if (hold.handType === 'lower') handImg = handLowerImgRef.current;
-      else if (hold.handType === 'upper') handImg = handUpperImgRef.current;
-
-      if (handImg && handImg.complete && handImg.naturalWidth > 0) {
-        const handScale = roleHandScale * putAwayShrink;
+      const aimImg = aimImgRef.current;
+      if (aimImg && aimImg.complete && aimImg.naturalHeight >= 60) {
+        const sy = Math.min(31, Math.max(0, aimAngleIndex)) * 60;
         offCtx.save();
-        offCtx.imageSmoothingEnabled = false;
-        offCtx.globalAlpha = swingPose?.alpha ?? 1;
-        offCtx.translate(handX, handY);
-        // worm_hold.rs: `rot + PI * hand_rotation` (hand_rotation = 1).
-        offCtx.rotate(handAngle);
-        offCtx.scale(handScale, handScale);
-        offCtx.drawImage(handImg, -handImg.naturalWidth / 2, -handImg.naturalHeight / 2);
+        offCtx.translate(CELL_OFF + CELL, CELL_OFF);
+        offCtx.scale(-1, 1);
+        offCtx.drawImage(aimImg, 0, sy, 60, 60, 0, 0, 60, 60);
         offCtx.restore();
       } else {
         offCtx.fillStyle = '#f472b6';
         offCtx.beginPath();
-        offCtx.arc(handX, handY, 2.5, 0, Math.PI * 2);
+        offCtx.arc(cx, cy, 12, 0, Math.PI * 2);
         offCtx.fill();
       }
     }
 
-    // 5. The second hand. `HoldSpec` has one hand slot, so `sb.hold` draws this
-    // one with the engine's own hand maths: the same radius/rotation rules, its
-    // own scale, cell nudge and art (the first hand's unless it names one). It
-    // is drawn on the firing frames too, at full size, because a support hand
-    // should not vanish when the firing sheet replaces the gun.
-    const extra =
-      hold.extraHand?.enabled && !(firingView && hold.extraHand.fireDraw === false)
-        ? hold.extraHand
-        : null;
-    if (extra) {
-      // The firing pass is its own pose, so its grip is its own too; unset
-      // keys mean the aiming numbers (`hold_draw_extra_hand`).
-      const xRadius = (firingView ? extra.fireRadius : undefined) ?? extra.radius ?? 0;
-      const xRotation = (firingView ? extra.fireRotation : undefined) ?? extra.rotation ?? 0;
-      const xScale = (firingView ? extra.fireScale : undefined) ?? extra.scale ?? 1;
-      const xOffX = (firingView ? extra.fireOffsetX : undefined) ?? extra.offsetX ?? 0;
-      const xOffY = (firingView ? extra.fireOffsetY : undefined) ?? extra.offsetY ?? 0;
-      const rotX = rot - Math.PI;
-      let xX = cx + Math.sin(rotX) * xRadius;
-      let xY = cy - Math.cos(rotX) * xRadius;
-      const xAngle = rot + Math.PI * (1 + xRotation / 180);
-      // The firing frames are drawn at full size (`base = 1`), the aim frames
-      // on the engine's draw-out (`putAwayShrink`).
-      const xSize = Number(xScale) * (firingView ? 1 : putAwayShrink);
-      const xNudgeX = Number(xOffX) + (firingView ? 0 : swingPose?.dx ?? 0);
-      const xNudgeY = Number(xOffY) + (firingView ? 0 : swingPose?.dy ?? 0);
-      if (xNudgeX || xNudgeY) {
-        const ox = xNudgeX * xSize;
-        const oy = xNudgeY * xSize;
-        xX += ox * Math.cos(xAngle) - oy * Math.sin(xAngle);
-        xY += ox * Math.sin(xAngle) + oy * Math.cos(xAngle);
-      }
-      let xImg = extraHandLoadedImg || extraHandImgRef.current;
-      if (!xImg) {
-        xImg = handMidImgRef.current;
-        if (hold.handType === 'lower') xImg = handLowerImgRef.current;
-        else if (hold.handType === 'upper') xImg = handUpperImgRef.current;
-      }
-      if (xImg && xImg.complete && xImg.naturalWidth > 0) {
-        offCtx.save();
-        offCtx.imageSmoothingEnabled = false;
-        offCtx.globalAlpha = swingPose?.alpha ?? 1;
-        offCtx.translate(xX, xY);
-        offCtx.rotate(xAngle);
-        offCtx.scale(xSize, xSize);
-        // The SDK draws every support-hand sheet into a fixed 60 px hand cell.
-        // Scale uploads into that cell instead of treating the PNG's canvas
-        // dimensions as in-game size (a 100 px upload looked oversized here).
-        offCtx.drawImage(xImg, -30, -30, 60, 60);
-        offCtx.restore();
-      }
-    }
+    // 2. Shared Sprite Builder hold/firing/hands overlay
+    const activeFireFrame =
+      fireDemoTick !== null
+        ? fireStripFrames > 1
+          ? Math.floor((fireDemoTick * fireFps) / 50) % fireStripFrames
+          : 0
+        : firePreviewFrame;
+    const aimDrawn = drawHoldOverlay(offCtx, {
+      hold,
+      cx,
+      cy,
+      aimT,
+      putAwayShrink,
+      firingView,
+      currentFrame,
+      firePreviewFrame: activeFireFrame,
+      fireStripFrames,
+      swingPose,
+      echoPoses,
+      weaponImg: weaponLoadedImg || weaponImgRef.current,
+      defaultHoldImg: defaultHoldLoaded,
+      flashImg: flashLoadedImg || flashImgRef.current,
+      handMidImg: handMidImgRef.current,
+      handLowerImg: handLowerImgRef.current,
+      handUpperImg: handUpperImgRef.current,
+      extraHandImg: extraHandLoadedImg || extraHandImgRef.current,
+    });
 
     // Compose the same 300x300 scene the retired physics preview used, then
     // draw it at 2x: the simulator's default `Scale: 2x`.  The worm cell and
@@ -1438,7 +1290,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       ctx.restore();
     }
     ctx.restore();
-  }, [hold, project.melee, project.aimClip, aimAngleIndex, currentFrame, facingRight, assetsLoaded, weaponLoadedImg, defaultHoldLoaded, putAwayCounter, flashLoadedImg, extraHandLoadedImg, firePreviewFrame, fireStripFrames, aimZoom, swingPose, swingStart, swingTick, echoPoses, aimTab]);
+  }, [hold, project.wormSprites?.enabled, project.wormSprites?.animate, project.melee, project.aimClip, aimAngleIndex, currentFrame, facingRight, assetsLoaded, weaponLoadedImg, defaultHoldLoaded, putAwayCounter, flashLoadedImg, extraHandLoadedImg, firePreviewFrame, fireStripFrames, fireDemoTick, wormAnimTick, wormPoseSeq, aimZoom, swingPose, swingStart, swingTick, echoPoses, aimTab, postureTab]);
 
   // Derive active preview role settings for the 50 Hz simulation canvas
   const activeRolePreviewCfg = (() => {
@@ -2068,13 +1920,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
   // ---------------------------------------------------------------------------
   // HANDLERS FOR UPLOADING CUSTOM ASSETS
   // ---------------------------------------------------------------------------
-  const handleUploadSheet = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    // Cleared so the same file picked again (another tab, after a remove)
-    // still fires `change`.
-    e.target.value = '';
-    if (!file) return;
-
+  const applyHoldSheetFile = async (file: File, framesHint?: number) => {
     const previewUrl = URL.createObjectURL(file);
     // The aim layer draws a quad of the sheet's pixel cell,
     // so keep the natural size beside the file.
@@ -2094,11 +1940,23 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       sheetPreview: previewUrl,
       sheetWidth,
       sheetHeight,
+      ...(framesHint && framesHint > 0
+        ? { frames: framesHint, animate: framesHint > 1, sheetFrames: undefined }
+        : {}),
       // The path is worked out when the pack is exported, from the id the
       // weapon has THEN. Baking it in here kept an old id (moon_grenade)
       // after a rename.
       sheet: '',
     });
+  };
+
+  const handleUploadSheet = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Cleared so the same file picked again (another tab, after a remove)
+    // still fires `change`.
+    e.target.value = '';
+    if (!file) return;
+    await applyHoldSheetFile(file);
   };
 
   const removeCustomSheet = () => {
@@ -2114,12 +1972,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleUploadFlash = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    // Cleared so the same file picked again (another tab, after a remove)
-    // still fires `change`.
-    e.target.value = '';
-    if (!file) return;
+  const applyFlashFile = async (file: File, framesHint?: number) => {
     const previewUrl = URL.createObjectURL(file);
     let flashWidth: number | undefined;
     let flashHeight: number | undefined;
@@ -2135,9 +1988,11 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     // a 36x72 upload becomes two 36x36 firing frames. Reading it here means the
     // panel shows the frames the game will actually play.
     const autoFrames =
-      flashWidth && flashHeight && flashHeight > flashWidth && flashHeight % flashWidth === 0
-        ? flashHeight / flashWidth
-        : 1;
+      framesHint && framesHint > 0
+        ? framesHint
+        : flashWidth && flashHeight && flashHeight > flashWidth && flashHeight % flashWidth === 0
+          ? flashHeight / flashWidth
+          : 1;
     updateHold({
       enabled: true,
       flashFile: file,
@@ -2170,6 +2025,15 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     });
   };
 
+  const handleUploadFlash = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Cleared so the same file picked again (another tab, after a remove)
+    // still fires `change`.
+    e.target.value = '';
+    if (!file) return;
+    await applyFlashFile(file);
+  };
+
   const removeFlash = () => {
     if (hold.flashPreview) URL.revokeObjectURL(hold.flashPreview);
     setFlashLoadedImg(null);
@@ -2182,9 +2046,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     if (flashFileInputRef.current) flashFileInputRef.current.value = '';
   };
 
-  const handleUploadExtraHand = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const applyExtraHandFile = async (file: File) => {
     const previewUrl = URL.createObjectURL(file);
     let sheetWidth: number | undefined;
     let sheetHeight: number | undefined;
@@ -2198,10 +2060,28 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     updateExtraHand({ enabled: true, file, preview: previewUrl, sheetWidth, sheetHeight });
   };
 
+  const handleUploadExtraHand = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await applyExtraHandFile(file);
+  };
+
   const removeExtraHandSheet = () => {
     if (extraHand?.preview) URL.revokeObjectURL(extraHand.preview);
     updateExtraHand({ file: undefined, preview: undefined, sheetWidth: undefined, sheetHeight: undefined });
     if (extraHandFileInputRef.current) extraHandFileInputRef.current.value = '';
+  };
+
+  const applyMissileSheetFile = (file: File, framesHint?: number) => {
+    const previewUrl = URL.createObjectURL(file);
+    updateMissile({
+      enabled: true,
+      mode: 'custom',
+      sheetFile: file,
+      sheetPreview: previewUrl,
+      ...(framesHint && framesHint > 0 ? { frames: framesHint, animate: framesHint > 1 } : {}),
+      sheet: '',   // worked out at export, as for the hold sheet
+    });
   };
 
   const handleUploadMissileSheet = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2210,15 +2090,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     // still fires `change`.
     e.target.value = '';
     if (!file) return;
-
-    const previewUrl = URL.createObjectURL(file);
-    updateMissile({
-      enabled: true,
-      mode: 'custom',
-      sheetFile: file,
-      sheetPreview: previewUrl,
-      sheet: '',   // worked out at export, as for the hold sheet
-    });
+    applyMissileSheetFile(file);
   };
 
   const removeCustomMissileSheet = () => {
@@ -2231,26 +2103,31 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     if (missileFileInputRef.current) missileFileInputRef.current.value = '';
   };
 
+  const applyRoleSheetFile = (file: File, framesHint?: number) => {
+    const previewUrl = URL.createObjectURL(file);
+    const framePatch = framesHint && framesHint > 0 ? { frames: framesHint } : {};
+    if (activeFlightRole === 'clusters') {
+      if (bitFlight.sheetPreview) URL.revokeObjectURL(bitFlight.sheetPreview);
+      updateBitFlight({ sheetFile: file, sheetPreview: previewUrl, mode: 'builder', ...framePatch });
+    } else if (activeFlightRole === 'homing') {
+      if (homingRole.sheetPreview) URL.revokeObjectURL(homingRole.sheetPreview);
+      updateBehaviorArt('homing', { sheetFile: file, sheetPreview: previewUrl, mode: 'builder', ...framePatch });
+    } else if (activeFlightRole === 'homing_bit') {
+      if (homingBitRole.sheetPreview) URL.revokeObjectURL(homingBitRole.sheetPreview);
+      updateBehaviorArt('homing_bit', { sheetFile: file, sheetPreview: previewUrl, mode: 'builder', ...framePatch });
+    } else if (activeFlightRole === 'roam') {
+      if (roamRole.sheetPreview) URL.revokeObjectURL(roamRole.sheetPreview);
+      updateBehaviorArt('roam', { sheetFile: file, sheetPreview: previewUrl, mode: 'builder', ...framePatch });
+    }
+  };
+
   const handleUploadRoleSheet = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // Cleared so the same file picked again (another tab, after a remove)
     // still fires `change`.
     e.target.value = '';
     if (!file) return;
-    const previewUrl = URL.createObjectURL(file);
-    if (activeFlightRole === 'clusters') {
-      if (bitFlight.sheetPreview) URL.revokeObjectURL(bitFlight.sheetPreview);
-      updateBitFlight({ sheetFile: file, sheetPreview: previewUrl, mode: 'builder' });
-    } else if (activeFlightRole === 'homing') {
-      if (homingRole.sheetPreview) URL.revokeObjectURL(homingRole.sheetPreview);
-      updateBehaviorArt('homing', { sheetFile: file, sheetPreview: previewUrl, mode: 'builder' });
-    } else if (activeFlightRole === 'homing_bit') {
-      if (homingBitRole.sheetPreview) URL.revokeObjectURL(homingBitRole.sheetPreview);
-      updateBehaviorArt('homing_bit', { sheetFile: file, sheetPreview: previewUrl, mode: 'builder' });
-    } else if (activeFlightRole === 'roam') {
-      if (roamRole.sheetPreview) URL.revokeObjectURL(roamRole.sheetPreview);
-      updateBehaviorArt('roam', { sheetFile: file, sheetPreview: previewUrl, mode: 'builder' });
-    }
+    applyRoleSheetFile(file);
   };
 
   const removeCustomRoleSheet = () => {
@@ -2401,42 +2278,122 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       {/* ======================================================================= */}
       {/* 1. WORM HOLD & AIM POSTURE SECTION                                       */}
       {/* ======================================================================= */}
-      <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-xs transition-colors">
-        {/* Header */}
-        <div className="pb-3 mb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-heading text-base font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wide">
-              Worm Aim & Hold Art Builder
-            </h2>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-forge-50 dark:bg-forge-950/60 text-forge-600 dark:text-forge-400 font-semibold border border-forge-200 dark:border-forge-800/60">
-              Native aim.png & hand_rad Assets
-            </span>
-          </div>
-          <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
-            Genuine Worms Armageddon 32-angle aim postures with authentic hand radius and weapon pivot positioning.
-          </p>
-        </div>
+      {(() => {
+        const wormEnabled = !!project.wormSprites?.enabled;
+        const activeLayerLabel =
+          hold.enabled && wormEnabled
+            ? 'Sprite Builder + worm_sprites Combined'
+            : wormEnabled
+              ? 'Full Worm Sheets (worm_sprites)'
+              : 'Native aim.png & hand_rad Assets';
+        const showWormPanel = postureTab === 'wormSprites';
+        return (
+          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-xs transition-colors">
+            {/* Header + Independent Layer Toggles + View Tabs */}
+            <div className="pb-3 mb-4 border-b border-stone-100 dark:border-stone-800 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-heading text-base font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wide">
+                    Worm Aim & Hold Art Builder
+                  </h2>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-forge-50 dark:bg-forge-950/60 text-forge-600 dark:text-forge-400 font-semibold border border-forge-200 dark:border-forge-800/60">
+                    {activeLayerLabel}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                  Combine Sprite Builder held overlays and direct <code className="font-mono">worm_sprites</code> pose sheets together or use either layer on its own.
+                </p>
+              </div>
 
-        {/* The hold is one art with two roles, so one switch and one tab row
-            above them. Each role's own sheet lives in its column, so the two
-            tabs are the same editor with different numbers. */}
-        <div className="mb-3 flex flex-col items-stretch justify-end gap-3 sm:flex-row sm:items-center">
-          <label
-            htmlFor="hold-enable-custom-art"
-            className="flex shrink-0 cursor-pointer items-center gap-2 self-start rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 shadow-2xs dark:border-stone-700 dark:bg-stone-800 sm:self-auto"
-          >
-            <input
-              id="hold-enable-custom-art"
-              type="checkbox"
-              checked={hold.enabled}
-              onChange={(e) => updateHold({ enabled: e.target.checked })}
-              className="h-4 w-4 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
-            />
-            <span className="whitespace-nowrap text-xs font-semibold text-stone-900 dark:text-stone-100">
-              Enable Custom Held Art
-            </span>
-          </label>
-        </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  className="inline-flex rounded-xl border border-stone-200 bg-stone-50 p-1 dark:border-stone-700 dark:bg-stone-800"
+                  role="tablist"
+                  aria-label="Worm posture editor tabs"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!showWormPanel}
+                    onClick={() => setPostureTab('hold')}
+                    className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      !showWormPanel
+                        ? 'bg-white text-stone-900 shadow-2xs dark:bg-stone-900 dark:text-stone-100'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
+                    }`}
+                  >
+                    Sprite Builder (Overlay)
+                    {hold.enabled && (
+                      <span className="ml-1.5 rounded bg-forge-100 px-1 text-[10px] font-bold text-forge-700 dark:bg-forge-950/60 dark:text-forge-300">
+                        ON
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={showWormPanel}
+                    onClick={() => setPostureTab('wormSprites')}
+                    className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      showWormPanel
+                        ? 'bg-white text-stone-900 shadow-2xs dark:bg-stone-900 dark:text-stone-100'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
+                    }`}
+                  >
+                    Worm Pose Sheets (<span className="font-mono">worm_sprites</span>)
+                    {wormEnabled && (
+                      <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                        ON
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                <label
+                  htmlFor="hold-enable-custom-art"
+                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-2xs dark:border-stone-700 dark:bg-stone-800"
+                >
+                  <input
+                    id="hold-enable-custom-art"
+                    type="checkbox"
+                    checked={hold.enabled}
+                    onChange={(e) => updateHold({ enabled: e.target.checked })}
+                    className="h-4 w-4 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                  />
+                  <span className="whitespace-nowrap text-xs font-semibold text-stone-900 dark:text-stone-100">
+                    Enable Sprite Builder
+                  </span>
+                </label>
+
+                <label
+                  htmlFor="worm-sprites-enable"
+                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-2xs dark:border-stone-700 dark:bg-stone-800"
+                >
+                  <input
+                    id="worm-sprites-enable"
+                    type="checkbox"
+                    checked={wormEnabled}
+                    onChange={(e) =>
+                      onChange({
+                        wormSprites: {
+                          ...(project.wormSprites ?? { poses: {} }),
+                          enabled: e.target.checked,
+                        },
+                      })
+                    }
+                    className="h-4 w-4 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                  />
+                  <span className="whitespace-nowrap text-xs font-semibold text-stone-900 dark:text-stone-100">
+                    Enable Worm Pose Sheets
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {showWormPanel ? (
+              <WormSpritesPanel project={project} onChange={onChange} />
+            ) : (
+              <>
 
         {/* Aim / Firing builder tabs. The canvas below is shared: it shows the
             held art while aiming and the firing sheet on Test fire. */}
@@ -2783,14 +2740,21 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       onChange={handleUploadExtraHand}
                       className="hidden"
                     />
-                    <button
-                      type="button"
-                      onClick={() => extraHandFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 shadow-2xs transition-colors hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
-                    >
-                      <Upload className="h-3 w-3 text-forge-600 dark:text-forge-400" />
-                      {extraHand.file ? 'Change PNG' : 'Upload Hand PNG'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => extraHandFileInputRef.current?.click()}
+                        className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 shadow-2xs transition-colors hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
+                      >
+                        <Upload className="h-3 w-3 text-forge-600 dark:text-forge-400" />
+                        {extraHand.file ? 'Change PNG' : 'Upload Hand PNG'}
+                      </button>
+                      <SpritePickButton
+                        accept="image"
+                        label="Pick Support Hand Sprite"
+                        onPick={(file) => void applyExtraHandFile(file)}
+                      />
+                    </div>
                     {extraHand.preview && (
                       <button
                         type="button"
@@ -3099,16 +3063,31 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               </div>
             </div>
 
-            {/* Flip Button */}
-            <button
-              type="button"
-              onClick={() => setFacingRight(!facingRight)}
-              aria-label={`Flip worm facing direction. Currently facing ${facingRight ? 'Right' : 'Left'}`}
-              className="w-full max-w-[600px] flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700 shadow-2xs transition-colors cursor-pointer"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              <span>Flip ({facingRight ? 'Right' : 'Left'})</span>
-            </button>
+            {/* Preview Fire & Flip Buttons */}
+            <div className="w-full max-w-[600px] flex gap-2">
+              <button
+                type="button"
+                onClick={() => setFireDemoTick(0)}
+                title={`Play both Sprite Builder firing animation and WA weaponfire* (~4 frames on WA, ${fireDemoDuration} ticks total)`}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border shadow-2xs transition-colors cursor-pointer ${
+                  fireDemoTick !== null
+                    ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'border-amber-300 bg-amber-50/70 text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/60'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Preview Fire</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFacingRight(!facingRight)}
+                aria-label={`Flip worm facing direction. Currently facing ${facingRight ? 'Right' : 'Left'}`}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700 shadow-2xs transition-colors cursor-pointer"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span>Flip ({facingRight ? 'Right' : 'Left'})</span>
+              </button>
+            </div>
           </div>
 
           {/* RIGHT COLUMN: this role's art and placement (order-2 on mobile,
@@ -3186,6 +3165,15 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       ? 'Change PNG Sheet'
                       : 'Upload PNG'}
                 </button>
+                <SpritePickButton
+                  accept="image"
+                  label={aimTab === 'firing' ? 'Pick Firing Sheet' : 'Pick Hold Sheet'}
+                  onPick={(file, framesHint) =>
+                    aimTab === 'firing'
+                      ? void applyFlashFile(file, framesHint)
+                      : void applyHoldSheetFile(file, framesHint)
+                  }
+                />
                 {aimTab === 'firing' && hold.flashPreview && (
                   <button
                     type="button"
@@ -4156,7 +4144,11 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
           </div>
         )}
         </div>
-      </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ======================================================================= */}
       {/* 2. MISSILE / PROJECTILE FLIGHT SPRITE BUILDER (wfws_sprite_builder.lua) */}
@@ -4618,16 +4610,27 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                         onChange={isSecondaryRole ? handleUploadRoleSheet : handleUploadMissileSheet}
                         className="hidden"
                       />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          (isSecondaryRole ? roleFileInputRef : missileFileInputRef).current?.click()
-                        }
-                        className="px-3 py-1.5 text-xs font-semibold text-stone-800 dark:text-stone-200 bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Upload className="w-3.5 h-3.5 text-forge-600 dark:text-forge-400" />
-                        <span>{activeSheetFile ? 'Change PNG Sheet' : 'Upload PNG'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            (isSecondaryRole ? roleFileInputRef : missileFileInputRef).current?.click()
+                          }
+                          className="px-3 py-1.5 text-xs font-semibold text-stone-800 dark:text-stone-200 bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-forge-600 dark:text-forge-400" />
+                          <span>{activeSheetFile ? 'Change PNG Sheet' : 'Upload PNG'}</span>
+                        </button>
+                        <SpritePickButton
+                          accept="image"
+                          label="Pick Flight Sheet"
+                          onPick={(file, framesHint) =>
+                            isSecondaryRole
+                              ? applyRoleSheetFile(file, framesHint)
+                              : applyMissileSheetFile(file, framesHint)
+                          }
+                        />
+                      </div>
                     </>
                   )}
                 </div>

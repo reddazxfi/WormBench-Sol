@@ -31,6 +31,8 @@ import type {
   RoamSheetAsset,
   TerrainStampImpactConfig,
   WeaponProject,
+  WormSpritePoseAsset,
+  WormSpritePoseKey,
 } from '../../types/weapon';
 import { DEFAULT_MELEE } from '../../data/melee';
 import { CLAIM_KEYS_CARRIED, CLAIM_KEYS_MODELLED } from '../../data/luaHooks';
@@ -47,6 +49,7 @@ import {
   DEFAULT_ROAM_ROLE_ART,
   DEFAULT_ROAM_TILT,
   DEFAULT_ROLE_ART,
+  WORM_SPRITE_POSE_ORDER,
 } from '../../data/spriteBuilder';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../../data/explosionPresets';
 import { DEFAULT_EMITTER } from '../../data/emitter';
@@ -1147,6 +1150,57 @@ export async function readBundleFeatures(args: {
     }
     notes.push(flashSource ? 'hold art + firing sprite' : 'hold art');
     if (project.aimClip) notes.push('space swing');
+  }
+
+  // ---- direct worm pose sprites (`worm_sprites`) --------------------------
+  // Can coexist with Sprite Builder `hold`: `holds.PX_POSTURE.*` values evaluate
+  // as non-string expressions so `str(...)` naturally ignores them and extracts
+  // only user-supplied pose sheet paths.
+  const sourceWormSprites = isTable(source?.worm_sprites)
+    ? source.worm_sprites
+    : firstTable(scan, 'worm_sprites');
+  if (sourceWormSprites) {
+    const poses: Partial<Record<WormSpritePoseKey, WormSpritePoseAsset>> = {};
+    const cache = new Map<string, WormSpritePoseAsset>();
+    let poseCount = 0;
+    for (const key of WORM_SPRITE_POSE_ORDER) {
+      const sheetPath = str(sourceWormSprites[key]);
+      if (!sheetPath) continue;
+      let asset = cache.get(sheetPath);
+      if (!asset) {
+        const loaded = await readAsset(files, bundleDir, sheetPath);
+        if (!loaded) continue;
+        const decl = spriteDecl(weapon, sheetPath);
+        const frames = Math.max(
+          1,
+          Math.round(numFrom(decl?.frames) ?? loaded.frames ?? 1),
+        );
+        asset = {
+          file: loaded.file,
+          fileName: loaded.file.name,
+          preview: loaded.preview,
+          frames,
+          width: loaded.width,
+          height: loaded.height,
+        };
+        cache.set(sheetPath, asset);
+      }
+      poses[key] = asset;
+      poseCount++;
+    }
+    if (poseCount > 0) {
+      const paramsTable = isTable(source?.params) ? source.params : firstTable(scan, 'params');
+      const animate =
+        bool(paramsTable?.worm_sprites_animate) ??
+        bool(source?.worm_sprites_animate) ??
+        false;
+      project.wormSprites = {
+        enabled: true,
+        ...(animate ? { animate: true } : {}),
+        poses,
+      };
+      notes.push(`worm poses (${poseCount} sheet${poseCount === 1 ? '' : 's'})`);
+    }
   }
 
   // ---- local string sheet helpers ---------------------------------------

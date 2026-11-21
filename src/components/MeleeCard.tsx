@@ -6,6 +6,7 @@ import { SOUND_PRIORITIES } from '../data/soundPresets';
 import { KeyTickInput } from './KeyTickInput';
 import { NumberInput } from './NumberInput';
 import { SoundUpload } from './EffectsCards';
+import { SpritePickButton } from './SpritePickButton';
 
 interface MeleeCardProps {
   project: WeaponProject;
@@ -186,6 +187,22 @@ const StrikeSoundCell: React.FC<{
       >
         <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
+      <SpritePickButton
+        accept="sound"
+        compact
+        label={`Pick Strike ${index + 1} WAV`}
+        onPick={(file) => {
+          if (!/\.wav$/i.test(file.name)) return;
+          patch({
+            file: {
+              file,
+              fileName: file.name,
+              size: file.size,
+              previewUrl: URL.createObjectURL(file),
+            },
+          });
+        }}
+      />
       {/* A revert, not a delete: the strike keeps playing the weapon's own sound,
           and one row of a table with a row-remove bin either side needs the
           difference to be visible. */}

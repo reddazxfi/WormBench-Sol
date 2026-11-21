@@ -38,6 +38,9 @@ STATE = {
     "pool_always_full": False,
     "crate_weapon_fail": False,
     "los_blocked_ids": set(),
+    "colliding_circles": [],   # list of (x, y, radius) solid terrain blobs
+    "blast_reentry_aid": None, # actor id synchronously hit when wa.world.blast runs
+    "blasts": [],
     "launch_attempt": 0,
 }
 
@@ -97,6 +100,9 @@ def py_reset(seed=424242, map_w=1920, water=650, gravity=0.24):
     STATE["pool_always_full"] = False
     STATE["crate_weapon_fail"] = False
     STATE["los_blocked_ids"] = set()
+    STATE["colliding_circles"] = []
+    STATE["blast_reentry_aid"] = None
+    STATE["blasts"] = []
     STATE["launch_attempt"] = 0
     EVENTS.clear()
     LAUNCHES.clear()
@@ -149,6 +155,42 @@ def py_land_trace(x0, y0, x1, y1):
             if abs(x1 - w["x"]) < 3 and abs(y1 - w["y"]) < 3:
                 return lua.table_from({"x": (x0 + x1) / 2, "y": (y0 + y1) / 2})
     return None
+
+
+def py_world_collides(spec):
+    cx = float(spec["x"])
+    cy = float(spec["y"])
+    cr = float(spec["radius"] if spec["radius"] is not None else 0)
+    for sx, sy, sr in STATE["colliding_circles"]:
+        if math.hypot(cx - sx, cy - sy) <= cr + sr:
+            return True
+    return False
+
+
+def py_land_solid(px, py):
+    for sx, sy, sr in STATE["colliding_circles"]:
+        if math.hypot(float(px) - sx, float(py) - sy) <= sr:
+            return True
+    return False
+
+
+def py_world_blast(spec):
+    rec = {
+        "frame": STATE["frame"],
+        "x": float(spec["x"]),
+        "y": float(spec["y"]),
+        "damage": int(spec["damage"] or 0),
+        "radius": float(spec["radius"] or 0),
+        "kind": spec["kind"],
+    }
+    STATE["blasts"].append(rec)
+    EVENTS.append(("blast", STATE["frame"], rec["damage"]))
+    aid = STATE["blast_reentry_aid"]
+    if aid and aid in ACTORS and not ACTORS[aid]["dead"]:
+        h = ACTORS[aid]["handle"]
+        fn = h["_on_hit"]
+        if fn is not None:
+            fn(h, lua.table_from({"kind": "blast", "damage": rec["damage"], "x": rec["x"], "y": rec["y"]}))
 
 
 def py_worms_all():
@@ -310,13 +352,22 @@ def py_trail_drop(mid):
 
 
 def py_record_actor_spawn(aid, spec_tbl, handle_tbl):
+    if spec_tbl["collide"] is not None:
+        raise ValueError(f"API 5 actors.spawn rejects legacy collide={spec_tbl['collide']!r}")
+    if spec_tbl["as_object"] is not None:
+        raise ValueError(f"API 5 actors.spawn rejects legacy as_object={spec_tbl['as_object']!r}")
+    grav_raw = spec_tbl["gravity"]
+    if isinstance(grav_raw, bool):
+        raise ValueError(f"API 5 actors.spawn requires numeric gravity factor, got bool {grav_raw!r}")
+    body_tbl = spec_tbl["body"]
+    layer = body_tbl["layer"] if body_tbl is not None else None
     ACTORS[aid] = {
         "id": aid,
         "handle": handle_tbl,
         "sprite": spec_tbl["sprite"],
-        "gravity": bool(spec_tbl["gravity"]) if spec_tbl["gravity"] is not None else False,
-        "collide": bool(spec_tbl["collide"]) if spec_tbl["collide"] is not None else False,
-        "as_object": bool(spec_tbl["as_object"]) if spec_tbl["as_object"] is not None else False,
+        "gravity": float(grav_raw) if grav_raw is not None else 0.0,
+        "collide": body_tbl is not None,
+        "as_object": layer == "object",
         "dead": False,
         "frames_set": [],
         "gfx_set": [],
@@ -364,6 +415,9 @@ _PY = {
     "cos": math.cos,
     "atan": math.atan2,
     "land_trace": py_land_trace,
+    "world_collides": py_world_collides,
+    "land_solid": py_land_solid,
+    "world_blast": py_world_blast,
     "worms_all": py_worms_all,
     "reg_missile_frame": py_register_missile_frame,
     "reg_draw": py_register_draw,
@@ -424,7 +478,7 @@ local function make_actor(spec)
   function a:explode(e)
     _py.on_actor_explode(self.id, e)
   end
-  function a:despawn()
+  function a:remove()
     if not self.dead then
       self.dead = true
       _py.on_actor_despawn(self.id)
@@ -441,6 +495,8 @@ wa = {
     gravity = function() return _py.gravity() end,
     wind = function() return _py.wind() end,
     water = function() return _py.water() end,
+    collides = function(s) return _py.world_collides(s) end,
+    blast = function(s) _py.world_blast(s) end,
   },
   math = {
     sin = function(v) return _py.sin(v) end,
@@ -454,7 +510,10 @@ wa = {
   sorted = function(t) return _py.sorted(t) end,
   depth = { BEHIND_TERRAIN = 0x10000, OBJECTS = 0x20000 },
   sprites = { key = function(s) return s end },
-  land = { trace = function(x0, y0, x1, y1) return _py.land_trace(x0, y0, x1, y1) end },
+  land = {
+    trace = function(x0, y0, x1, y1) return _py.land_trace(x0, y0, x1, y1) end,
+    solid = function(x, y) return _py.land_solid(x, y) end,
+  },
   worms = { all = function() return _py.worms_all() end },
   mines = { spawn = function(s) return _py.mines_spawn(s) end },
   crates = { spawn = function(s) return _py.crates_spawn(s) end },
@@ -487,7 +546,20 @@ end
 
 function _make_trail_lib() return TRAIL_SHIM end
 function _make_worm(id, x, y, facing)
-  return { id = id, kind = "worm", x = x, y = y, hp = 100, facing = facing }
+  local w = { id = id, kind = "worm", x = x, y = y, hp = 100, facing = facing, _ammo = {} }
+  function w:ammo(weapon, n)
+    if n == nil then
+      return self._ammo[weapon]
+    end
+    local cur = self._ammo[weapon] or 0
+    if type(n) == "table" and n.set ~= nil then
+      self._ammo[weapon] = n.set
+    elseif type(n) == "number" then
+      self._ammo[weapon] = cur + n
+    end
+    return self._ammo[weapon]
+  end
+  return w
 end
 """)
 
@@ -976,6 +1048,81 @@ check("case 8: explicit 0 and false values are preserved without || fallback cor
       ACTORS[1]["handle"]["facing"] == 1 and
       SOUNDS == [(0, "0")] and all(s[1] != "sounds/hum.wav" for s in SOUNDS),
       f"launches={[(l['y'], l['vx']) for l in LAUNCHES]}, sounds={SOUNDS}, facing={ACTORS[1]['handle']['facing']}")
+
+
+# ---- Case 9: Direct Drop Terrain Failsafe & Crash Dive Re-Entrancy Guard ----
+# 9a. Direct cursor drop clicked inside solid terrain refuses, plays sound 120,
+#     refunds finite ammo (+1) while leaving infinite ammo (-1) untouched.
+py_reset(map_w=1920)
+w_blk = "test.air.direct_blocked"
+h_blk = air.install(to_lua({"id": w_blk}), to_lua({
+    "entry": {"mode": "payload", "spawn_at": "cursor"},
+    "release": {"mode": "drop", "pattern": "offsets", "count": 3, "frames_between": 0, "offsets": [-36, 0, 36], "lead": False},
+    "payload": {"kind": "mine", "mine": {"fuse": 500, "arm": 0, "damage": 45, "radius": 52, "dud_proof": False}},
+}))
+STATE["colliding_circles"].append((400.0, 350.0, 12.0))
+wrm_fin = lua.eval("_make_worm(1, 200, 400, 1)")
+wrm_fin["ammo"](wrm_fin, w_blk, to_lua({"set": 2}))
+res_blk = h_blk.strike(to_lua({"worm": wrm_fin, "x": 400, "y": 350, "sky": -208, "vx": 1, "weapon": w_blk}))
+ammo_after_fin = wrm_fin["ammo"](wrm_fin, w_blk)
+
+wrm_inf = lua.eval("_make_worm(2, 200, 400, 1)")
+wrm_inf["ammo"](wrm_inf, w_blk, to_lua({"set": -1}))
+h_blk.strike(to_lua({"worm": wrm_inf, "x": 400, "y": 350, "sky": -208, "vx": 1, "weapon": w_blk}))
+ammo_after_inf = wrm_inf["ammo"](wrm_inf, w_blk)
+
+check("case 9a: direct cursor drop inside solid terrain refuses spawn, plays sound 120, refunds finite ammo, keeps -1 infinite",
+      res_blk is None and len(MINES) == 0 and len(ACTORS) == 0 and
+      len(SOUNDS) == 2 and all(s[1] == "120" for s in SOUNDS) and
+      ammo_after_fin == 3 and ammo_after_inf == -1,
+      f"res={res_blk}, mines={len(MINES)}, sounds={SOUNDS}, ammo_fin={ammo_after_fin}, ammo_inf={ammo_after_inf}")
+
+# 9b. Direct cursor drop with open center and one blocked side offset spawns open drops only
+py_reset(map_w=1920)
+w_part = "test.air.direct_partial"
+h_part = air.install(to_lua({"id": w_part}), to_lua({
+    "entry": {"mode": "payload", "spawn_at": "cursor"},
+    "release": {"mode": "drop", "pattern": "offsets", "count": 3, "frames_between": 0, "offsets": [-36, 0, 36], "lead": False},
+    "payload": {"kind": "mine", "mine": {"fuse": 500, "arm": 0, "damage": 45, "radius": 52, "dud_proof": False}},
+}))
+STATE["colliding_circles"].append((636.0, 350.0, 6.0))
+wrm_open = lua.eval("_make_worm(1, 200, 400, 1)")
+h_part.strike(to_lua({"worm": wrm_open, "x": 600, "y": 350, "sky": -208, "vx": 1, "weapon": w_part}))
+check("case 9b: direct cursor drop skips blocked side offset cleanly and spawns open-air mines with 0 controller actors",
+      len(ACTORS) == 0 and [m["x"] for m in MINES] == [564.0, 600.0] and h_part.active() is None,
+      f"actors={len(ACTORS)}, mines={[m['x'] for m in MINES]}, active={h_part.active()}")
+
+# 9c. Crash-dive boom_plane re-entrancy guard: synchronous blast -> hull on.hit executes once
+py_reset(map_w=1920)
+boom_fx_calls = []
+done_calls = []
+w_re = "test.air.boom_reentry"
+h_re = air.install(to_lua({"id": w_re}), to_lua({
+    "entry": {"mode": "offmap", "y": -200, "side": 50},
+    "plane": {
+        "enabled": True,
+        "collide": True,
+        "dead_damage": 25,
+        "boom_mode": "custom",
+        "boom_damage": 75,
+        "boom_radius": 110,
+        "boom_crater_radius": 55,
+        "boom_fires": 2,
+    },
+    "speed": {"cruise": 10},
+    "release": {"count": 1},
+    "effects": {
+        "on_plane_boom": lambda s: boom_fx_calls.append(1),
+        "on_done": lambda s: done_calls.append(1),
+    },
+}))
+wrm_re = lua.eval("_make_worm(1, 300, 400, 1)")
+h_re.strike(to_lua({"worm": wrm_re, "x": 960, "y": 400, "sky": -208, "vx": 1, "weapon": w_re}))
+STATE["blast_reentry_aid"] = 1
+ACTORS[1]["handle"]["_on_hit"](ACTORS[1]["handle"], lua.table_from({"kind": "hit", "damage": 40}))
+check("case 9c: boom_plane guards against synchronous blast -> hull on.hit recursion (all effects fire once)",
+      len(STATE["blasts"]) == 1 and len(boom_fx_calls) == 1 and len(done_calls) == 1 and len(FIRES) == 2 and ACTORS[1]["dead"],
+      f"blasts={len(STATE['blasts'])}, fx={len(boom_fx_calls)}, done={len(done_calls)}, fires={len(FIRES)}")
 
 print()
 if failures:

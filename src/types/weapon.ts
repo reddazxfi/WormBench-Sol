@@ -1110,7 +1110,7 @@ export interface FirePayloadConfig {
   spread_delay_ms: number;
   burn_time_ms: number;
   spread_generations: number;
-  decay_mode: 'resting' | 'on_hit';
+  decay_mode: 'instant' | 'at_turn_start';
 }
 
 /**

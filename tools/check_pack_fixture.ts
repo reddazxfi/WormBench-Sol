@@ -45,13 +45,21 @@ const LIBRARIES: PackLibraries = {
 
 const WFCHECK = 'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wfcheck.exe';
 /**
- * Claim keys the engine reads in wkLua 1.0.0 that the installed checker (0.9.61)
- * predates: `hold_as` lends a stock weapon's held pose, `collects_crates` stops a
- * ghost shot collecting a crate. It reads each as a typo, which is what an older
- * DLL does with it. Named one by one rather than filtered by rule, so any other
- * unknown key still fails the pack.
+ * Claim keys the engine reads in wkLua 1.0.0 RC3 (API 5) that the installed
+ * checker (0.9.9) predates: `hold_as` lends a stock weapon's held pose,
+ * `collects_crates` stops a ghost shot collecting a crate, and `cluster_sprite`,
+ * `cluster_homing_sprite`, `cluster_homing`, `armageddon` are API 5 claim keys.
+ * Named one by one rather than filtered by rule, so any other unknown key
+ * still fails the pack.
  */
-const PENDING_ENGINE_KEYS = ['hold_as', 'collects_crates'];
+const PENDING_ENGINE_KEYS = [
+  'hold_as',
+  'collects_crates',
+  'cluster_sprite',
+  'cluster_homing_sprite',
+  'cluster_homing',
+  'armageddon',
+];
 const PENDING_FINDING = new RegExp(
   `warning\\[spec-key-typo\\] Unrecognized spec key "(?:${PENDING_ENGINE_KEYS.join('|')})"[^\\n]*\\n(?:[^\\n]*The engine ignores unknown keys[^\\n]*\\n)?`,
   'g',

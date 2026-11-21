@@ -114,6 +114,7 @@ export interface ModBundle {
   name: string;
   version: string;
   author?: string;
+  apiVersion?: number;
   dependencies: string[];
   components: ModComponent[];
   /** `[sprites."…"]` declarations, keyed by the bundle-relative path. */
@@ -139,6 +140,8 @@ export interface ModWeapon {
   bundleName: string;
   /** Folder the bundle's `mod.toml` sits in, `''` at the root of what was opened. */
   bundleDir: string;
+  /** Manifest `api_version` of the bundle this weapon came from. */
+  bundleApiVersion?: number;
   /** The manifest's dependency list, for carrying a bundle's own libraries. */
   dependencies: string[];
   /** `[sprites."…"]` declarations, keyed by the bundle-relative path. */
@@ -327,6 +330,7 @@ export function readBundles(files: ModFile[]): ModBundle[] {
       name: typeof doc.values.name === 'string' ? doc.values.name : id,
       version: typeof doc.values.version === 'string' ? doc.values.version : '',
       author: typeof doc.values.author === 'string' ? doc.values.author : undefined,
+      apiVersion: typeof doc.values.api_version === 'number' ? doc.values.api_version : undefined,
       dependencies: Array.isArray(doc.values.dependencies)
         ? (doc.values.dependencies as string[])
         : [],
@@ -366,6 +370,7 @@ const RECORD_GROUPS = [
   'jet_pack',
   'parachute',
   'utility',
+  'armageddon',
 ];
 
 /** True when a table looks like a weapon record rather than a config blob. */
@@ -553,7 +558,11 @@ function readRecord(text: string): {
   const sprite = typeof source.sprite === 'string' ? source.sprite : undefined;
   const cluster = isTable(source.cluster) ? (source.cluster as LuaTable) : undefined;
   const clusterSprite =
-    cluster && typeof cluster.sprite === 'string' ? cluster.sprite : undefined;
+    typeof source.cluster_sprite === 'string'
+      ? source.cluster_sprite
+      : cluster && typeof cluster.sprite === 'string'
+        ? cluster.sprite
+        : undefined;
 
   const record: LuaTable = {};
   for (const group of RECORD_GROUPS) {
@@ -707,6 +716,7 @@ export function readWeapons(bundles: ModBundle[], files: ModFile[]): ModWeapon[]
         bundleId: bundle.id,
         bundleName: bundle.name,
         bundleDir: bundle.dir,
+        bundleApiVersion: bundle.apiVersion,
         dependencies: bundle.dependencies,
         spriteDecls: bundle.spriteDecls,
         author: bundle.author,

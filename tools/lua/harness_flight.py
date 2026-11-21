@@ -76,16 +76,20 @@ wa.weapons.hold_sheet = lambda weapon, n: None
 
 def spawn(spec):
     # A follower actor: `sb.flight` writes `.x/.y/.vx/.vy/.facing` and calls
-    # `frame`, `gfx` and `despawn` on it. A missile frame has no worm of its
+    # `frame`, `gfx` and `remove` on it. A missile frame has no worm of its
     # own, so the engine refuses a spawn that names no owner, as here.
     if spec["owner"] is None:
         raise RuntimeError("spawn needs an owner worm or actor")
+    if spec["collide"] is not None or spec["as_object"] is not None:
+        raise RuntimeError("API 5 actors.spawn rejects legacy collide/as_object")
+    if isinstance(spec["gravity"], bool):
+        raise RuntimeError("API 5 actors.spawn requires numeric gravity")
     SPAWNS.append(spec)
     actor = lua.table()
     for name in ("frame", "gfx", "sound"):
         actor[name] = lambda *a: None
     actor["look"] = lambda self, sheet: LOOKS.append((self, sheet))
-    actor["despawn"] = lambda self: DESPAWNS.append(self)
+    actor["remove"] = lambda self: DESPAWNS.append(self)
     return actor
 
 
@@ -114,7 +118,7 @@ def missile(mid, sprite, weapon, x=1000.0, y=1000.0):
     m.sprite = sprite
     m.x, m.y, m.vx, m.vy = x, y, 0.0, 0.0
     m.phase = "pre"
-    m.despawn = lambda *a: None
+    m.remove = lambda *a: None
     return m
 
 

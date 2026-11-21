@@ -32,6 +32,7 @@ import { ownOutputOf } from '../src/utils/modLib/ownOutput';
 import { splitModule } from '../src/utils/modLib/splitModule';
 import { carryClosure, dependencyForModule, rewriteBundlePaths } from '../src/utils/modLib/carryClosure';
 import { declaredNames, generateLuaCode, generateModToml, sanitizeModFolder } from '../src/utils/luaGenerator';
+import { migrateApi4Lua } from '../src/utils/api4Migration';
 import { checkLua } from '../src/utils/luaCheck';
 import {
   DEFAULT_IMPORT_HOLD,
@@ -648,7 +649,12 @@ function carryOf(moduleText: string, project: WeaponProject) {
 // ---- the four real bundles ---------------------------------------------
 const realMods = (() => {
   try {
-    return statSync(MODS).isDirectory();
+    return (
+      statSync(MODS).isDirectory() &&
+      ['vortex', 'pulsar', 'railgun', 'conductor'].every((name) =>
+        statSync(join(MODS, name, 'mod.toml')).isFile(),
+      )
+    );
   } catch {
     return false;
   }
@@ -1213,6 +1219,134 @@ check(
     dependencyForModule('wf-lib/fire_seq') === 'px.fire_seq' &&
     dependencyForModule('lib/whatever') === null,
 );
+
+// ---- API 4 -> API 5 Lua migration helper -----------------------------------
+{
+  const sample = [
+    '-- comment with a:despawn() and collide = false',
+    'local msg = "w:hurt{ amount = 1 } and a.uid"',
+    'local function demo(a, w, obj, hit)',
+    '  a:despawn()',
+    '  w:hurt{ amount = 15 }',
+    '  w:hurt(5)',
+    '  w:drop()',
+    '  w:allow_death()',
+    '  local x = obj.uid + hit.blast_damage',
+    '  local s = wa.world.keys().sprint',
+    '  local box = wa.world.sky',
+    '  w:set_state("sliding")',
+    '  if w.state == \'sinking\' then w:set_state(\'sinking\') end',
+    '  local t = {',
+    '    on_bump = function(ev) end,',
+    '    decay_mode = "resting",',
+    '  }',
+    '  local fire2 = { decay_mode = "on_hit" }',
+    '  wa.on.contact(function() end)',
+    '  wa.actors.spawn({',
+    '    sprite = false, x = 0, y = 0,',
+    '    gravity = false,',
+    '    collide = false,',
+    '    on = { contact = fn1, bump = fn2 },',
+    '  })',
+    '  wa.actors.spawn({ gravity = true, collide = false, x = 1 })',
+    '  wa.actors.spawn({ collide = false })',
+    '  wa.actors.spawn({ x = 1, collide = false })',
+    'end',
+  ].join('\n');
+  const first = migrateApi4Lua(sample);
+  const codeBody = first.text.split('\n').slice(2).join('\n');
+  check(
+    'migrateApi4Lua leaves comments and string literals untouched',
+    first.text.includes('-- comment with a:despawn() and collide = false') &&
+      first.text.includes('"w:hurt{ amount = 1 } and a.uid"'),
+  );
+  check(
+    'migrateApi4Lua rewrites all Tier-1 verbs cleanly',
+    codeBody.includes('a:remove()') &&
+      codeBody.includes('w:hit{ amount = 15 }') &&
+      codeBody.includes('w:hit(5)') &&
+      codeBody.includes('w:release(0, 0)') &&
+      codeBody.includes('w:die{ settled = true }') &&
+      codeBody.includes('obj.id + hit.power') &&
+      codeBody.includes('wa.world.keys().shift') &&
+      codeBody.includes('wa.world.sky()') &&
+      codeBody.includes('w:set_state("falling")') &&
+      codeBody.includes("w.state == 'tumbling'") &&
+      codeBody.includes("w:set_state('tumbling')") &&
+      codeBody.includes('on_contact = function(ev) end') &&
+      codeBody.includes('decay_mode = "instant"') &&
+      codeBody.includes('decay_mode = "at_turn_start"') &&
+      codeBody.includes('gravity = 0,') &&
+      codeBody.includes('gravity = 1,') &&
+      !codeBody.includes('collide = false') &&
+      codeBody.includes('on = { touched = fn1, contact = fn2 }') &&
+      codeBody.includes('wa.on.contact(function() end)'),
+    first.text,
+  );
+  const syntaxErrors = checkLua(first.text, { mode: 'fragment', skipGlobals: true }).filter(
+    (f) => f.severity === 'error',
+  );
+  check(
+    'migrateApi4Lua produces syntactically valid Lua after collide=false stripping',
+    syntaxErrors.length === 0,
+    syntaxErrors.map((f) => f.message).join('; '),
+  );
+
+  const nonShiftSample = [
+    'local function f(w, a, hit)',
+    '  a:despawn()',
+    '  w:hurt{ amount = 8 }',
+    '  w:drop()',
+    '  w:allow_death()',
+    '  local z = hit.blast_damage + a.uid',
+    '  local k = wa.world.keys().sprint',
+    '  local r = wa.world.sky',
+    '  w:set_state("sliding")',
+    '  wa.actors.spawn({ sprite = false, gravity = false, collide = false })',
+    'end',
+  ].join('\n');
+  const once = migrateApi4Lua(nonShiftSample);
+  const twice = migrateApi4Lua(once.text);
+  check(
+    'migrateApi4Lua is idempotent on non-shift rewrites',
+    once.rewrites.length > 0 && twice.rewrites.length === 0 && twice.text === once.text,
+    JSON.stringify({ once: once.rewrites, twice: twice.rewrites }),
+  );
+
+  const tier2 = migrateApi4Lua([
+    'wa.on.gravity_before(function(m) end)',
+    'w:take{ weapon = "bazooka", hide = true }',
+    'local s = w.state_id',
+    'act:advance()',
+    'local k = wa.actors.kind',
+    'wa.actors.spawn({ collide = true, as_object = true, shape = "circle", mask = 1 })',
+  ].join('\n'));
+  check(
+    'migrateApi4Lua emits Tier-2 warnings for breaking API 4 constructs',
+    tier2.warnings.some((w) => w.includes('gravity_before')) &&
+      tier2.warnings.some((w) => w.includes('hide')) &&
+      tier2.warnings.some((w) => w.includes('state_id')) &&
+      tier2.warnings.some((w) => w.includes('advance')) &&
+      tier2.warnings.some((w) => w.includes('actors.kind')) &&
+      tier2.warnings.some((w) => w.includes('`collide`')) &&
+      tier2.warnings.some((w) => w.includes('`as_object`')) &&
+      tier2.warnings.some((w) => w.includes('`shape`')) &&
+      tier2.warnings.some((w) => w.includes('`mask`')),
+    tier2.warnings.join(' | '),
+  );
+
+  const validApi5 = migrateApi4Lua([
+    'wa.actors.spawn({',
+    '  gravity = 0,',
+    '  body = { shape = "circle", mask = 1 },',
+    '})',
+  ].join('\n'));
+  check(
+    'migrateApi4Lua stays silent on valid API 5 body = { shape, mask }',
+    validApi5.warnings.length === 0 && validApi5.rewrites.length === 0,
+    JSON.stringify(validApi5),
+  );
+}
 
 console.log('');
 if (failures.length > 0) {

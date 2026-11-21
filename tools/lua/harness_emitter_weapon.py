@@ -61,10 +61,12 @@ wa.on = {
   hud = function() end,
 }
 wa.actors = { spawn = function(spec)
+  assert(spec.collide == nil and spec.as_object == nil, "API 5 rejects collide/as_object")
+  assert(spec.gravity == nil or type(spec.gravity) == "number", "API 5 requires numeric gravity")
   state.spawned = state.spawned + 1
   state.brains = state.brains or {}
   table.insert(state.brains, spec.on)
-  return { despawn = function() end }
+  return { remove = function() end }
 end }
 wa.draw = {
   ribbon = function(rib)
@@ -81,7 +83,7 @@ wa.draw = {
 wa.sprites = { exists = function() return true end }
 
 function step()
-  local body = { despawn = function() end }
+  local body = { remove = function() end }
   for _, brain in ipairs(state.brains or {}) do brain(body) end
 end
 function fire()

@@ -63,6 +63,7 @@ const ENGINE_GROUPS = new Set([
   'jet_pack',
   'parachute',
   'sheep',
+  'armageddon',
   'projectile',
   'raw',
 ]);

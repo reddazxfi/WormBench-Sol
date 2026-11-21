@@ -1,4 +1,39 @@
-# WormForge Weapon Studio, Engineering Notes (API 4.0)
+# WormForge Weapon Studio, Engineering Notes (API 5 / WormForge 1.0 RC3)
+
+### WormForge 1.0 RC3 / Lua API 5 migration
+
+All four phases of the WormForge 1.0 RC3 (Lua API 5) migration are complete:
+
+- **Phase 1 (SDKs + Lua harnesses):** Updated `spec/lua_sdk/wfws_sdk` and
+  `spec/lua_sdk/effects_sdk` (`api_version = 5`, `version = "1.0.0"`), replacing
+  `:despawn()` with `:remove()`, `:hurt{}` with `:hit{}`, `.uid` with `.id`,
+  diagnostics-only `worm.state_id` with readable `worm.state` strings
+  (`"falling"` replacing `"sliding"`), boolean spawn `gravity` with numeric
+  `0`/`1`, and `collide`/`as_object` on `wa.actors.spawn` with omitted or `body`
+  tables. Updated all 7 Python `lupa` harnesses to enforce strict API 5 rules.
+- **Phase 2 (`src/utils/luaGenerator.ts`):** Bumped emitted `api_version` to
+  `5`, switched stamp pierce and melee strike callbacks to `:hit{...}`, and
+  replaced legacy claim `cluster = { sprite, homing_sprite }` with top-level
+  `cluster_sprite`, `cluster_homing_sprite`, and `projectile.cluster_sprite`.
+- **Phase 3 (Dual-read importer + `migrateApi4Lua` converter):** Updated
+  `src/data/luaHooks.ts` (`on_contact`/`on_bump` claim hooks, API 5 modelled
+  claim keys, removed `gravity_before`/`gravity_after` events) and
+  `src/utils/modLib/{scan,importFeatures,importWeapon,carryClosure}.ts` to
+  dual-read API 4 and API 5 bundles. Added mask-aware single-pass
+  `migrateApi4Lua` (`src/utils/api4Migration.ts`) to rewrite safe Tier-1 API 4
+  constructs and emit non-guessing Tier-2 warnings on `api_version < 5`
+  carried/custom Lua.
+- **Phase 4 (Test suite, test pack, and real API 5 corpus audit):** Regenerated
+  `test_pack/wftest_pack` at `api_version = 5` (66 weapons, 51 sheets), updated
+  `tools/check_mod_import.ts` + `tools/check_carried_lua.ts` with API 4 -> API 5
+  and API 5 pass-through coverage, added API 5 claim keys to
+  `PENDING_ENGINE_KEYS` in `tools/check_pack_fixture.ts` (for pre-1.0
+  `wfcheck.exe` 0.9.9), and audited `C:\Users\lucia\Documents\GitHub\WormForge-Mods`
+  (`audit_records.ts`: 200/200 records, 0 field/mask/output errors;
+  `audit_bundles.ts`: 0 failures on root corpus, 1 pre-existing custom-module
+  round-trip diff on `from_modders/gas_pump`).
+
+---
 
 ### Studio UI polish and visual system unification
 

@@ -274,7 +274,7 @@ id = "author.weapon"
 name = "Weapon Name"
 version = "0.1.0"
 author = "..."
-api_version = 4
+api_version = 5
 format_version = 2
 dependencies = ["wf.sdk", "wfws.sdk"]   # holds + flight builder, as needed
 
@@ -317,8 +317,17 @@ default = "straight"
 "direction" = "opposite"
 ```
 
-The `api_version = 4` / `format_version = 2` numbers are required by the engine
-even though the UI must not display the phrase "API 4.0".
+The `api_version = 5` / `format_version = 2` numbers are required by WormForge
+1.0 RC3 (Lua API 5) even though the UI must not display the phrase "API 4.0".
+The importer dual-reads both API 4 and API 5 bundles (`cluster = { ... }` vs
+top-level `cluster_sprite` / `cluster_homing_sprite`, `:hurt` vs `:hit`,
+`on_bump` vs `on_contact`) and automatically runs `migrateApi4Lua`
+(`src/utils/api4Migration.ts`) on carried and custom Lua when importing from
+`api_version < 5` bundles, reporting Tier-1 rewrites and Tier-2 manual checks in
+the import notes. Installed `wfcheck.exe` (0.9.9) predates API 5 claim keys
+(`hold_as`, `collects_crates`, `cluster_sprite`, `cluster_homing_sprite`,
+`cluster_homing`, `armageddon`), which are tracked in `PENDING_ENGINE_KEYS` in
+`tools/check_pack_fixture.ts`.
 
 ---
 

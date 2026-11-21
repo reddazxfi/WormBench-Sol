@@ -85,7 +85,7 @@ export function stockDonorBaseline(slot: string | undefined): WepBaseline | unde
         spread_delay_ms: 30,
         burn_time_ms: 1500,
         spread_generations: 10,
-        decay_mode: 'resting',
+        decay_mode: 'instant',
       }),
     },
     specialSubtype: donor.specialSubtype ?? 0,

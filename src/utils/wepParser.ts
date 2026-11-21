@@ -985,7 +985,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
             spread_generations: Math.max(0, Math.floor((bodyRaw[0xf8] ?? 0) / 2)),
             spread_delay_ms: bodyRaw[0xfc] ?? 0,
             burn_time_ms: bodyRaw[0x100] ?? 0,
-            decay_mode: (bodyRaw[0x104] ?? 0) === 1 ? 'on_hit' : 'resting',
+            decay_mode: (bodyRaw[0x104] ?? 0) === 1 ? 'at_turn_start' : 'instant',
           }
         : undefined,
     enableCustomLua: false,

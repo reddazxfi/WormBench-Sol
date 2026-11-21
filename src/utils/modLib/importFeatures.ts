@@ -1053,8 +1053,8 @@ export async function readBundleFeatures(args: {
     }
     // The melee strike: the box, the tick and the callback the swing hands a
     // victim to. Damage and kind live in that callback's text, because what a
-    // hit does is the weapon's own code (`victim:hurt{ amount = 24 }` or
-    // `zap.hurt_electric(victim, 24, ...)`).
+    // hit does is the weapon's own code (`victim:hit{ amount = 24 }`, legacy
+    // API 4 `victim:hurt{ amount = 24 }`, or `zap.hurt_electric(victim, 24, ...)`).
     const meleeTable = isTable(holdTable.melee) ? holdTable.melee : undefined;
     if (meleeTable) {
       const meleeText = sbHold?.text ?? '';
@@ -2044,11 +2044,22 @@ export async function readBundleFeatures(args: {
     setPackPath(slot, path);
   }
   const stampCall = readCallTable(moduleText, 'wa.land.stamp');
-  const sourceCluster = source?.cluster;
+  const sourceProj = isTable(source?.projectile) ? (source.projectile as LuaTable) : undefined;
+  const sourceCluster = source?.cluster ?? sourceProj?.cluster;
   const claimCluster = isTable(sourceCluster) ? sourceCluster : undefined;
-  setPackPath('cluster_sprite', str(claimCluster?.sprite));
-  setPackPath('cluster_homing_sprite', str(claimCluster?.homing_sprite));
-  setPackPath('strike_sprite', str(source?.sprite));
+  setPackPath(
+    'cluster_sprite',
+    str(source?.cluster_sprite) ??
+      str(sourceProj?.cluster_sprite) ??
+      str(claimCluster?.sprite),
+  );
+  setPackPath(
+    'cluster_homing_sprite',
+    str(source?.cluster_homing_sprite) ??
+      str(sourceProj?.cluster_homing_sprite) ??
+      str(claimCluster?.homing_sprite),
+  );
+  setPackPath('strike_sprite', str(source?.sprite) ?? str(sourceProj?.sprite));
   setPackPath('strike_plane', str(source?.plane));
 
   const packArt: Partial<Record<PackArtSlot, PackArtAsset>> = {};

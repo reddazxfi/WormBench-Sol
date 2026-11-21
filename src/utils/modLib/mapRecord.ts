@@ -160,12 +160,18 @@ function readFire(table: LuaTable | undefined, base: FirePayloadConfig): FirePay
   if (!table) return base;
   const tape = new Tape(table);
   const decay = tape.take('decay_mode');
+  const decayMode: FirePayloadConfig['decay_mode'] =
+    decay === 'instant' || decay === 'resting'
+      ? 'instant'
+      : decay === 'at_turn_start' || decay === 'on_hit'
+        ? 'at_turn_start'
+        : base.decay_mode;
   return {
     ...base,
     spread_delay_ms: int(tape.take('spread_delay_ms')) ?? base.spread_delay_ms,
     burn_time_ms: int(tape.take('burn_time_ms')) ?? base.burn_time_ms,
     spread_generations: int(tape.take('spread_generations')) ?? base.spread_generations,
-    decay_mode: decay === 'on_hit' || decay === 'resting' ? decay : base.decay_mode,
+    decay_mode: decayMode,
   };
 }
 

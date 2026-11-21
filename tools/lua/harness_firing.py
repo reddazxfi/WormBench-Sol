@@ -107,6 +107,14 @@ def py_launch(spec):
 
 
 def py_actor_spawn(spec, handle):
+    if spec["collide"] is not None:
+        raise ValueError(f"API 5 actors.spawn rejects legacy collide={spec['collide']!r}")
+    if spec["as_object"] is not None:
+        raise ValueError(f"API 5 actors.spawn rejects legacy as_object={spec['as_object']!r}")
+    grav_raw = spec["gravity"]
+    if isinstance(grav_raw, bool):
+        raise ValueError(f"API 5 actors.spawn requires numeric gravity factor, got bool {grav_raw!r}")
+    body_tbl = spec["body"]
     aid = STATE["next_actor_id"]
     STATE["next_actor_id"] += 1
     rec = {
@@ -118,8 +126,8 @@ def py_actor_spawn(spec, handle):
         "vx": float(spec["vx"] or 0),
         "vy": float(spec["vy"] or 0),
         "sprite": spec["sprite"],
-        "gravity": bool(spec["gravity"]) if spec["gravity"] is not None else False,
-        "collide": bool(spec["collide"]) if spec["collide"] is not None else False,
+        "gravity": float(grav_raw) if grav_raw is not None else 0.0,
+        "collide": body_tbl is not None,
         "persist": bool(spec["persist"]) if spec["persist"] is not None else False,
         "dead": False,
     }
@@ -191,7 +199,7 @@ local function make_actor(spec)
     _on_frame = frame_fn,
   }
   a.id = _py.actor_spawn(spec, a)
-  function a:despawn()
+  function a:remove()
     if not self.dead then
       self.dead = true
       _py.actor_despawn(self.id)
@@ -233,7 +241,7 @@ function _make_worm(id, x, y, aim, facing, weapon)
     hp = 100,
     turn = true,
     aiming = true,
-    state_id = 0x67,
+    state = "ready",
     weapon = weapon or "test.wep",
     shots_fired = 0,
     shots_to_fire = 1,
@@ -344,7 +352,7 @@ firing.actor(
 )
 check(
     "case 2: firing.actor scales by ev.power and forwards actor table fields",
-    len(ACTORS_SPAWNED) == 1 and abs(ACTORS_SPAWNED[0]["vy"] + 4.0) < 1e-6 and ACTORS_SPAWNED[0]["sprite"] == "sprites/bolt.png" and ACTORS_SPAWNED[0]["gravity"] is True,
+    len(ACTORS_SPAWNED) == 1 and abs(ACTORS_SPAWNED[0]["vy"] + 4.0) < 1e-6 and ACTORS_SPAWNED[0]["sprite"] == "sprites/bolt.png" and ACTORS_SPAWNED[0]["gravity"] == 1.0,
     f"spawned={ACTORS_SPAWNED[0] if ACTORS_SPAWNED else None}",
 )
 

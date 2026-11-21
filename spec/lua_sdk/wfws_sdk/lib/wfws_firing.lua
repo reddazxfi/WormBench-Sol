@@ -38,32 +38,32 @@ local seq_running = {}
 local seq_settled = {}
 local seq_cancelled = {}
 
--- Non-firing WA worm state ids that should interrupt a timed sequence
+-- Non-firing WA worm states that should interrupt a timed sequence (`verbs.md` readable names)
 local NOT_FIRING = {
-  [0x65] = true, -- standing
-  [0x66] = true, -- walking
-  [0x6C] = true, -- punching
-  [0x6E] = true, -- drilling
-  [0x6F] = true, -- teleporting
-  [0x70] = true, -- rope_firing
-  [0x71] = true, -- torching
-  [0x73] = true, -- rope_rolling
-  [0x76] = true, -- getting_up
-  [0x77] = true, -- jump_prepare
-  [0x78] = true, -- jetpacking
-  [0x79] = true, -- jumping
-  [0x7A] = true, -- jump_falling
-  [0x7B] = true, -- roping
-  [0x7C] = true, -- bungee
-  [0x7D] = true, -- parachuting
-  [0x7E] = true, -- falling / sliding
-  [0x7F] = true, -- tumbling
-  [0x80] = true, -- hit
-  [0x81] = true, -- blasted
-  [0x82] = true, -- dying
-  [0x85] = true, -- drowning
-  [0x86] = true, -- frozen
-  [0x87] = true, -- dead
+  standing = true,
+  walking = true,
+  punching = true,
+  drilling = true,
+  teleporting = true,
+  rope_firing = true,
+  torching = true,
+  after_rope = true,
+  getting_up = true,
+  jump_prepare = true,
+  jetpacking = true,
+  jumping = true,
+  jump_falling = true,
+  roping = true,
+  bungee = true,
+  parachuting = true,
+  falling = true,
+  tumbling = true,
+  hit = true,
+  blasted = true,
+  dying = true,
+  drowning = true,
+  frozen = true,
+  dead = true,
 }
 
 -- ---------------------------------------------------------------------------
@@ -147,10 +147,10 @@ local fuse_last_frame = -1
 local fuse_default_ms = 3000
 
 local FUSE_AIM_STATES = {
-  [0x65] = true, -- standing
-  [0x66] = true, -- walking
-  [0x67] = true, -- aiming
-  [0x68] = true, -- power charging
+  standing = true,
+  walking = true,
+  ready = true,
+  charging = true,
 }
 
 function M.install_fuse(default_ms)
@@ -170,7 +170,7 @@ function M.install_fuse(default_ms)
     if not worms then return end
     for i = 1, #worms do
       local w = worms[i]
-      if w.turn and (w.aiming or FUSE_AIM_STATES[w.state_id]) then
+      if w.turn and (w.aiming or (w.state and FUSE_AIM_STATES[w.state])) then
         fuse_by_worm[w.id] = digit * 1000
       end
     end
@@ -554,6 +554,20 @@ local function emit_one_actor(ev, spec, dx, dy)
   args.vy = vy
   if args.owner == nil then args.owner = worm end
   if args.sprite == nil or args.sprite == "" then args.sprite = false end
+  if args.gravity == nil then
+    args.gravity = 0
+  elseif type(args.gravity) == "boolean" then
+    args.gravity = args.gravity and 1 or 0
+  end
+  if args.body == nil and (args.collide or args.as_object) then
+    args.body = {
+      layer = args.as_object and "object" or "missile",
+      hits = { land = true, worms = true },
+      hit_by = "all",
+    }
+  end
+  args.collide = nil
+  args.as_object = nil
   return wa.actors.spawn(args)
 end
 
@@ -753,7 +767,7 @@ function M.sequence(ev, spec)
     if id ~= nil and seq_cancelled[id] == true then return true end
     if not worm_alive(worm) or not worm.turn then return true end
     if cancel_weapon and worm.weapon ~= cancel_weapon then return true end
-    if NOT_FIRING[worm.state_id] == true then return true end
+    if worm.state and NOT_FIRING[worm.state] == true then return true end
     return false
   end
 
@@ -790,8 +804,7 @@ function M.sequence(ev, spec)
     sprite = false,
     x = worm.x,
     y = worm.y,
-    gravity = false,
-    collide = false,
+    gravity = 0,
     persist = true,
     drown = false,
     owner = worm,
@@ -805,7 +818,7 @@ function M.sequence(ev, spec)
           if spec.on_done then spec.on_done(worm, fired) end
         end
         release()
-        a:despawn()
+        a:remove()
         return
       end
 
@@ -813,7 +826,7 @@ function M.sequence(ev, spec)
         drain = drain - 1
         if drain <= 0 then
           release()
-          a:despawn()
+          a:remove()
         end
         return
       end
@@ -823,7 +836,7 @@ function M.sequence(ev, spec)
         end_fire()
         if spec.on_done then spec.on_done(worm, fired) end
         release()
-        a:despawn()
+        a:remove()
         return
       end
 
@@ -841,7 +854,7 @@ function M.sequence(ev, spec)
         end_fire()
         if spec.on_done then spec.on_done(worm, fired) end
         release()
-        a:despawn()
+        a:remove()
         return
       end
 
@@ -856,7 +869,7 @@ function M.sequence(ev, spec)
           drain = drain_frames
         else
           release()
-          a:despawn()
+          a:remove()
         end
       end
     end,

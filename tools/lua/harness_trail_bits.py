@@ -96,10 +96,12 @@ wa.weapons = {
   hold_sheet = function() end,
 }
 wa.actors = { spawn = function(spec)
+  assert(spec.collide == nil and spec.as_object == nil, "API 5 rejects collide/as_object")
+  assert(spec.gravity == nil or type(spec.gravity) == "number", "API 5 requires numeric gravity")
   state.spawned = state.spawned + 1
   table.insert(state.brains, spec.on)
   return {
-    despawn = function() end,
+    remove = function() end,
     frame = function() end,
     gfx = function() end,
     x = 0.0, y = 0.0, vx = 0.0, vy = 0.0,
@@ -117,7 +119,7 @@ function dispatch_missile(m)
   for _, fn in ipairs(state.hooks.missile_frame) do fn(m) end
 end
 function step()
-  for _, brain in ipairs(state.brains) do brain({ despawn = function() end }) end
+  for _, brain in ipairs(state.brains) do brain({ remove = function() end }) end
 end
 function draw()
   for _, fn in ipairs(state.hooks.draw) do fn() end

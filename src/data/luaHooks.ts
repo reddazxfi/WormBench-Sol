@@ -29,6 +29,8 @@ export const CLAIM_HOOKS = [
   { key: 'on_transport', count: 1, takes: 'ev, the teleported worm' },
   { key: 'on_proximity', count: 0, takes: 'ev, a worm near the round' },
   { key: 'on_select', count: 0, takes: 'a table of behaviours, not a function' },
+  { key: 'on_contact', count: 0, takes: 'ev, mine/actor contact (API 5, renamed from on_bump)' },
+  { key: 'on_bump', count: 0, takes: 'ev, legacy API 4 mine contact hook (migrated to on_contact)' },
 ] as const;
 
 export type ClaimHookKey = (typeof CLAIM_HOOKS)[number]['key'];
@@ -64,6 +66,11 @@ export const CLAIM_KEYS_MODELLED = [
   'params',
   'truecolor',
   'cluster',
+  'cluster_sprite',
+  'cluster_homing_sprite',
+  'cluster_homing',
+  'collects_crates',
+  'armageddon',
   'sprite',
   'plane',
   'sheep_sprites',
@@ -106,8 +113,8 @@ export const CLAIM_FLAG_KEYS = [
  * the quiet failure this column exists for.
  *
  * `count` is the installed corpus (the same 255 modules as above).
- * `gravity_before`, `gravity_after`, `oil_explode` and `skim` are bound by the
- * engine and appear in none of them.
+ * `oil_explode` and `skim` are bound by the engine and appear in none of them.
+ * `gravity_before` and `gravity_after` were removed in API 5.
  */
 export interface WaOnEvent {
   event: string;
@@ -154,8 +161,6 @@ export const WA_ON_EVENTS: readonly WaOnEvent[] = [
     },
     count: 2,
   },
-  { event: 'gravity_before', takes: 'motion: x, y, vx, vy (before stock gravity)', count: 0 },
-  { event: 'gravity_after', takes: 'motion: x, y, vx, vy (after gravity, wind and damping)', count: 0 },
   { event: 'oil_explode', takes: 'event: x, y', count: 0 },
   { event: 'skim', takes: 'event: x, y', count: 0 },
 ];

@@ -711,7 +711,7 @@ function M.flight(ctx, opts)
       logged[id] = nil
       age[id] = nil
       deferred[id], deferred_at[id] = nil, nil
-      b:despawn()
+      b:remove()
     end
   end
 
@@ -719,7 +719,7 @@ function M.flight(ctx, opts)
     local f = follow[id]
     if f then
       follow[id] = nil
-      f.actor:despawn()
+      f.actor:remove()
     end
     cycl_phase[id] = nil
   end
@@ -880,7 +880,7 @@ function M.flight(ctx, opts)
         cfg = cfg, gen = gen,
         actor = wa.actors.spawn({
           sprite = cfg.sheet, x = m.x, y = m.y,
-          gravity = false, collide = false,
+          gravity = 0,
           -- No worm has the turn while a worm that lost control is still
           -- flying its shot, and a spawn without an owner errors: the bits
           -- then flew with the stock sprite hidden and no art at all. The follower
@@ -1041,12 +1041,12 @@ M.PX_HANDS = shared.PX_HANDS
 local HOLD_DEPTH = 0x10000          -- `worm_hold.rs`: our.depth.FRONT
 local HOLD_HAND_CELL = 60.0         -- PX's three hand sheets are 60x60
 local HOLD_AIM_STATES = {
-  [0x67] = true, [0x68] = true, [0x69] = true,
+  ready = true, charging = true, prefiring = true,
 }
 -- WA's firing frames. They are the two frames of a shot, which is why a firing
 -- animation needs a window of its own (`fire.ticks`).
 local HOLD_FIRE_STATES = {
-  [0x6A] = true, [0x6B] = true,
+  firing = true, fired = true,
 }
 -- The keys the engine reads off `hold` (`HoldSpec`). Everything else in the
 -- table is ours: cells, offset, silent sheet, `weapon`, `size`, `hand_size`.
@@ -1485,7 +1485,7 @@ local function hold_fire_step(entry, w, ws, now)
   local fire = entry.fire
   local keep = entry.keep_firing
   if not fire and not keep then return false end
-  local firing = w.state_id ~= nil and HOLD_FIRE_STATES[w.state_id] or false
+  local firing = w.state ~= nil and HOLD_FIRE_STATES[w.state] or false
   local ticks = fire and (fire.ticks or 0) or 0
   -- A held weapon that stays on the firing frames (`keep_firing`) needs no
   -- window of its own: WA's own two frames are the shot.
@@ -1803,7 +1803,7 @@ end
 -- visible, this weapon selected, and an aiming state.
 local function hold_aiming(entry, w)
   return w.hp and w.hp > 0 and w.visible and w.body_visible
-    and w.weapon == entry.weapon and HOLD_AIM_STATES[w.state_id] and true or false
+    and w.weapon == entry.weapon and HOLD_AIM_STATES[w.state] and true or false
 end
 
 local function hold_ensure_hook()

@@ -320,7 +320,7 @@ export const ProjectileSimulation: React.FC<ProjectileSimulationProps> = ({ proj
           burn_time_ms: 1500,
           spread_delay_ms: 30,
           spread_generations: 10,
-          decay_mode: 'resting',
+          decay_mode: 'instant',
         };
         const count = 10;
         const newFlames: SimulatedFlame[] = [];

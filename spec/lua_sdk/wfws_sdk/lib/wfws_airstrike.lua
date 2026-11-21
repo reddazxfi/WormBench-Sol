@@ -76,7 +76,7 @@ local ACTOR_REQ = {
   y = 0,
   vx = 0,
   vy = 0,
-  gravity = true,
+  gravity = 1,
   owner = nil,
 }
 local FIRE_REQ = {
@@ -763,15 +763,29 @@ end
 local function despawn_strike_actors(s)
   if s.parts then
     for _, p in ipairs(s.parts) do
-      if p.actor and not p.actor.dead then p.actor:despawn() end
+      if p.actor and not p.actor.dead then p.actor:remove() end
     end
   end
-  if s.hull and not s.hull.dead then s.hull:despawn() end
+  if s.hull and not s.hull.dead then s.hull:remove() end
   s.fade_draw = false
   active_strikes[s.spec.weapon] = nil
 end
 
+local function is_spawn_blocked(x, y)
+  if wa.world and wa.world.collides then
+    if wa.world.collides({ x = x, y = y, radius = 9 }) then return true end
+  end
+  if wa.land and wa.land.solid then
+    if wa.land.solid(math.floor(x), math.floor(y)) then return true end
+  end
+  return false
+end
+
 local function boom_plane(s)
+  if s.done then return end
+  s.done = true
+  s.phase = "done"
+
   local pc = s.plane_cfg
   if s.owner and pc.boom_fires > 0 and wa.fire and wa.fire.spawn then
     local count = math.min(3, pc.boom_fires)
@@ -820,8 +834,6 @@ local function boom_plane(s)
       s.hull:explode({ damage = pc.boom_damage, id = pc.boom_kind, below = pc.boom_below })
     end
   end
-  s.done = true
-  s.phase = "done"
   despawn_strike_actors(s)
   if s.spec.effects.on_done then s.spec.effects.on_done(s) end
 end
@@ -835,6 +847,10 @@ local function spawn_one_payload(s, drop_x, drop_y, item_idx)
 
   local sx = drop_x + (rel.jitter_x > 0 and wa.random(-rel.jitter_x, rel.jitter_x) or 0)
   local sy = drop_y + (rel.jitter_y > 0 and wa.random(-rel.jitter_y, rel.jitter_y) or 0)
+
+  if (spec.entry.mode == "payload" or not spec.plane.enabled) and spec.entry.spawn_at == "cursor" and is_spawn_blocked(sx, sy) then
+    return false, "blocked"
+  end
 
   local center_offset = item_idx - (rel.count + 1) / 2
   local jvx = rel.jitter_vx > 0 and (wa.random(-rel.jitter_vx, rel.jitter_vx) / 100) or 0
@@ -998,7 +1014,22 @@ local function spawn_one_payload(s, drop_x, drop_y, item_idx)
     return ok, c
   elseif kind == "actor" then
     local ac = pay.actor
+    ACTOR_REQ.gravity = 1
+    ACTOR_REQ.body = nil
+    ACTOR_REQ.sprite = false
     copy_record_fields(ACTOR_REQ, ac)
+    if type(ACTOR_REQ.gravity) == "boolean" then
+      ACTOR_REQ.gravity = ACTOR_REQ.gravity and 1 or 0
+    end
+    if ACTOR_REQ.body == nil and (ACTOR_REQ.collide or ACTOR_REQ.as_object) then
+      ACTOR_REQ.body = {
+        layer = ACTOR_REQ.as_object and "object" or "missile",
+        hits = { land = true, worms = true },
+        hit_by = "all",
+      }
+    end
+    ACTOR_REQ.collide = nil
+    ACTOR_REQ.as_object = nil
     ACTOR_REQ.owner = opt(ac.owner, s.owner)
     ACTOR_REQ.x = sx
     ACTOR_REQ.y = sy
@@ -1617,6 +1648,18 @@ function M.strike(ev, explicit_weapon_id)
     start_x = ev.x + entry.drop_offset_x
     start_y = entry.spawn_at == "cursor" and ev.y or sky_y
     start_phase = "release"
+    if entry.spawn_at == "cursor" and is_spawn_blocked(start_x, start_y) then
+      if wa.sound and wa.sound.play then
+        wa.sound.play(ev.worm, 120)
+      end
+      if ev.worm.ammo then
+        local ok_ammo, cur = pcall(ev.worm.ammo, ev.worm, spec.weapon)
+        if ok_ammo and type(cur) == "number" and cur >= 0 then
+          pcall(ev.worm.ammo, ev.worm, spec.weapon, 1)
+        end
+      end
+      return nil
+    end
   elseif entry.mode == "above" then
     local lead_x = #drops > 0 and drops[1] or center_x
     start_x = lead_x - spd.slow_distance * dir
@@ -1672,12 +1715,18 @@ function M.strike(ev, explicit_weapon_id)
   -- Instant click-only payload delivery when windup == 0 and frames_between == 0 (or count <= 1 with no windup)
   if is_payload_only and rel.windup == 0 and (rel.frames_between == 0 or rel.count <= 1 or rel.pattern == "burst" or rel.pattern == "offsets") then
     local total = rel.count
+    local handled = 0
     for idx = 1, total do
       local sx = drops[idx] ~= nil and drops[idx] or start_x
-      local ok = spawn_one_payload(s, sx, start_y, idx)
-      if ok then s.released = s.released + 1 end
+      local ok, res = spawn_one_payload(s, sx, start_y, idx)
+      if ok then
+        s.released = s.released + 1
+        handled = handled + 1
+      elseif res == "blocked" then
+        handled = handled + 1
+      end
     end
-    if s.released >= total then
+    if handled >= total then
       s.done = true
       s.phase = "done"
       active_strikes[spec.weapon] = nil
@@ -1694,8 +1743,7 @@ function M.strike(ev, explicit_weapon_id)
       y = start_y,
       vx = 0,
       vy = 0,
-      gravity = false,
-      collide = false,
+      gravity = 0,
       owner = ev.worm,
       on = function() step_direct_payload(s) end,
     })
@@ -1709,11 +1757,15 @@ function M.strike(ev, explicit_weapon_id)
     y = start_y,
     vx = 0,
     vy = 0,
-    gravity = false,
-    collide = pc.collide,
-    as_object = pc.as_object,
+    gravity = 0,
     owner = ev.worm,
   }
+  if pc.collide or pc.as_object then
+    spawn_spec.body = {
+      layer = pc.as_object and "object" or "missile",
+      hit_by = "all",
+    }
+  end
   if pc.collide then
     spawn_spec.on = {
       frame = function() step_plane(s) end,
@@ -1747,8 +1799,7 @@ function M.strike(ev, explicit_weapon_id)
         y = start_y,
         vx = 0,
         vy = 0,
-        gravity = false,
-        collide = false,
+        gravity = 0,
         owner = ev.worm,
         on = function() end,
       })

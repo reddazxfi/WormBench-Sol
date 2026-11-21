@@ -93,5 +93,5 @@ export const DEFAULT_FIRE: FirePayloadConfig = {
   spread_delay_ms: 30,
   burn_time_ms: 1500,
   spread_generations: 10,
-  decay_mode: 'resting',
+  decay_mode: 'instant',
 };

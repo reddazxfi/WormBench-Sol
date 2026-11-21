@@ -72,7 +72,7 @@ local function start_driver(t, owner)
   -- Hidden timer; `persist` keeps it alive through a blast so the shed never
   -- freezes. It exits when `trails` empties.
   driver = wa.actors.spawn({
-    sprite = t.beam, visible = false, gravity = false, collide = false,
+    sprite = t.beam, visible = false, gravity = 0,
     persist = true, owner = owner,
     on = function(a)
       tick = tick + 1
@@ -92,7 +92,7 @@ local function start_driver(t, owner)
           end
         end
       end
-      if #trails == 0 then driver = nil; a:despawn() end
+      if #trails == 0 then driver = nil; a:remove() end
     end,
   })
   return driver ~= nil

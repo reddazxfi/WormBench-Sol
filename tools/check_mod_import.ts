@@ -958,7 +958,7 @@ return {
   const clip = p.aimClip;
   near('WF 47: the clip imports enabled', clip?.enabled, true);
   near('WF 47: the clip length', clip?.ticks, 16);
-  near('WF 47: the finish', clip?.finish, 'endTurn');
+  near('WF 47: the finish', clip?.finish, 'none');
   near('WF 47: the keys come back', clip?.keys.length, 4);
   near('WF 47: the strike key angle', clip?.keys[2]?.angle, 60);
   near('WF 47: the strike key easing', clip?.keys[2]?.ease, 'out_cubic');
@@ -1203,7 +1203,7 @@ return {
   );
   check(
     'WF 55: the callback reads the strike',
-    /hit = function\(victim, vx, vy, hit\) victim:hurt\{ amount = hit and hit\.damage/.test(
+    /hit = function\(victim, vx, vy, hit\) victim:hit\{ amount = hit and hit\.damage/.test(
       comboLua,
     ),
     'the hit callback does not take the strike',
@@ -1354,7 +1354,7 @@ return {
     // The strike is the callback's fourth argument now, so a combo can give each
     // hit its own damage; the literal keeps a three-argument caller working.
     lua.includes(
-      'hit = function(victim, vx, vy, hit) victim:hurt{ amount = hit and hit.damage or 24, vx = vx, vy = vy } end,',
+      'hit = function(victim, vx, vy, hit) victim:hit{ amount = hit and hit.damage or 24, vx = vx, vy = vy } end,',
     ),
     'the damage (and its kind) has to stay in the weapon, not in the library',
   );
@@ -1369,19 +1369,19 @@ return {
   );
   check(
     'WF 50: the shot it fires is a ghost',
-    ['sprite = 0,', 'trail = { sprite = 0 },', 'action = "none",', 'burst = "nothing",', 'retreat = 5000,'].every(
+    ['sprite = 0,', 'animation = 0,', 'explode_on_space = false,', 'ends_on_contact = {  },', 'trail = { sprite = 0 },', 'action = "none",', 'burst = "nothing",'].every(
       (row) => lua.includes(row),
-    ),
-    'a melee that fires a real shot would draw, blast and hurt',
+    ) && !lua.includes('retreat = 5000,'),
+    'a melee that fires a real shot would draw, blast and hurt, or hardcode retreat over scheme rules',
   );
   // WA hands the turn over when the shot it fired is gone or the retreat runs
   // out, so a ghost that detonated on contact at the worm's feet still ended the
   // turn a frame after the swing. A nonzero `fuse` is also WA's "timed, not
-  // impact detonated" switch, so the ghost lives exactly the retreat window.
+  // impact detonated" switch, so the ghost lives the donor/retreat window.
   check(
-    'WF 50: the ghost outlives the retreat',
-    lua.includes('fuse = 5000,'),
-    'a contact-detonated ghost ends the turn before the retreat window is seen',
+    'WF 50: the ghost outlives the retreat window',
+    lua.includes('fuse = 3000,'),
+    'a contact-detonated ghost ends the turn before the scheme retreat window is seen',
   );
   const ownRetreat: WeaponProject = {
     ...full,
@@ -1446,10 +1446,10 @@ return {
     'required at load, where wa does not exist',
   );
   check(
-    'WF 43: the pierce arms its hurt before it lands',
+    'WF 43: the pierce arms its hit before it lands',
     lua.indexOf('zap.set_message_electric(20') > lua.indexOf('local function stamp_hit') &&
-      lua.indexOf('zap.set_message_electric(20') < lua.indexOf('o:hurt{'),
-    'arm missing or after the hurt',
+      lua.indexOf('zap.set_message_electric(20') < lua.indexOf('o:hit{'),
+    'arm missing or after the hit',
   );
   check(
     'WF 43: px.electric declared',
@@ -2097,6 +2097,249 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
       p66.fireSequence.fuseMode === 'aim' &&
       p66.fireSequence.liveAim === false,
     JSON.stringify(p66?.fireSequence),
+  );
+}
+
+// ---- API 4 -> API 5 bundle migration & API 5 dual-read check ---------------
+{
+  const samplePng = files.find((f) => f.path.endsWith('.png') && f.bytes)?.bytes ?? new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const api4Files: ModFile[] = [
+    {
+      path: 'mod.toml',
+      text: [
+        'id = "legacy.bomber"',
+        'name = "Legacy Bomber"',
+        'version = "0.1.0"',
+        'author = "Tester"',
+        'api_version = 4',
+        'format_version = 2',
+        '',
+        '[[components]]',
+        'id = "legacy.bomber"',
+        'type = "weapon"',
+        'name = "Legacy Bomber"',
+        'entry = "weapons/legacy.lua"',
+      ].join('\n'),
+    },
+    {
+      path: 'weapons/legacy.lua',
+      text: [
+        'return {',
+        '  install = function(ctx)',
+        '    local function run_legacy(w, obj, hit)',
+        '      obj:despawn()',
+        '      w:hurt{ amount = 12 }',
+        '      w:drop()',
+        '      w:allow_death()',
+        '      local _ = obj.uid + hit.blast_damage',
+        '      local sp = wa.world.keys().sprint',
+        '      local sky = wa.world.sky',
+        '      w:set_state("sliding")',
+        '      local function on_t() end',
+        '      local function on_b() end',
+        '      wa.actors.spawn({',
+        '        sprite = false, x = 0, y = 0,',
+        '        gravity = false,',
+        '        collide = false,',
+        '        on = { contact = on_t, bump = on_b },',
+        '      })',
+        '      wa.actors.spawn({ sprite = false, x = 0, y = 0, as_object = true })',
+        '      local sid = w.state_id',
+        '      return sp, sky, sid',
+        '    end',
+        '    wa.on.contact(function(w, o) end)',
+        '    wa.on.gravity_before(function(m) end)',
+        '    wa.weapons.replace{',
+        '      name = "Legacy Bomber",',
+        '      copy_from = "stock.cluster_bomb",',
+        '      cluster = {',
+        '        sprite = "sprites/legacy/bit.png",',
+        '        homing_sprite = "sprites/legacy/homing.png",',
+        '      },',
+        '      on_bump = function(ev)',
+        '        ev.worm:hurt{ amount = 10 }',
+        '      end,',
+        '      on_explode = function(ev)',
+        '        run_legacy(ev.worm, ev.missile, { blast_damage = 5 })',
+        '      end,',
+        '    }',
+        '  end,',
+        '}',
+      ].join('\n'),
+    },
+    { path: 'sprites/legacy/bit.png', text: '', bytes: samplePng },
+    { path: 'sprites/legacy/homing.png', text: '', bytes: samplePng },
+  ];
+  const api4Bundles = readBundles(api4Files);
+  const api4Weapons = readWeapons(api4Bundles, api4Files);
+  check(
+    'API 4 legacy bundle reads apiVersion and cluster.sprite',
+    api4Bundles[0]?.apiVersion === 4 &&
+      api4Weapons[0]?.bundleApiVersion === 4 &&
+      api4Weapons[0]?.clusterSprite === 'sprites/legacy/bit.png',
+    JSON.stringify({ api: api4Bundles[0]?.apiVersion, sprite: api4Weapons[0]?.clusterSprite }),
+  );
+  const api4Import = await importBundleWeapon(api4Weapons[0], api4Files);
+  const api4Proj = fullProject(api4Import.project as WeaponProject, 'Legacy Bomber');
+  const api4Toml = generateModToml(api4Proj);
+  const api4Lua = generateLuaCode(api4Proj);
+  check(
+    'API 4 import recovers packArt.cluster_sprite and cluster_homing_sprite',
+    !!api4Proj.packArt?.cluster_sprite?.file && !!api4Proj.packArt?.cluster_homing_sprite?.file,
+    JSON.stringify(Object.keys(api4Proj.packArt ?? {})),
+  );
+  check(
+    'API 4 export emits API 5 manifest and top-level cluster_sprite / cluster_homing_sprite',
+    api4Toml.includes('api_version = 5') &&
+      api4Lua.includes('cluster_sprite = ') &&
+      api4Lua.includes('cluster_homing_sprite = ') &&
+      !api4Lua.includes('cluster = {'),
+  );
+  check(
+    'API 4 carried code migrates Tier-1 constructs, remaps on_bump -> on_contact, and keeps wa.on.contact intact',
+    api4Lua.includes('obj:remove()') &&
+      api4Lua.includes('w:hit{ amount = 12 }') &&
+      api4Lua.includes('w:release(0, 0)') &&
+      api4Lua.includes('w:die{ settled = true }') &&
+      api4Lua.includes('obj.id + hit.power') &&
+      api4Lua.includes('wa.world.keys().shift') &&
+      api4Lua.includes('wa.world.sky()') &&
+      api4Lua.includes('w:set_state("falling")') &&
+      api4Lua.includes('gravity = 0,') &&
+      !api4Lua.includes('collide = false') &&
+      /on\s*=\s*\{\s*touched\s*=\s*on_t\s*,\s*contact\s*=\s*on_b\s*\}/.test(api4Lua) &&
+      api4Lua.includes('wa.on.contact(function(w, o)') &&
+      api4Lua.includes('on_contact = function(ev)') &&
+      !api4Lua.includes('on_bump =') &&
+      api4Lua.includes('ev.worm:hit{ amount = 10 }'),
+    api4Lua,
+  );
+  check(
+    'API 4 import notes summarize migration and Tier-2 manual checks',
+    api4Import.notes.some((n) => n.startsWith('API 4 -> 5 migrated:')) &&
+      api4Import.notes.some((n) => n.includes('as_object')) &&
+      api4Import.notes.some((n) => n.includes('gravity_before')) &&
+      api4Import.notes.some((n) => n.includes('state_id')),
+    api4Import.notes.join(' | '),
+  );
+
+  const api5Files: ModFile[] = [
+    {
+      path: 'mod.toml',
+      text: [
+        'id = "modern.bomber"',
+        'name = "Modern Bomber"',
+        'version = "0.1.0"',
+        'author = "Tester"',
+        'api_version = 5',
+        'format_version = 2',
+        '',
+        '[[components]]',
+        'id = "modern.bomber"',
+        'type = "weapon"',
+        'name = "Modern Bomber"',
+        'entry = "weapons/modern.lua"',
+      ].join('\n'),
+    },
+    {
+      path: 'weapons/modern.lua',
+      text: [
+        'return {',
+        '  install = function(ctx)',
+        '    local function spawn_api5()',
+        '      wa.actors.spawn({',
+        '        sprite = false, x = 0, y = 0,',
+        '        gravity = 0,',
+        '        body = { shape = "circle", mask = 1 },',
+        '        on = { contact = function() end },',
+        '      })',
+        '    end',
+        '    wa.weapons.replace{',
+        '      name = "Modern Bomber",',
+        '      copy_from = "stock.cluster_bomb",',
+        '      cluster_sprite = "sprites/modern/bit.png",',
+        '      cluster_homing_sprite = "sprites/modern/homing.png",',
+        '      on_contact = function(ev) end,',
+        '      on_explode = function(ev) spawn_api5() end,',
+        '    }',
+        '  end,',
+        '}',
+      ].join('\n'),
+    },
+    { path: 'sprites/modern/bit.png', text: '', bytes: samplePng },
+    { path: 'sprites/modern/homing.png', text: '', bytes: samplePng },
+  ];
+  const api5Weapons = readWeapons(readBundles(api5Files), api5Files);
+  const api5Import = await importBundleWeapon(api5Weapons[0], api5Files);
+  const api5Lua = generateLuaCode(fullProject(api5Import.project as WeaponProject, 'Modern Bomber'));
+  check(
+    'API 5 bundle passes through without migration notes and preserves on = { contact = ... }',
+    !api5Import.notes.some((n) => n.startsWith('API 4 -> 5')) &&
+      api5Lua.includes('on = { contact = function() end }') &&
+      api5Lua.includes('on_contact = function(ev)'),
+    api5Import.notes.join(' | '),
+  );
+
+  // Fire decay_mode: WF 19 imports as 'instant' and legacy API 4 'resting'/'on_hit' normalize to API 5.
+  const wf19 = project('WF 19 Fire Burst');
+  near('WF 19: fire burst imports API 5 decay_mode "instant"', wf19?.fireConfig?.decay_mode, 'instant');
+  const fireLegacyBundle = (mode: 'resting' | 'on_hit'): ModFile[] => [
+    {
+      path: 'mod.toml',
+      text: [
+        'id = "legacy.fire"',
+        'name = "Legacy Fire"',
+        'version = "0.1.0"',
+        'author = "Tester"',
+        'api_version = 4',
+        'format_version = 2',
+        '',
+        '[[components]]',
+        'id = "legacy.fire"',
+        'type = "weapon"',
+        'name = "Legacy Fire"',
+        'entry = "weapons/fire.lua"',
+      ].join('\n'),
+    },
+    {
+      path: 'weapons/fire.lua',
+      text: [
+        'return {',
+        '  install = function(ctx)',
+        '    wa.weapons.replace{',
+        '      name = "Legacy Fire",',
+        '      copy_from = "stock.grenade",',
+        '      missile = {',
+        '        burst = "fire",',
+        '        fire = {',
+        '          spread_delay_ms = 30,',
+        '          burn_time_ms = 1500,',
+        '          spread_generations = 10,',
+        `          decay_mode = "${mode}",`,
+        '        },',
+        '      },',
+        '    }',
+        '  end,',
+        '}',
+      ].join('\n'),
+    },
+  ];
+  const restImport = await importBundleWeapon(
+    readWeapons(readBundles(fireLegacyBundle('resting')), fireLegacyBundle('resting'))[0],
+    fireLegacyBundle('resting'),
+  );
+  const onHitImport = await importBundleWeapon(
+    readWeapons(readBundles(fireLegacyBundle('on_hit')), fireLegacyBundle('on_hit'))[0],
+    fireLegacyBundle('on_hit'),
+  );
+  check(
+    'API 4 fire decay_mode "resting" -> "instant" and "on_hit" -> "at_turn_start"',
+    restImport.project.fireConfig?.decay_mode === 'instant' &&
+      onHitImport.project.fireConfig?.decay_mode === 'at_turn_start',
+    JSON.stringify({
+      resting: restImport.project.fireConfig?.decay_mode,
+      on_hit: onHitImport.project.fireConfig?.decay_mode,
+    }),
   );
 }
 

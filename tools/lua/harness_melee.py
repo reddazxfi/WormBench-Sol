@@ -27,14 +27,14 @@ WORLD = {"frame": 0, "keys": {"space": False}}
 WORM = {
     "id": 1, "hp": 100, "turn": True, "visible": True, "body_visible": True,
     "weapon": "test.bat", "x": 1000, "y": 1000, "vx": 0, "vy": 0,
-    "facing": 1, "aim": 0.5, "aim_target": 0.0, "state_id": 0x68, "state": "ready",
+    "facing": 1, "aim": 0.5, "aim_target": 0.0, "state": "ready",
     "taken": False,
 }
 # `facing = 1` points the barrel right, so the worm it reaches stands at x + 24.
 VICTIM = {
     "id": 2, "hp": 100, "turn": False, "visible": True, "body_visible": True,
     "weapon": "stock.grenade", "x": 1024, "y": 1000, "vx": 0, "vy": 0,
-    "facing": -1, "aim": 0.5, "aim_target": 0.0, "state_id": 0x65, "state": "standing",
+    "facing": -1, "aim": 0.5, "aim_target": 0.0, "state": "standing",
     "taken": False,
 }
 LOG = []
@@ -60,12 +60,12 @@ def worm_record(w):
         EVENTS.append(("release", vx, vy))
         return True
 
-    def hurt(_self, opts=None):
+    def hit(_self, opts=None):
         amount = opts["amount"] if opts is not None else 0
         vx = opts["vx"] if opts is not None and opts["vx"] is not None else 0.0
         vy = opts["vy"] if opts is not None and opts["vy"] is not None else 0.0
         w["hp"] -= amount or 0
-        EVENTS.append(("hurt", w["id"], amount, float(vx), float(vy)))
+        EVENTS.append(("hit", w["id"], amount, float(vx), float(vy)))
         return True
 
     # `worm:input{ aim = degrees }` writes WA's own aim target (+0x24C), the
@@ -83,7 +83,7 @@ def worm_record(w):
 
     t.take = take
     t.release = release
-    t.hurt = hurt
+    t.hit = hit
     t.input = input_
     for k, v in w.items():
         t[k] = v
@@ -237,12 +237,12 @@ def build_spec(weapon="test.bat", weap_rotation=1, aim_clamp=None, follow_swing=
         spec["melee"]["miss_wav"] = miss_wav
 
     # The claim's own hit callback, written the way the generator writes it:
-    # `hit = function(victim, vx, vy) victim:hurt{ amount = 24, vx = vx, vy = vy } end`
+    # `hit = function(victim, vx, vy) victim:hit{ amount = 24, vx = vx, vy = vy } end`
     # The generator's shape: the strike that landed is the callback's fourth
     # argument, and the literal is only the fallback for a three-argument caller.
     spec["melee"]["hit"] = lua.execute(
         "return function(victim, vx, vy, hit) "
-        "victim:hurt{ amount = hit and hit.damage or 24, vx = vx, vy = vy } end")
+        "victim:hit{ amount = hit and hit.damage or 24, vx = vx, vy = vy } end")
     return spec
 
 
@@ -323,9 +323,9 @@ for n in range(3, 12):
     step(n, space=True)
 check("the strike dealt damage", VICTIM["hp"] < 100, "victim hp %d" % VICTIM["hp"])
 check("the strike pushed through the callback",
-      any(e[0] == "hurt" and e[1] == 2 and e[2] == 24 for e in EVENTS),
-      str([e for e in EVENTS if e[0] == "hurt"][:2]))
-check("inside the box, one hit only", len([e for e in EVENTS if e[0] == "hurt"]) == 1)
+      any(e[0] == "hit" and e[1] == 2 and e[2] == 24 for e in EVENTS),
+      str([e for e in EVENTS if e[0] == "hit"][:2]))
+check("inside the box, one hit only", len([e for e in EVENTS if e[0] == "hit"]) == 1)
 check("no second take while swinging", len([e for e in EVENTS if e[0] == "take"]) == 1)
 
 for n in range(12, 20):
@@ -340,7 +340,7 @@ check("one take, one release",
 # depend on it: the swing is its own clock, so the art keeps drawing with the
 # worm in a plain standing state.
 EVENTS.clear()
-WORM["state_id"] = 0x65
+WORM["state"] = "standing"
 step(50)
 step(51, space=True)
 check("a press starts the swing in a non-aim state", ("take", True, True) in EVENTS)
@@ -352,7 +352,7 @@ check("the clip draws without an aim state", draws > 0, "%d quad(s) over 8 frame
 for n in range(60, 68):
     step(n, space=True)
 check("the clip still ends in a non-aim state", ("release", 0, 0) in EVENTS)
-WORM["state_id"] = 0x68
+WORM["state"] = "ready"
 
 # WA may stop reporting our weapon during the clip (the worm is taken, its
 # selection can drift). The swing is its own clock, so it must still draw and
@@ -444,7 +444,7 @@ step(31, space=True)
 for n in range(32, 48):
     step(n, space=True)
 check("a miss still runs the whole clip", ("take", True, True) in EVENTS and ("release", 0, 0) in EVENTS)
-check("a miss deals no damage", not [e for e in EVENTS if e[0] == "hurt"])
+check("a miss deals no damage", not [e for e in EVENTS if e[0] == "hit"])
 
 # The "Space did nothing" line is only for our own weapon. A press while the
 # turn's worm holds somebody else's stock weapon belongs to that weapon (a jump,
@@ -538,7 +538,7 @@ def strike_at(weapon, aim, victim_at, spec_kwargs, tick):
     for n in range(tick + 2, tick + 18):
         step(n, space=True)
     for event in EVENTS:
-        if event[0] == "hurt" and event[1] == VICTIM["id"]:
+        if event[0] == "hit" and event[1] == VICTIM["id"]:
             return event[3], event[4]
     return None
 
@@ -580,7 +580,7 @@ step(900)
 step(901, space=True)
 for n in range(902, 920):
     step(n, space=True)
-hurt = [e for e in EVENTS if e[0] == "hurt" and e[1] == VICTIM["id"]]
+hurt = [e for e in EVENTS if e[0] == "hit" and e[1] == VICTIM["id"]]
 check(
     "a combo lands every strike",
     len(hurt) == 3,
@@ -754,7 +754,7 @@ for n in range(952, 968):
         WORMS[1]["y"] = 1100
         moved = True
     step(n, space=True)
-hurt = [e for e in EVENTS if e[0] == "hurt" and e[1] == VICTIM["id"]]
+hurt = [e for e in EVENTS if e[0] == "hit" and e[1] == VICTIM["id"]]
 check(
     "a strike tests the box at its own frame",
     moved and [h[2] for h in hurt] == [7],

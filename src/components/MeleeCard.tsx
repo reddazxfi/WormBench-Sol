@@ -320,13 +320,13 @@ export const MeleeCard: React.FC<MeleeCardProps> = ({ project, onChange }) => {
               out of the shot and left the clip to end the turn itself. */}
           <p
             className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[11px] leading-relaxed text-stone-600 dark:border-stone-800 dark:bg-stone-950/40 dark:text-stone-400"
-            title="A melee weapon fires a ghost: no art, no trail, no blast, no damage and no sound, so nothing leaves the worm a player can see. WA still builds the shot, which is what takes the ammo, plays the launch step and ends the turn when its own rules say so."
+            title="A melee weapon fires a ghost: no art, no trail, no blast, no damage and no sound, so nothing leaves the worm a player can see. WA still builds the shot, which is what takes the ammo, plays the launch step and follows the scheme's turn and retreat options."
           >
             Space fires this weapon for real. The record&apos;s shot is a{' '}
             <strong>ghost</strong>: no art, no trail, no blast, no damage, no sound, so nothing
-            leaves the worm. WA takes the ammo, plays its own launch step and ends the turn by its
-            own rules, and the <strong>retreat window</strong> (5 s unless Turn Handling says
-            otherwise) is the control the player keeps until the ghost dies or Space is pressed.
+            leaves the worm. WA takes the ammo, plays its own launch step, and the scheme&apos;s own
+            retreat and turn options govern turn ending unless overridden in{' '}
+            <strong>Turn Handling</strong>.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

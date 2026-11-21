@@ -18,7 +18,7 @@ import {
   WormSpritePoseAsset,
   WormSpritePoseKey,
 } from '../types/weapon';
-import { getStockPanelPosition } from '../data/stockWeapons';
+import { STOCK_WEAPONS, getStockPanelPosition } from '../data/stockWeapons';
 import { stockDonor, stockDonorBaseline } from '../data/stockDonors';
 import {
   HOLD_FIRE_MODE_SUBTYPES,
@@ -1900,7 +1900,17 @@ export function generateLuaCode(project: WeaponProject): string {
   // die with `undefined is not an object` in the middle of an export.
   const modFolder = sanitizeModFolder(project.id || 'custom.weapon');
   const basedOn = project.based_on || project.slot || 'grenade';
-  const donorName = basedOn.replace(/^stock\./, '');
+  const rawDonorName = basedOn.replace(/^stock\./, '');
+  const rawDonorMeta = STOCK_WEAPONS.find((w) => w.id === rawDonorName);
+  // A melee weapon fires a ghost missile (`missile = { ... }`) to borrow WA's
+  // aim phase and retreat window. In API 5 the engine rejects `missile.*` keys
+  // on non-missile donors (`special`, `gun`, `mine`, `spray`, `arrow`), so any
+  // non-missile melee template falls back to `stock.sheep_launcher` while
+  // `project.slot` still owns the panel position.
+  const donorName =
+    meleeGhost && rawDonorMeta && rawDonorMeta.family !== 'missile'
+      ? 'sheep_launcher'
+      : rawDonorName;
   // A template has to be one of WA's own weapons. The engine refuses the whole
   // bundle for a name it does not know (`stock.famas: a template is one of WA's
   // own weapons`), so an unknown slot writes no `copy_from` and the weapon takes
@@ -2305,7 +2315,7 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push('      and math.abs(o.x - ev.x) < STAMP_HIT.radius');
     lines.push('      and math.abs(o.y - ev.y) < STAMP_HIT.radius then');
     lines.push('      if worm then');
-    lines.push('        o:hurt{ amount = STAMP_HIT.damage, vx = vx * STAMP_HIT.impulse,');
+    lines.push('        o:hit{ amount = STAMP_HIT.damage, vx = vx * STAMP_HIT.impulse,');
     lines.push('                 vy = vy * STAMP_HIT.impulse, kind = STAMP_HIT.kind }');
     lines.push('      else');
     lines.push('        o:hit(STAMP_HIT.damage, vx * STAMP_HIT.impulse, vy * STAMP_HIT.impulse,');
@@ -2537,14 +2547,6 @@ export function generateLuaCode(project: WeaponProject): string {
         holdRows.push(
           `  ticks = ${formatNumber(Math.max(1, clip?.ticks ?? (keys[keys.length - 1]?.t ?? 1) + 1))},`,
         );
-        // `finish = "end_turn"` zeroes the turn clock when the clip ends. That is
-        // what a clip-only weapon wants (it ate the fire, so nothing else would
-        // end the turn), and exactly what a melee must not do: WA ends the turn
-        // itself once its shot resolves, and the retreat window is the control
-        // the player keeps until then.
-        if (clip?.finish === 'endTurn' && !meleeGhost) {
-          holdRows.push('  finish = "end_turn",');
-        }
         holdRows.push('  keys = {');
         for (const key of keys) {
           const parts = [
@@ -2672,7 +2674,7 @@ export function generateLuaCode(project: WeaponProject): string {
           );
         } else {
           holdRows.push(
-            `  hit = function(victim, vx, vy, hit) victim:hurt{ ` +
+            `  hit = function(victim, vx, vy, hit) victim:hit{ ` +
               `amount = hit and hit.damage or ${damage}, vx = vx, vy = vy } end,`,
           );
         }
@@ -3028,23 +3030,13 @@ export function generateLuaCode(project: WeaponProject): string {
   // and writes its installed id into `clusters.bit.sprite` (or the strike's
   // cluster sprite) / the cluster render timer. A pack path cannot go into the
   // record tables themselves; those take stock names or numeric ids.
-  const clusterArt: string[] = [];
-  // While the bit builder owns the bits, `clusters.bit.sprite` must stay a
-  // stock id: it is the classification marker (`m.sprite ~= 0`) and the sheet
-  // the claim would install is hidden by the builder anyway. The same applies
-  // to the homing render timer: a state's own sheet replaces it.
-  if (!bitRoleActive) {
-    if (clusterBitArt) clusterArt.push(`sprite = ${luaQuote(clusterBitArt)}`);
-    // `cluster.homing_sprite` is applied with `set_cluster_render_timer`, which
-    // writes entry+0x170 with no strike shift. `packArtPath` refuses it on a
-    // fire type 3 record (see `packArtSlotApplies`), so this is safe for every
-    // family.
-    if (clusterBitHomingArt) {
-      clusterArt.push(`homing_sprite = ${luaQuote(clusterBitHomingArt)}`);
+  if (!bitRoleActive && !usesAirstrike && !usesFireSeqNestedProj) {
+    if (clusterBitArt) {
+      lines.push(`      cluster_sprite = ${luaQuote(clusterBitArt)},`);
     }
-  }
-  if (clusterArt.length > 0 && !usesAirstrike && !usesFireSeqNestedProj) {
-    lines.push(`      cluster = { ${clusterArt.join(', ')} },`);
+    if (clusterBitHomingArt) {
+      lines.push(`      cluster_homing_sprite = ${luaQuote(clusterBitHomingArt)},`);
+    }
   }
 
   // A roaming animal's two flying sheets. `sheep_sprites` installs them as WA
@@ -3238,7 +3230,11 @@ export function generateLuaCode(project: WeaponProject): string {
   // two donors share look "unchanged" and skips it: a mortar carrying the
   // grenade's burst `nothing` and 100% push exported neither, so the engine's
   // own clustlets and 0% push survived the user turning them off.
-  const donorSlot = (project.based_on || project.slot || '').replace(/^stock\./, '');
+  const rawDonorSlot = (project.based_on || project.slot || '').replace(/^stock\./, '');
+  const donorSlot =
+    meleeGhost && rawDonorMeta && rawDonorMeta.family !== 'missile'
+      ? 'sheep_launcher'
+      : rawDonorSlot;
   const donorBaseline = project.donorBaseline;
   const baselineMatchesDonor =
     !donorBaseline?.slot || !donorSlot || donorBaseline.slot === donorSlot;
@@ -3378,20 +3374,12 @@ export function generateLuaCode(project: WeaponProject): string {
   handlingInt('handling.shots', 'shots');
   handlingBool('handling.ends_turn', 'ends_turn');
   handlingInt('handling.retreat', 'retreat');
-  // A melee's retreat window **is** its ghost's lifetime: WA gives the turn back
-  // when the last shot dies or the retreat runs out, whichever comes first, so
-  // two different numbers would end the turn at the earlier of them. The donor
-  // carries its own retreat in `recordOverrides`, which the diff then drops as
-  // inherited, so the test is on the *emitted* value and not on the key.
+  // A melee's ghost shot lifetime is aligned to the effective retreat window
+  // (author override when present, otherwise the donor/scheme baseline), without
+  // hardcoding a `handling.retreat` override so the scheme owns turn flow.
   const ghostWindowMs = meleeGhost
-    ? Math.max(500, Math.round(Number(override('handling.retreat') ?? 5000)))
+    ? Math.max(500, Math.round(Number(override('handling.retreat') ?? baseOverrides['handling.retreat'] ?? 3000)))
     : 0;
-  if (meleeGhost && override('handling.retreat') === undefined) {
-    // 5 s covers the swing and a walk-back without leaving a turn hanging on an
-    // invisible projectile. An author's own `handling.retreat` wins, and the
-    // fuse below moves with it.
-    handlingRows.push('        retreat = 5000,');
-  }
   if (handlingRows.length > 0) {
     lines.push('      handling = {');
     lines.push(...handlingRows);
@@ -3400,8 +3388,15 @@ export function generateLuaCode(project: WeaponProject): string {
 
   // `fires.subtype` (+0x34) is emitted together with `launch_power_pct` /
   // `creates_projectile` in the single `fires` table below so Lua never
-  // sees two `fires =` keys in the claim table.
-  const rawFiresSubtype = override('fires.subtype') ?? project.specialSubtype;
+  // sees two `fires =` keys in the claim table. When the outer `copy_from`
+  // donor was swapped to another weapon family (native gun burst or coerced
+  // melee), ignore non-matching template subtypes unless explicitly overridden.
+  const swappedOuterDonor =
+    (usesFireSeqNative && project.fireType !== 'hitscan') ||
+    (meleeGhost && rawDonorMeta && rawDonorMeta.family !== 'missile');
+  const rawFiresSubtype = swappedOuterDonor
+    ? override('fires.subtype')
+    : (override('fires.subtype') ?? project.specialSubtype);
   const firesSubtype =
     rawFiresSubtype !== undefined && Number.isFinite(Number(rawFiresSubtype))
       ? Number(rawFiresSubtype)
@@ -3609,10 +3604,21 @@ export function generateLuaCode(project: WeaponProject): string {
       // the shot it fired is gone, so a missile that dies on contact with the
       // ground at the worm's feet ends the turn a frame after the swing and the
       // retreat window is never seen. A nonzero `fuse` is also WA's "timed, not
-      // impact detonated" switch, so the ghost lives exactly the window and
-      // then pops harmlessly (`power = 0`, no sound), which is the moment the
-      // turn ends anyway.
+      // impact detonated" switch, so the ghost lives the window and then pops
+      // harmlessly (`power = 0`, no sound), letting the scheme/turn rules finish.
       lines.push(`        fuse = ${ghostWindowMs},`);
+    } else if (usesAirstrikeMissile) {
+      // `wa.weapons.launch` reads the missile's lifetime from `missile.fuse` (`0`
+      // detonates on spawn), so never emit `fuse = 0` inside an airstrike
+      // takeover `projectile` table and provide a safe 3000 ms floor if the
+      // projectile donor's own fuse is 0 (such as `stock.grenade`).
+      if (body.fuse && body.fuse_time_ms > 0) {
+        if (fuseChanged) {
+          lines.push(`        fuse = ${body.fuse_time_ms},`);
+        }
+      } else if (!(baseBody && baseBody.fuse && baseBody.fuse_time_ms > 0)) {
+        lines.push('        fuse = 3000,');
+      }
     } else if (fuseChanged) {
       if (body.fuse && body.fuse_time_ms > 0) {
         lines.push(`        fuse = ${body.fuse_time_ms},`);
@@ -3625,7 +3631,12 @@ export function generateLuaCode(project: WeaponProject): string {
       lines.push(`        countdown = ${body.countdown_ms ?? 0},`);
     }
 
-    const explodeOnSpace = override('missile.explode_on_space');
+    const explodeOnSpace =
+      meleeGhost &&
+      override('missile.explode_on_space') === undefined &&
+      Boolean(baseOverrides['missile.explode_on_space'])
+        ? false
+        : override('missile.explode_on_space');
     if (explodeOnSpace !== undefined) {
       lines.push(`        explode_on_space = ${explodeOnSpace ? 'true' : 'false'},`);
     }
@@ -3703,7 +3714,11 @@ export function generateLuaCode(project: WeaponProject): string {
       lines.push(`        sprite = ${luaQuote(project.missileSprite.stockSprite)},`);
     }
 
-    const animation = override('missile.animation');
+    const baseMissileAnim = Number(baseOverrides['missile.animation'] ?? 0);
+    const animation =
+      (zeroedSprite || meleeGhost) && baseMissileAnim !== 0
+        ? 0
+        : override('missile.animation');
     if (animation !== undefined) {
       lines.push(`        animation = ${animation},`);
     }
@@ -3726,7 +3741,15 @@ export function generateLuaCode(project: WeaponProject): string {
 
     // `ends_on_contact` stops the projectile. It is deliberately separate from
     // `bounce.hits`, which only adds targets the bounce action reacts to.
-    const endsOnContact = luaMaskTable(override('missile.ends_on_contact'));
+    const baseEndsOnContact = baseOverrides['missile.ends_on_contact'];
+    const baseHasEndsOnContact =
+      !!baseEndsOnContact &&
+      typeof baseEndsOnContact === 'object' &&
+      Object.values(baseEndsOnContact as Record<string, unknown>).some(Boolean);
+    const endsOnContact =
+      meleeGhost && override('missile.ends_on_contact') === undefined && baseHasEndsOnContact
+        ? '{  }'
+        : luaMaskTable(override('missile.ends_on_contact'));
     if (endsOnContact !== null) {
       lines.push(`        ends_on_contact = ${endsOnContact},`);
     }
@@ -3919,12 +3942,23 @@ export function generateLuaCode(project: WeaponProject): string {
       // The builder draws the homing sheet (or keeps the flight sheet when set
       // to `inherit`), so WA's own homing sprite has to go or it draws under
       // ours (0xAC is art only). `native` keeps the record's own homing sprite.
+      // For an air strike with a claim-level body `sprite`, keeping `homing.sprite`
+      // equal to the donor's body id lets `retarget_strike_sprite_id` carry that
+      // sheet into 0xC0 instead of zeroing the homing bomb to invisible.
+      const strikeHomingFollowsBody = Boolean(
+        strikeBodyArt && !usesAirstrike && !usesFireSeqNestedProj && !zeroMainHoming && !homingState,
+      );
       const homingSprite = zeroMainHoming
         ? 0
         : homingState?.assigned.homing_sprite !== undefined
           ? homingState.assigned.homing_sprite
           : fullGroup
-            ? (groupVal('missile.homing.sprite') ?? 0)
+            ? (groupVal('missile.homing.sprite') ??
+              (strikeHomingFollowsBody &&
+              baseOverrides['missile.sprite'] !== undefined &&
+              baseOverrides['missile.sprite'] !== ''
+                ? baseOverrides['missile.sprite']
+                : 0))
             : override('missile.homing.sprite');
       if (homingSprite !== undefined) {
         if (homingSprite === 0 || homingSprite === '0' || homingSprite === '') {
@@ -3936,8 +3970,18 @@ export function generateLuaCode(project: WeaponProject): string {
         }
       }
       const homingAnimation = groupVal('missile.homing.animation');
-      if (fullGroup || homingAnimation !== undefined) {
-        lines.push(`          animation = ${homingAnimation ?? 0},`);
+      const baseHomingAnim = Number(baseOverrides['missile.homing.animation'] ?? 0);
+      if (zeroMainHoming) {
+        if (fullGroup || baseHomingAnim !== 0 || homingAnimation !== undefined) {
+          lines.push('          animation = 0,');
+        }
+      } else if (fullGroup || homingAnimation !== undefined) {
+        const resolvedHomingAnim =
+          homingAnimation ??
+          (strikeHomingFollowsBody
+            ? (override('missile.animation') ?? Number(baseOverrides['missile.animation'] ?? 0))
+            : 0);
+        lines.push(`          animation = ${resolvedHomingAnim},`);
       }
 
       const homingTrailSprite = groupVal('missile.homing.trail.sprite');
@@ -4120,7 +4164,10 @@ export function generateLuaCode(project: WeaponProject): string {
         lines.push(`          spread_delay_ms = ${project.fireConfig.spread_delay_ms ?? 30},`);
         lines.push(`          burn_time_ms = ${project.fireConfig.burn_time_ms ?? 1500},`);
         lines.push(`          spread_generations = ${project.fireConfig.spread_generations ?? 10},`);
-        lines.push(`          decay_mode = ${luaQuote(project.fireConfig.decay_mode || 'resting')},`);
+        const rawDecay = project.fireConfig.decay_mode as string | undefined;
+        const decayMode =
+          rawDecay === 'at_turn_start' || rawDecay === 'on_hit' ? 'at_turn_start' : 'instant';
+        lines.push(`          decay_mode = ${luaQuote(decayMode)},`);
         lines.push('        },');
       } else if (burst === 'clusters') {
         lines.push('        burst = "clusters",');
@@ -4534,7 +4581,12 @@ export function generateLuaCode(project: WeaponProject): string {
           if (bitHomingSprite !== undefined) {
             lines.push(`            sprite = ${bitHomingSprite},`);
           }
-          if (clustletChanged('homing_animation')) {
+          if (
+            zeroBitHoming &&
+            (baseline?.body?.clustlet?.homing_animation ?? 0) !== 0
+          ) {
+            lines.push('            animation = 0,');
+          } else if (clustletChanged('homing_animation')) {
             lines.push(`            animation = ${c.homing_animation ?? 0},`);
           }
           if (clustletChanged('homing_arm_ms')) {
@@ -4764,8 +4816,8 @@ export function generateLuaCode(project: WeaponProject): string {
       if (!usesMissileSprite && strikeBodyArt) {
         lines.push(`        sprite = ${luaQuote(strikeBodyArt)},`);
       }
-      if (clusterArt.length > 0) {
-        lines.push(`        cluster = { ${clusterArt.join(', ')} },`);
+      if (!bitRoleActive && clusterBitArt) {
+        lines.push(`        cluster_sprite = ${luaQuote(clusterBitArt)},`);
       }
       for (const inner of innerLines) {
         lines.push(inner ? `  ${inner}` : '');
@@ -6080,7 +6132,7 @@ export function generatePackToml(pack: PackProject): string {
     `name = ${luaQuote(pack.name)}`,
     `version = ${luaQuote(pack.version || '0.1.0')}`,
     `author = ${luaQuote(pack.author || 'WormForge Creator')}`,
-    'api_version = 4',
+    'api_version = 5',
     'format_version = 2',
   ];
 

@@ -12,6 +12,7 @@
  * `.wep`/donor values and the export still writes what the bundle declared.
  */
 import type { CarriedLua, CarriedLuaArt, WeaponProject } from '../../types/weapon';
+import { migrateApi4Lua } from '../api4Migration';
 import { checkLua } from '../luaCheck';
 import { maskLuaCode, stripNotGeneratedMarkers } from '../luaText';
 import { parseWepBinary } from '../wepParser';
@@ -243,6 +244,10 @@ export async function importBundleWeapon(
         if (projTable.clusters !== undefined) merged.clusters = projTable.clusters;
         if (projTable.sprite !== undefined) merged.sprite = projTable.sprite;
         if (projTable.cluster !== undefined) merged.cluster = projTable.cluster;
+        if (projTable.cluster_sprite !== undefined) merged.cluster_sprite = projTable.cluster_sprite;
+        if (projTable.cluster_homing_sprite !== undefined) {
+          merged.cluster_homing_sprite = projTable.cluster_homing_sprite;
+        }
         return merged;
       })()
     : weapon.record;
@@ -624,6 +629,19 @@ export async function importBundleWeapon(
   // file can be read out of the bundle it was in.
   const carriedPaths: { source: string; target: string }[] = [];
   let carriedSummary = '';
+  const isApi4Bundle = weapon.bundleApiVersion !== undefined && weapon.bundleApiVersion < 5;
+  const api4Rewrites = new Set<string>();
+  const api4Warnings = new Set<string>();
+
+  if (isApi4Bundle && nextProject.customLuaSnippet) {
+    const migratedSnippet = migrateApi4Lua(nextProject.customLuaSnippet);
+    if (migratedSnippet.text !== nextProject.customLuaSnippet) {
+      nextProject.customLuaSnippet = migratedSnippet.text;
+    }
+    for (const item of migratedSnippet.rewrites) api4Rewrites.add(item);
+    for (const warning of migratedSnippet.warnings) api4Warnings.add(warning);
+  }
+
   // A registration is code too: a bundle whose only foreign code is a
   // `wa.on.hurt` (WF 57) has no claim hook to seed the carry, and gating on the
   // hook list alone dropped its handler without a word.
@@ -671,8 +689,12 @@ export async function importBundleWeapon(
       reserved,
       sanitizeModFolder(id),
       emitted,
+      isApi4Bundle,
     );
     carriedPaths.push(...carried.paths);
+    for (const item of carried.api4Rewrites) api4Rewrites.add(item);
+    for (const warning of carried.api4Warnings) api4Warnings.add(warning);
+    const hasOnContact = carriedHookList.some((hook) => hook.key === 'on_contact');
     // A hook or a registration is transformed on its own (it is not one of the
     // carried blocks), so the art **it** names comes back from that call and not
     // from `carried.paths`. Without this, the Conductor's
@@ -682,11 +704,20 @@ export async function importBundleWeapon(
     const transformedHooks = carriedHookList.map((hook) => {
       const moved = carried.transform(stripNotGeneratedMarkers(hook.text));
       carriedPaths.push(...moved.paths);
-      return { ...hook, text: moved.text };
+      for (const item of moved.api4Rewrites) api4Rewrites.add(item);
+      for (const warning of moved.api4Warnings) api4Warnings.add(warning);
+      let key = hook.key;
+      if (isApi4Bundle && key === 'on_bump' && !hasOnContact) {
+        key = 'on_contact';
+        api4Rewrites.add('on_bump -> on_contact');
+      }
+      return { ...hook, key, text: moved.text };
     });
     const transformedRegistrations = carriedRegistrations.map((registration) => {
       const moved = carried.transform(stripNotGeneratedMarkers(registration.text));
       carriedPaths.push(...moved.paths);
+      for (const item of moved.api4Rewrites) api4Rewrites.add(item);
+      for (const warning of moved.api4Warnings) api4Warnings.add(warning);
       return { ...registration, text: moved.text };
     });
     nextProject.carriedLua = {
@@ -705,8 +736,8 @@ export async function importBundleWeapon(
     const helpers = carried.preamble.length + carried.prologue.length - requires;
     const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
     carriedSummary = [
-      carriedHookList.length > 0
-        ? `${count(carriedHookList.length, 'hook')} (${carriedHookList.map((hook) => hook.key).join(', ')})`
+      transformedHooks.length > 0
+        ? `${count(transformedHooks.length, 'hook')} (${transformedHooks.map((hook) => hook.key).join(', ')})`
         : '',
       carriedRegistrations.length > 0
         ? `${count(carriedRegistrations.length, 'registration')} (${carriedRegistrations.map((registration) => `wa.on.${registration.event}`).join(', ')})`
@@ -760,6 +791,12 @@ export async function importBundleWeapon(
         notes.push(`dependencies: ${added.join(', ')} (a carried require needs it)`);
       }
     }
+  }
+  if (api4Rewrites.size > 0) {
+    notes.push(`API 4 -> 5 migrated: ${[...api4Rewrites].join(', ')}`);
+  }
+  for (const warning of api4Warnings) {
+    notes.push(`API 4 -> 5 manual check: ${warning}`);
   }
 
   // ---- the art the carried code names ------------------------------------

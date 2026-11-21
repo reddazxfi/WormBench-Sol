@@ -39,6 +39,7 @@
  */
 import { fixLockstepRng, freeNames } from '../luaCheck';
 import { checkLua } from '../luaCheck';
+import { migrateApi4Lua } from '../api4Migration';
 import { maskLuaCode, rewriteNames, scanBlockEnd } from '../luaText';
 import { dependencyForModule } from '../../data/sdkModules';
 import type { LuaBlock, SplitModule } from './splitModule';
@@ -90,6 +91,10 @@ export interface CarryResult {
   pathRewrites: number;
   /** Each art path the carried text names, before and after the move. */
   paths: { source: string; target: string }[];
+  /** Mechanical API 4 -> API 5 rewrites applied across carried blocks. */
+  api4Rewrites: string[];
+  /** Breaking API 4 constructs found in carried blocks that need manual attention. */
+  api4Warnings: string[];
   /**
    * The same renames and rewrites, applied to another piece of carried text (the
    * hook body itself), so the hook and its declarations agree.
@@ -100,6 +105,8 @@ export interface CarryResult {
     floatRandom: boolean;
     pathRewrites: number;
     paths: { source: string; target: string }[];
+    api4Rewrites: string[];
+    api4Warnings: string[];
   };
 }
 
@@ -199,6 +206,8 @@ export function carryClosure(
   folder = '',
   /** What the generator will emit, so an identical declaration is not carried twice. */
   emitted = '',
+  /** Whether the source bundle targets Lua API < 5 so carried code migrates to API 5. */
+  migrateApi4 = false,
 ): CarryResult {
   const param = split.install?.param ?? 'ctx';
   /** The bundle dependencies a carried `require` needs, in the order they appear. */
@@ -458,18 +467,25 @@ export function carryClosure(
     // "sprites/vortex/hold.png"` has to name the folder the file is written to
     // or the call fails when it runs.
     const moved = rewriteBundlePaths(fixed, folder);
+    const migrated = migrateApi4
+      ? migrateApi4Lua(moved.text)
+      : { text: moved.text, rewrites: [] as string[], warnings: [] as string[] };
     return {
-      text: moved.text,
+      text: migrated.text,
       rewrites: rewrittenCalls(renamed, fixed),
       floatRandom: hasFloatRandom(fixed),
       pathRewrites: moved.moves.filter((move) => move.source !== move.target).length,
       paths: moved.moves,
+      api4Rewrites: migrated.rewrites,
+      api4Warnings: migrated.warnings,
     };
   };
   const rewrites = new Set<string>();
   let floatRandom = false;
   let pathRewrites = 0;
   const paths: { source: string; target: string }[] = [];
+  const api4Rewrites = new Set<string>();
+  const api4Warnings = new Set<string>();
   const output = (origin: 'preamble' | 'prologue'): CarryBlock[] =>
     [...carried.entries()]
       .filter(([, entry]) => entry.origin === origin)
@@ -481,6 +497,8 @@ export function carryClosure(
         floatRandom = floatRandom || transformed.floatRandom;
         pathRewrites += transformed.pathRewrites;
         paths.push(...transformed.paths);
+        for (const item of transformed.api4Rewrites) api4Rewrites.add(item);
+        for (const warning of transformed.api4Warnings) api4Warnings.add(warning);
         return {
           origin,
           text: transformed.text,
@@ -500,6 +518,8 @@ export function carryClosure(
     floatRandom,
     pathRewrites,
     paths,
+    api4Rewrites: [...api4Rewrites],
+    api4Warnings: [...api4Warnings],
     refused,
     dependencies,
     missingModules,

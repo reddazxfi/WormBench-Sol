@@ -74,11 +74,15 @@ wa.land.cut = lambda opts: None
 
 
 def spawn(spec):
+    if spec['collide'] is not None:
+        raise ValueError(f"API 5 actors.spawn rejects legacy collide={spec['collide']!r}")
+    if isinstance(spec['gravity'], bool):
+        raise ValueError(f"API 5 actors.spawn requires numeric gravity, got bool {spec['gravity']!r}")
     STATE['spawned'] += 1
     handle = lua.table()
     handle['_spec'] = spec
-    # `a:despawn()` passes the handle, so the stub takes it and ignores it.
-    handle['despawn'] = lambda *_: STATE.__setitem__('despawned', STATE['despawned'] + 1)
+    # `a:remove()` passes the handle, so the stub takes it and ignores it.
+    handle['remove'] = lambda *_: STATE.__setitem__('despawned', STATE['despawned'] + 1)
     ACTORS.append(handle)
     return handle
 

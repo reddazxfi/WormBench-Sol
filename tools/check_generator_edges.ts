@@ -28,6 +28,7 @@ import { DEFAULT_ROLE_ART, DEFAULT_DIG_ROLE_ART } from '../src/data/spriteBuilde
 import { DEFAULT_CLUSTLET } from '../src/data/defaults';
 import { stockDonor, stockDonorBaseline } from '../src/data/stockDonors';
 import { DEFAULT_BODY } from '../src/data/defaults';
+import { getStockPanelPosition } from '../src/data/stockWeapons';
 import { DEFAULT_MELEE } from '../src/data/melee';
 import { DEFAULT_EMITTER, DEFAULT_EMITTER_RING, DEFAULT_EMITTER_TRAIL } from '../src/data/emitter';
 import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
@@ -1519,11 +1520,11 @@ local afterHook = 42`;
   );
   check('fire burst .wep decodes burst = "fire"', fireWep.projectState.burst === 'fire');
   check(
-    'fire burst .wep decodes fireConfig (generations halved, decay_mode 1 = on_hit)',
+    'fire burst .wep decodes fireConfig (generations halved, decay_mode 1 = at_turn_start)',
     fireWep.projectState.fireConfig?.spread_generations === 5 &&
       fireWep.projectState.fireConfig?.spread_delay_ms === 250 &&
       fireWep.projectState.fireConfig?.burn_time_ms === 4000 &&
-      fireWep.projectState.fireConfig?.decay_mode === 'on_hit',
+      fireWep.projectState.fireConfig?.decay_mode === 'at_turn_start',
     JSON.stringify(fireWep.projectState.fireConfig),
   );
   check(
@@ -1800,6 +1801,133 @@ local afterHook = 42`;
       timedSeqLua.includes('homing = {') &&
       timedSeqLua.includes('firing.sequence(ev, SEQ)'),
     timedSeqLua,
+  );
+
+  const meleeSpecial = makeProject({
+    id: 't.melee_special',
+    name: 'Melee Special Slot',
+    slot: 'dragon_ball',
+    based_on: 'stock.dragon_ball',
+    fireType: 'melee',
+    customSprites: {},
+    hold: { ...makeProject({}).hold, enabled: true, sheet: 'hold.png' },
+    melee: { ...DEFAULT_MELEE, enabled: true },
+  });
+  const meleeSpecialLua = generateLuaCode(meleeSpecial);
+  const meleeSpecialToml = generateModToml(meleeSpecial);
+  const dragonPos = getStockPanelPosition('dragon_ball');
+  check(
+    'melee on a special slot coerces copy_from to stock.sheep_launcher while keeping slot default_position',
+    meleeSpecialLua.includes('copy_from = "stock.sheep_launcher"') &&
+      !meleeSpecialLua.includes('copy_from = "stock.dragon_ball"') &&
+      !meleeSpecialLua.includes('fires = { subtype = 3 }') &&
+      !meleeSpecialLua.includes('finish = "end_turn"') &&
+      !meleeSpecialLua.includes('retreat = 5000') &&
+      meleeSpecialLua.includes('explode_on_space = false,') &&
+      meleeSpecialLua.includes('ends_on_contact = {  },') &&
+      meleeSpecialLua.includes('missile = {') &&
+      meleeSpecialToml.includes(`default_position = { row = "${dragonPos.row}", column = ${dragonPos.column} }`),
+    meleeSpecialLua,
+  );
+
+  // WF 13 regression: strike homing with claim-level sprite retains donor homing sprite + animation
+  // so `retarget_strike_sprite_id` moves 0xC0 alongside 0x74.
+  const strikeHoming = makeProject({
+    slot: 'carpet_bomb',
+    based_on: 'stock.carpet_bomb',
+    donorBaseline: stockDonorBaseline('carpet_bomb'),
+    fireType: 'cursor',
+    action: 'homing',
+    body: { ...DEFAULT_BODY, sprite: 'grenade', homing: 'lock', homing_arm_ms: 500, homing_time_ms: 3500 },
+    packArt: { strike_sprite: { file: new File(['x'], 'body.png'), fileName: 'body.png', previewUrl: '', frames: 1, fps: 15, play: 'loop' } },
+    recordOverrides: { 'missile.animation': 2 },
+  });
+  const strikeHomingLua = generateLuaCode(strikeHoming);
+  const strikeHomingHeader = strikeHomingLua.split('homing = {')[1]?.split('trail = {')[0] ?? '';
+  check(
+    'strike homing with claim sprite preserves carpet_bomb homing.sprite=63 and animation=2',
+    strikeHomingLua.includes('sprite = "sprites/') &&
+      strikeHomingHeader.includes('sprite = 63,') &&
+      strikeHomingHeader.includes('animation = 2,') &&
+      !strikeHomingHeader.includes('sprite = 0,'),
+    strikeHomingLua,
+  );
+
+  // WF 20 / WF 25 regression: builder zeroing sprite on homing_pigeon also zeroes animation + homing.animation
+  // so WA does not draw cdrom (1) or crshairb (3).
+  const pigeonBuilder = makeProject({
+    slot: 'homing_pigeon',
+    based_on: 'stock.homing_pigeon',
+    donorBaseline: stockDonorBaseline('homing_pigeon'),
+    action: 'homing',
+    body: { ...DEFAULT_BODY, homing: 'lock', homing_arm_ms: 800, homing_time_ms: 6000 },
+    missileSprite: {
+      ...makeProject().missileSprite,
+      enabled: true,
+      mode: 'custom',
+      sheetFile: new File(['x'], 'pigeon.png'),
+      frames: 1,
+    },
+  });
+  const pigeonBuilderLua = generateLuaCode(pigeonBuilder);
+  const animZeroCount = (pigeonBuilderLua.match(/animation = 0,/g) || []).length;
+  check(
+    'homing_pigeon builder zeroes both missile.animation and missile.homing.animation',
+    animZeroCount >= 2,
+    pigeonBuilderLua,
+  );
+
+  // WF 65 regression: native gun burst on non-gun slot (grenade) does not emit outer fires.subtype = 2
+  const gunBurstFromGrenade = makeProject({
+    slot: 'grenade',
+    based_on: 'stock.grenade',
+    donorBaseline: stockDonorBaseline('grenade'),
+    specialSubtype: 2,
+    fireSequence: {
+      ...DEFAULT_FIRE_SEQUENCE,
+      enabled: true,
+      engine: 'native',
+      mode: 'missiles',
+      payloadDonor: 'bazooka',
+    },
+  });
+  const gunBurstLua = generateLuaCode(gunBurstFromGrenade);
+  check(
+    'native gun burst on non-gun slot omits inherited fires.subtype so minigun keeps aiming pose',
+    gunBurstLua.includes('copy_from = "stock.minigun",') && !gunBurstLua.includes('subtype = 2'),
+    gunBurstLua,
+  );
+
+  // WF 61 / WF 62 regression: airstrike takeover projectile never emits fuse = 0 and gives grenade donor fuse = 3000
+  const airTakeoverBazooka = makeProject({
+    slot: 'air_strike',
+    based_on: 'stock.air_strike',
+    donorBaseline: stockDonorBaseline('air_strike'),
+    fireType: 'cursor',
+    body: { ...DEFAULT_BODY, fuse: false, fuse_time_ms: 0 },
+    airstrike: {
+      ...DEFAULT_AIRSTRIKE,
+      enabled: true,
+      payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'missile', projectileDonor: 'bazooka' },
+    },
+  });
+  const airTakeoverBazookaLua = generateLuaCode(airTakeoverBazooka);
+  const airTakeoverGrenade = makeProject({
+    ...airTakeoverBazooka,
+    slot: 'napalm_strike',
+    based_on: 'stock.napalm_strike',
+    donorBaseline: stockDonorBaseline('napalm_strike'),
+    airstrike: {
+      ...DEFAULT_AIRSTRIKE,
+      enabled: true,
+      payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'missile', projectileDonor: 'grenade' },
+    },
+  });
+  const airTakeoverGrenadeLua = generateLuaCode(airTakeoverGrenade);
+  check(
+    'airstrike takeover omits fuse = 0 on bazooka donor and provides fuse = 3000 on grenade donor',
+    !airTakeoverBazookaLua.includes('fuse = 0') && airTakeoverGrenadeLua.includes('fuse = 3000,'),
+    airTakeoverBazookaLua + '\n---\n' + airTakeoverGrenadeLua,
   );
 }
 

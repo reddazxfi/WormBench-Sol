@@ -629,7 +629,7 @@ function makeOp(partial: {
       spread_delay_ms: 30,
       burn_time_ms: 1500,
       spread_generations: 10,
-      decay_mode: 'resting',
+      decay_mode: 'instant',
       ...partial.fire,
     },
     ribbonTrail: { ...DEFAULTS.ribbon, ...partial.trailer },
@@ -1630,7 +1630,7 @@ const TESTS: TestCase[] = [
       // PX's javelin with an electric tip. The card is on because the pierce
       // rides its checkbox, but there is no sheet: the picture and the damage
       // are separate, so this is a pure pierce with no stamp call. The taze is
-      // `px.electric`'s arm around the pierce's one `o:hurt`.
+      // `px.electric`'s arm around the pierce's one `o:hit`.
       terrainStamp: {
         enabled: true,
         onImpact: false,
@@ -1784,7 +1784,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 16,
-        finish: 'endTurn',
+        finish: 'none',
         keys: [
           { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
           { t: 4, angle: -25, dx: -2, dy: 2, scale: 1, ease: 'in_quad' },
@@ -1797,11 +1797,11 @@ const TESTS: TestCase[] = [
       },
     }),
     intent:
-      'The aiming clip: Space plays a keyframed swing on the held art instead of firing, and the turn ends when the clip runs out. The last key sets alpha 0.6 with `fade = false`, so the art stays fully opaque through the return and only drops to 0.6 as it lands.',
+      'The aiming clip: Space plays a keyframed swing on the held art instead of firing, leaving turn ending to the scheme. The last key sets alpha 0.6 with `fade = false`, so the art stays fully opaque through the return and only drops to 0.6 as it lands.',
     expect:
-      'The bat is held while aiming; pressing Space winds it back, swings it through, and returns it to the aim pose, with no shot, no projectile and no ammo change. The turn then ends by itself.',
+      'The bat is held while aiming; pressing Space winds it back, swings it through, and returns it to the aim pose, with no shot, no projectile, no forced turn cutoff, and no ammo change.',
     watch:
-      'The weapon firing instead of swinging (`eat_fire` missing), the art not moving at all (the quad layer not taken over, or `swing` not emitted), the art moving but snapping back the instant Space is released (the clip read from the render clock instead of the 50 Hz one), the return fading out and back in (a key written without `fade = false`), or the turn never ending (a swing with no finish).',
+      'The weapon firing instead of swinging (`eat_fire` missing), the art not moving at all (the quad layer not taken over, or `swing` not emitted), the art moving but snapping back the instant Space is released (the clip read from the render clock instead of the 50 Hz one), or the return fading out and back in (a key written without `fade = false`).',
   },
   {
     project: makeOp({
@@ -1829,7 +1829,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 20,
-        finish: 'endTurn',
+        finish: 'none',
         echo: { enabled: true, count: 5, every: 3, fade: 0.6, blend: 'add' },
         keys: [
           { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
@@ -1916,7 +1916,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 16,
-        finish: 'endTurn',
+        finish: 'none',
         keys: [
           { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
           { t: 4, angle: -25, dx: -2, dy: 2, scale: 1, ease: 'in_quad' },
@@ -1975,7 +1975,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 24,
-        finish: 'endTurn',
+        finish: 'none',
         // A cut that goes one way and comes back, so a strike per swing angle is
         // visible: the clip's own angle turns each box.
         keys: [
@@ -2046,7 +2046,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 16,
-        finish: 'endTurn',
+        finish: 'none',
         keys: [
           { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
           { t: 8, angle: 45, dx: 2, dy: -2, scale: 1.1, ease: 'out_cubic' },
@@ -2384,7 +2384,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 16,
-        finish: 'endTurn',
+        finish: 'none',
         keys: [
           { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
           { t: 16, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
@@ -2444,7 +2444,7 @@ const TESTS: TestCase[] = [
       aimClip: {
         enabled: true,
         ticks: 20,
-        finish: 'endTurn',
+        finish: 'none',
         keys: [
           { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, ease: 'out_quad' },
           { t: 8, angle: -55, dx: 2, dy: -4, scale: 1.08, ease: 'out_cubic' },
@@ -2530,7 +2530,8 @@ const TESTS: TestCase[] = [
       name: 'WF 62 Airstrike Crash Dive',
       slot: 'napalm_strike',
       fireType: 'cursor',
-      body: { damage: 25 },
+      action: 'bounce',
+      body: { damage: 25, fuse: true, fuse_time_ms: 3000 },
       airstrike: {
         ...DEFAULT_AIRSTRIKE,
         enabled: true,
@@ -3013,7 +3014,7 @@ const toml: string[] = [
   `name = "WormForge Test Pack"`,
   'version = "0.1.0"',
   'author = "WormForge Weapon Editor"',
-  'api_version = 4',
+  'api_version = 5',
   'format_version = 2',
 ];
 if (dependencies.length > 0) toml.push(`dependencies = [${dependencies.map(quote).join(', ')}]`);

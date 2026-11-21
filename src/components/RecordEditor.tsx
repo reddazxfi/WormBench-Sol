@@ -2148,17 +2148,22 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                   <TooltipLabel
                     label="Fuel Burn Mode"
                     code="missile.fire.decay_mode"
-                    desc="Controls whether flame lifetime drains while resting on terrain or only when damaging targets."
+                    desc="Controls whether flames decay immediately while burning or hold until the next turn start."
                   />
                   <select
-                    value={project.fireConfig.decay_mode}
+                    value={
+                      project.fireConfig.decay_mode === 'at_turn_start' ||
+                      (project.fireConfig.decay_mode as string) === 'on_hit'
+                        ? 'at_turn_start'
+                        : 'instant'
+                    }
                     onChange={(e) =>
                       onChange({ fireConfig: { ...project.fireConfig, decay_mode: e.target.value as any } })
                     }
                     className={selectClass}
                   >
-                    <option value="resting">Resting (Burns down on terrain)</option>
-                    <option value="on_hit">On Hit (Drains on damage)</option>
+                    <option value="instant">Instant (Drains immediately while burning)</option>
+                    <option value="at_turn_start">At Turn Start (Holds until turn start)</option>
                   </select>
                 </div>
               </div>

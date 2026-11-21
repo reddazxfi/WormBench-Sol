@@ -201,7 +201,7 @@ export const DEFAULT_AIM_ECHO: AimEchoConfig = {
 export const DEFAULT_AIM_CLIP: AimClipConfig = {
   enabled: false,
   ticks: 16,
-  finish: 'endTurn',
+  finish: 'none',
   echo: { ...DEFAULT_AIM_ECHO },
   keys: [
     { t: 0, angle: 0, dx: 0, dy: 0, scale: 1, alpha: 1, ease: 'out_quad' },

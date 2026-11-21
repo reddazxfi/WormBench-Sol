@@ -3761,24 +3761,19 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   <>
                     Space <span className="font-semibold">fires</span> this weapon, and the shot the
                     record builds is a <span className="font-semibold">ghost</span>: no art, no
-                    trail, no blast, no damage, no sound. That is what takes the ammo and lets WA
-                    end the turn by its own rules, with the retreat window as the player&apos;s last
-                    control, so <span className="font-semibold">When it ends</span> is not written
-                    for a strike.
+                    trail, no blast, no damage, no sound. That is what takes the ammo and lets the
+                    scheme and its options handle retreat and turn ending.
                   </>
                 ) : (
                   <>
                     Space plays this clip and <span className="font-semibold">does not fire</span>:
                     the claim carries <span className="font-mono">eat_fire = true</span>, so nothing
-                    leaves the worm. With <span className="font-semibold">End the turn</span> below,
-                    the swing hands the turn back when it finishes; without it the worm stays
-                    aiming, which is only right when a hit box or a custom{' '}
-                    <span className="font-mono">on_fire</span> ends the shot itself.
+                    leaves the worm while the game scheme owns turn ending.
                   </>
                 )}
               </p>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="max-w-xs">
                 <HoldDial
                   id="hold-swing-ticks"
                   label="Length"
@@ -3790,33 +3785,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   unit="t"
                   title="Length in 50 Hz ticks (20 ms each), so 16 ticks is 320 ms."
                 />
-                <div className="space-y-1">
-                  <label
-                    htmlFor="hold-swing-finish"
-                    className="text-xs font-semibold text-stone-700 dark:text-stone-300"
-                  >
-                    When it ends
-                  </label>
-                  <select
-                    id="hold-swing-finish"
-                    value={playerClip.finish}
-                    disabled={!!project.melee?.enabled}
-                    onChange={(event) =>
-                      updateClip({ finish: event.target.value as AimClipConfig['finish'] })
-                    }
-                    className="h-8 w-full cursor-pointer rounded-lg border border-stone-300 bg-white px-2 text-xs text-stone-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
-                  >
-                    <option value="endTurn">End the turn</option>
-                    <option value="none">Nothing (a hit or a custom on_fire ends it)</option>
-                  </select>
-                  {project.melee?.enabled && (
-                    <p className="text-[10px] leading-relaxed text-stone-500 dark:text-stone-400">
-                      Not written: a melee weapon fires a ghost shot, so WA ends the turn itself
-                      and the retreat window is the control between. Use{' '}
-                      <strong>Turn Handling</strong> to change when the turn ends.
-                    </p>
-                  )}
-                </div>
               </div>
 
               <div className="overflow-x-auto">

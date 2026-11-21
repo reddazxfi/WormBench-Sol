@@ -25,11 +25,22 @@ import {
   wepWeaponSpriteToStockDonor,
 } from '../data/fireSubtypes';
 import { resolveStockSprite, stockSpriteId, stockSpriteName } from '../data/stockSprites';
-import { supportsFireSequence } from '../data/fireSequence';
+import {
+  fireSequenceMissileActive,
+  fireSequenceUsesNestedProjectile,
+  mergeFireSequenceConfig,
+  parseCustomIntervalsMs,
+  supportsFireSequence,
+} from '../data/fireSequence';
 import { STAMP_FRAMES, stampFrameForAngle, supportsTerrainStamp } from '../data/terrainStamp';
 import { COLLISION_FLAGS } from '../data/recordSchema';
 import { meleeStrikes } from '../data/melee';
-import { airstrikeActive, mergeAirstrikeConfig, takeoverMissileActive } from '../data/airstrike';
+import {
+  airstrikeActive,
+  mergeAirstrikeConfig,
+  supportsAirstrikePlane,
+  takeoverMissileActive,
+} from '../data/airstrike';
 import { SDK_MODULE_EXPORTS, SDK_MODULE_PREFIXES } from '../data/sdkModules';
 import { maskLuaCode, NOT_GENERATED_CLOSE, NOT_GENERATED_OPEN, scanBlockEnd } from './luaText';
 import { recordField } from './recordField';
@@ -254,12 +265,14 @@ function radians(degrees: number): string {
 }
 
 interface EmitterEmitOptions {
-  /** Where the emitter sits: the fired round, or the worm's muzzle. */
-  anchor: 'round' | 'muzzle';
+  /** Where the emitter sits: the fired round, the worm's muzzle, or the airstrike plane. */
+  anchor: 'round' | 'muzzle' | 'plane';
   /** Muzzle aiming emitter is active (`anchor === 'muzzle' && !projectileExclusive`). */
   usesAim: boolean;
   /** Projectile emitter is active (`roundOk && (anchor === 'round' || carry || projectileExclusive)`). */
   usesRound: boolean;
+  /** Strike plane emitter is active (`anchor === 'plane' && planeOk`). */
+  usesPlane: boolean;
   /** Muzzle only: hand the emitter to the round the trigger creates. */
   carries: boolean;
   /** Disable the emitter while aiming so it only appears on fired projectiles. */
@@ -268,6 +281,8 @@ interface EmitterEmitOptions {
   roundOk: boolean;
   /** Muzzle only: keep the emitter visible on firing/fired worm states too. */
   keepWhileFiring: boolean;
+  /** Lua airstrike takeover with a missile payload (`wf-lib/wfws_airstrike`). */
+  airstrikeMissile?: boolean;
 }
 
 /**
@@ -349,6 +364,7 @@ function emitEmitterBlock(
   lines.push('        x = x, y = y, owner = owner, follow = follow,');
   lines.push(`        anchor = ${luaQuote(o.anchor)},`);
   lines.push(`        carry = ${o.carries ? 'true' : 'false'},`);
+  if (o.usesPlane && em.planeAlsoRound) lines.push('        plane_also_round = true,');
   if (o.projectileExclusive) lines.push('        projectile_exclusive = true,');
   if (!followFireAngle) lines.push('        follow_fire_angle = false,');
   lines.push(`        preset = ${luaQuote(em.preset)},`);
@@ -499,10 +515,19 @@ function emitEmitterBlock(
     lines.push('        p = nil');
     lines.push('      end');
     lines.push('      if p == nil then');
-    lines.push('        -- Only a shot from the worm holding this weapon starts a round;');
-    lines.push('        -- a cluster bit still alive after the turn is not it.');
-    lines.push('        local w = emitter_worm()');
-    lines.push('        if not (w and w.weapon == ctx.id) then return end');
+    if (o.airstrikeMissile) {
+      lines.push('        -- Airstrike takeover drops bombs after the click when `w.weapon` may');
+      lines.push('        -- already be cleared; `air.is_main` latches every dropped payload round');
+      lines.push('        -- without spawning emitters on late cluster bits.');
+      lines.push('        if not air.is_main(m.id) then return end');
+      lines.push('        local w = emitter_worm()');
+      lines.push('        if not w then return end');
+    } else {
+      lines.push('        -- Only a shot from the worm holding this weapon starts a round;');
+      lines.push('        -- a cluster bit still alive after the turn is not it.');
+      lines.push('        local w = emitter_worm()');
+      lines.push('        if not (w and w.weapon == ctx.id) then return end');
+    }
     lines.push('        p = { x = m.x, y = m.y, vx = m.vx, vy = m.vy,');
     lines.push('          seen = wa.world.frame() }');
     lines.push('        EMITTER_ROUNDS[m.id] = p');
@@ -559,6 +584,26 @@ function emitEmitterBlock(
       lines.push('      end');
     }
     lines.push('    end, { msgs = { wa.msg.FRAME_FINISH } })');
+  }
+  if (o.usesPlane) {
+    const planePosXTerm =
+      posXNum === 0
+        ? ''
+        : posXNum > 0
+          ? ` + s.dir * ${formatNumber(posXNum)}`
+          : ` - s.dir * ${formatNumber(-posXNum)}`;
+    lines.push('    -- Strike-plane follower: rides the flying aircraft hull with facing-mirrored');
+    lines.push('    -- Cartesian offsets and ends automatically when the plane finishes or crashes.');
+    lines.push('    local function emitter_plane(s)');
+    lines.push('      return function()');
+    lines.push('        if s.done or (s.hull and s.hull.dead) then return nil end');
+    lines.push(`        return s.x${planePosXTerm}, s.y${posYTerm}, (s.vx or 0) * (s.dir or 1), s.vy or 0`);
+    lines.push('      end');
+    lines.push('    end');
+    lines.push('    local function emitter_start_plane(s)');
+    lines.push('      if not s or not s.hull then return nil end');
+    lines.push(`      return fx.emitter(emitter_for(s.x${planePosXTerm}, s.y${posYTerm}, s.owner, emitter_plane(s)))`);
+    lines.push('    end');
   }
   lines.push('');
 }
@@ -800,10 +845,10 @@ export function airstrikeCasingSheetPath(project: WeaponProject): string | null 
   return `sprites/${sanitizeModFolder(project.id)}/airstrike_casing.${ext}`;
 }
 
-/** Bundle path of an uploaded airstrike WAV (`enter` / `loop` / `exit` / `release`). */
+/** Bundle path of an uploaded airstrike WAV (`enter` / `loop` / `exit` / `release` / `boom`). */
 export function airstrikeSoundPath(
   project: WeaponProject,
-  role: 'enter' | 'loop' | 'exit' | 'release',
+  role: 'enter' | 'loop' | 'exit' | 'release' | 'boom',
 ): string | null {
   if (!airstrikeActive(project)) return null;
   const air = mergeAirstrikeConfig(project.airstrike);
@@ -815,9 +860,29 @@ export function airstrikeSoundPath(
         ? air.plane.soundLoop
         : role === 'exit'
           ? air.plane.soundExit
-          : air.release.sound;
+          : role === 'boom'
+            ? air.plane.boomSound
+            : air.release.sound;
   if (!spec?.file?.file) return null;
   return `sounds/${sanitizeModFolder(project.id)}/airstrike_${role}.wav`;
+}
+
+/** True when airstrike plane crash explosion config should trigger a px_effects burst. */
+function planeCrashUsesFxBurst(air: AirstrikeConfig): boolean {
+  if (air.entry.mode === 'payload') return false;
+  const canCrash = air.plane.collide || air.plane.crashOnTerrain;
+  if (!canCrash) return false;
+  if (air.plane.boomMode === 'custom') {
+    return air.plane.boomVisual === 'fx' || air.plane.boomVisual === 'both';
+  }
+  return !!air.plane.boomFxBurst?.enabled;
+}
+
+/** True when airstrike plane crash uses electric taze hit kind (`px.electric`). */
+function planeCrashUsesTaze(air: AirstrikeConfig): boolean {
+  if (air.entry.mode === 'payload') return false;
+  const canCrash = air.plane.collide || air.plane.crashOnTerrain;
+  return canCrash && air.plane.boomMode === 'custom' && air.plane.boomHitKind === 'taze';
 }
 
 /** Emit the `air.install(ctx, { ... })` call for Lua airstrike takeover. */
@@ -825,9 +890,14 @@ function emitAirstrikeInstallBlock(
   lines: string[],
   project: WeaponProject,
   air: AirstrikeConfig,
+  opts: {
+    emitterUsesPlane?: boolean;
+    usesPlaneCrashFx?: boolean;
+    usesPlaneCrashTaze?: boolean;
+  } = {},
 ): void {
   const soundExpr = (
-    role: 'enter' | 'loop' | 'exit' | 'release',
+    role: 'enter' | 'loop' | 'exit' | 'release' | 'boom',
     spec: AirstrikeSoundSpec | undefined,
   ): string | null => {
     const wavPath = airstrikeSoundPath(project, role);
@@ -888,17 +958,44 @@ function emitAirstrikeInstallBlock(
     ) {
       lines.push(`        bank_rate = ${formatNumber(Math.max(0, air.plane.bankRate))},`);
     }
+    const sndBoom = soundExpr('boom', air.plane.boomSound);
+    const hasCrash = air.plane.collide || air.plane.crashOnTerrain;
     if (air.plane.collide) {
       lines.push('        collide = true,');
       if (air.plane.asObject) lines.push('        as_object = true,');
       if (air.plane.hp > 0) lines.push(`        hp = ${Math.round(air.plane.hp)},`);
       lines.push(`        dead_damage = ${Math.round(Math.max(0, air.plane.deadDamage))},`);
-      lines.push(`        boom_damage = ${Math.round(Math.max(0, air.plane.boomDamage))},`);
-      lines.push(`        boom_kind = ${Math.round(air.plane.boomKind)},`);
+    }
+    if (air.plane.crashOnTerrain) {
+      lines.push('        crash_on_terrain = true,');
+    }
+    if (hasCrash) {
+      lines.push(`        crash_on_water = ${air.plane.crashOnWater ? 'true' : 'false'},`);
+      if (air.plane.boomMode === 'custom') {
+        lines.push('        boom_mode = "custom",');
+        lines.push(`        boom_damage = ${Math.round(Math.max(0, air.plane.boomDamage))},`);
+        lines.push(`        boom_radius = ${Math.round(Math.max(1, air.plane.boomRadius))},`);
+        lines.push(`        boom_push_pct = ${Math.round(Math.max(0, air.plane.boomPushPct))},`);
+        lines.push(
+          `        boom_crater_radius = ${Math.round(Math.max(0, Math.min(200, air.plane.boomCraterRadius)))},`,
+        );
+        if (air.plane.boomHitKind !== 'blast') {
+          lines.push(`        boom_hit_kind = ${luaQuote(air.plane.boomHitKind)},`);
+        }
+        lines.push(`        boom_visual = ${luaQuote(air.plane.boomVisual)},`);
+        if (air.plane.boomVisual === 'native' || air.plane.boomVisual === 'both') {
+          lines.push(`        boom_kind = ${Math.round(air.plane.boomKind)},`);
+          if (air.plane.boomBelow) lines.push('        boom_below = true,');
+        }
+      } else {
+        lines.push(`        boom_damage = ${Math.round(Math.max(0, air.plane.boomDamage))},`);
+        lines.push(`        boom_kind = ${Math.round(air.plane.boomKind)},`);
+        if (air.plane.boomBelow) lines.push('        boom_below = true,');
+      }
       if (air.plane.boomFires > 0) {
         lines.push(`        boom_fires = ${Math.round(air.plane.boomFires)},`);
       }
-      lines.push(`        crash_on_water = ${air.plane.crashOnWater ? 'true' : 'false'},`);
+      if (sndBoom) lines.push(`        boom_sound = ${sndBoom},`);
     }
     lines.push(`        exit_margin = ${formatNumber(Math.max(0, air.plane.exitMargin))},`);
     lines.push(`        timeout_frames = ${Math.max(1, Math.round(air.plane.timeoutFrames))},`);
@@ -1135,6 +1232,37 @@ function emitAirstrikeInstallBlock(
     lines.push(`        bullet = { ${bulletFields.join(', ')} },`);
   }
   lines.push('      },');
+  if (opts.emitterUsesPlane || opts.usesPlaneCrashFx || opts.usesPlaneCrashTaze) {
+    lines.push('      effects = {');
+    if (opts.emitterUsesPlane) {
+      lines.push('        on_start = function(s)');
+      lines.push('          emitter_start_plane(s)');
+      lines.push('        end,');
+    }
+    if (opts.usesPlaneCrashFx || opts.usesPlaneCrashTaze) {
+      lines.push('        on_plane_boom = function(s)');
+      if (opts.usesPlaneCrashTaze) {
+        lines.push('          zap.set_message_electric(20, 0, -4, true, 2)');
+      }
+      if (opts.usesPlaneCrashFx) {
+        const rgb = hexToRgb(air.plane.boomFxBurst?.color || '#ff7a2f');
+        const radius = Math.max(8, Math.round(air.plane.boomFxBurst?.radius ?? 64));
+        const smoke = air.plane.boomFxBurst?.smoke !== false;
+        lines.push('          fx.burst({');
+        lines.push('            x = s.x, y = s.y, owner = s.owner,');
+        lines.push(`            radius = ${radius},`);
+        lines.push(`            r = ${rgb.r}, g = ${rgb.g}, b = ${rgb.b},`);
+        if (smoke) {
+          lines.push(`            smoke = { count = 7, kinds = 2, r = ${rgb.r}, g = ${rgb.g}, b = ${rgb.b} },`);
+        } else {
+          lines.push('            smoke = false,');
+        }
+        lines.push('          })');
+      }
+      lines.push('        end,');
+    }
+    lines.push('      },');
+  }
   lines.push('    })');
 }
 
@@ -1834,18 +1962,54 @@ export function generateLuaCode(project: WeaponProject): string {
   const usesAirstrike = airstrikeActive(project);
   const airstrikeCfg = usesAirstrike ? mergeAirstrikeConfig(project.airstrike) : null;
   const usesAirstrikeMissile = takeoverMissileActive(project);
+  const usesAirstrikePlane = supportsAirstrikePlane(project);
   const usesAirstrikeStrafeTrail =
     !!airstrikeCfg && airstrikeCfg.release.mode === 'strafe' && airstrikeCfg.strafe.trailEnabled;
+  const usesPlaneCrashFx = !!airstrikeCfg && planeCrashUsesFxBurst(airstrikeCfg);
+  const usesPlaneCrashTaze = !!airstrikeCfg && planeCrashUsesTaze(airstrikeCfg);
+
+  const maskedSnippet = project.enableCustomLua
+    ? maskLuaCode(project.customLuaSnippet || '')
+    : '';
+  const hasCustomOnFire = /(?:^|\n)[ \t]*on_fire\s*=/.test(maskedSnippet);
+  const carriedHookList = (project.carriedLua?.hooks ?? []).filter((hook) => !hook.disabled);
+  const carriedHooks = new Map(carriedHookList.map((hook) => [hook.key, hook]));
+  const carriedExplode = carriedHooks.has('on_explode')
+    ? hookBodyOf(carriedHooks.get('on_explode')!.text)
+    : null;
+  const carriedOnFire = carriedHooks.has('on_fire')
+    ? hookBodyOf(carriedHooks.get('on_fire')!.text)
+    : null;
+  const hasCarriedOnFire = !!carriedOnFire?.body.trim();
+
+  // `wf-lib/wfws_firing` (`wfws.sdk`): unified sequential firing engine.
+  // Supports both native WA gun timing (`gun.bullets` + nested `projectile` +
+  // `firing.launch`) and our absorbed custom-cadence sequencer (`firing.sequence`)
+  // with pre-shot buffers and per-shot cooldown schedules — zero `px.fire_seq`.
+  const fireSeqCfg = project.fireSequence ? mergeFireSequenceConfig(project.fireSequence) : null;
+  const usesFireSequence =
+    !!fireSeqCfg?.enabled &&
+    !hasCustomOnFire &&
+    !hasCarriedOnFire &&
+    supportsFireSequence(project);
+  const usesFireSeqNative = usesFireSequence && fireSeqCfg!.engine === 'native';
+  const usesFireSeqTimed = usesFireSequence && fireSeqCfg!.engine === 'timed';
+  const usesFireSeqMissile = usesFireSequence && fireSeqCfg!.mode !== 'actors';
+  const usesFireSeqNestedProj = usesFireSequence && fireSequenceUsesNestedProjectile(project);
+  const usesFireSeqHoming = usesFireSeqMissile && !!fireSeqCfg?.homing?.enabled;
 
   // Which record families WA blasts at all: a gun, arrow, spray or special has
   // no explosion to decorate, and neither does a native air strike. A native
   // strike's bombs are built by AirStrikeEntity::release_missile from the
   // strike's own record copy, not from a weapon-table slot, so the engine never
   // maps them to this claim (`missile_boom::weapon_of` has no slot for them)
-  // and `on_explode` cannot fire. Airstrike takeover with a missile payload
-  // launches via `projectile = { ... }` and DOES receive `on_explode`.
+  // and `on_explode` cannot fire. Airstrike takeover and sequential-fire
+  // payloads launch via `projectile = { ... }` and DO receive `on_explode`.
   const explodesNatively =
-    project.fireType === 'power' || project.fireType === 'drop' || usesAirstrikeMissile;
+    project.fireType === 'power' ||
+    project.fireType === 'drop' ||
+    usesAirstrikeMissile ||
+    usesFireSeqMissile;
 
   // Parse custom Lua callbacks to extract any `on_explode` hook.
   // This allows custom Lua logic, custom explosion WAV sound, and the effects-SDK
@@ -1853,19 +2017,6 @@ export function generateLuaCode(project: WeaponProject): string {
   const parsedLua = project.enableCustomLua && project.customLuaSnippet
     ? parseCustomLua(project.customLuaSnippet)
     : { paramName: 'ev', onExplodeBody: '', remainingSnippet: project.customLuaSnippet || '', hasOnExplode: false };
-
-  // Carried claim hooks (M5): the bundle's own `on_explode` and `on_fire`. The
-  // key is single-valued, so they are inlined into the handler the editor emits
-  // rather than written as a second key, which would replace one of the two.
-  // One switch per block (the Carried Lua panel): a disabled block stays in the
-  // project so its text is not lost, and is simply not written. That can leave a
-  // helper reading a name nothing declares, which is the author's call and shows
-  // in the panel's report, not something to guess around.
-  const carriedHookList = (project.carriedLua?.hooks ?? []).filter((hook) => !hook.disabled);
-  const carriedHooks = new Map(carriedHookList.map((hook) => [hook.key, hook]));
-  const carriedExplode = carriedHooks.has('on_explode')
-    ? hookBodyOf(carriedHooks.get('on_explode')!.text)
-    : null;
 
   // The effects SDK's px_effects burst: the electric ring + lens, an optional
   // PX-style blast replacement, and the smoke and re-buffer passes.
@@ -1922,62 +2073,36 @@ export function generateLuaCode(project: WeaponProject): string {
   // A melee strike's electrical hit is `px.electric`'s own `hurt_electric`: WA's
   // "taze" kind alone is a Prod to it and nothing more.
   const usesElectricMelee = !!project.melee?.enabled && project.melee.kind === 'taze';
-  const usesZap = usesElectricBlast || usesElectricImpact || usesElectricMelee;
+  const usesZap = usesElectricBlast || usesElectricImpact || usesElectricMelee || usesPlaneCrashTaze;
   const usesIntervalSound =
     !!intervalSoundPath &&
     (project.fireType === 'power' ||
       (project.fireType === 'drop' && !!project.body.fuse) ||
-      usesAirstrikeMissile);
+      usesAirstrikeMissile ||
+      usesFireSeqMissile);
   const hasSnippetExplodeCode = project.enableCustomLua && !!parsedLua.onExplodeBody.trim();
   const hasCarriedExplodeCode = !!carriedExplode?.body.trim();
   const hasCustomExplodeCode = hasSnippetExplodeCode || hasCarriedExplodeCode;
-  // `wf-lib/fire_seq` (px.fire_seq): one `on_fire` fires a burst. A custom
-  // `on_fire` in the snippet owns the trigger, so the card is skipped then.
-  // Mask comments/strings so `-- on_fire =` does not disable features.
-  const fireSequence = project.fireSequence;
-  const maskedSnippet = project.enableCustomLua
-    ? maskLuaCode(project.customLuaSnippet || '')
-    : '';
-  const hasCustomOnFire = /(?:^|\n)[ \t]*on_fire\s*=/.test(maskedSnippet);
-  // The bundle's own `on_fire` (M6): a hand-written trigger the editor does not
-  // model. It does not stop the launch WAV, which is one report per trigger and
-  // still belongs first in the handler, but it does stop our `fire_seq` burst:
-  // the bundle's body is the whole trigger then, and two launches from one
-  // trigger is exactly the failure the "a custom on_fire owns the key" rule
-  // exists to avoid.
-  const carriedOnFire = carriedHooks.has('on_fire')
-    ? hookBodyOf(carriedHooks.get('on_fire')!.text)
-    : null;
-  const hasCarriedOnFire = !!carriedOnFire?.body.trim();
-  const usesFireSequence =
-    !!fireSequence?.enabled &&
-    !hasCustomOnFire &&
-    !hasCarriedOnFire &&
-    supportsFireSequence(project);
   // Claim keys the engine reads verbatim and the editor does not model: the
   // bundle's own callbacks, written as the key itself. `on_explode`/`on_fire`
   // are not here: they are merged into the handler the editor emits.
   const verbatimHooks = carriedHookList.filter((hook) => !MERGEABLE_HOOKS.has(hook.key));
-  // A sequentially fired round is launched by us (`wa.weapons.launch`), so WA's
-  // fuse option never reaches it: the launch writes the record's own
-  // `missile.fuse`, and a weapon that relies on the option (every grenade) keeps
-  // 0 there, which explodes on the first frame. The burst carries the fuse
-  // itself, read off the turn player's synchronised digit keys, so the timer
-  // matches what the player picked while aiming.
-  //
-  // Only when the record holds no fuse: an author who pinned one (dynamite's
-  // 5000, a bazooka's 9000) is left alone, and WA offers its 1-5 keys only for
-  // the records that have none, so the two agree.
+  // A sequentially fired round is launched by `wa.weapons.launch`, so WA's
+  // fuse option never reaches it unless `wfws_firing` samples the synchronised
+  // digit keys (1..5) and passes `fuse = "aim"` or a fixed millisecond value.
   const recordFuse = Math.max(
     0,
     Math.round(Number(recordField(project, 'missile.fuse', project.body.fuse_time_ms ?? 0)) || 0),
   );
-  const carriesFuse =
-    usesFireSequence &&
-    fireSequence!.mode !== 'actors' &&
-    recordFuse === 0 &&
-    (project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse));
-  // WA's fuse keys are seconds, 1 to 5, and the option starts at 3.
+  const effectiveSeqFuseMode: 'record' | 'aim' | 'fixed' = !usesFireSeqMissile
+    ? 'record'
+    : fireSeqCfg!.fuseMode === 'aim' || fireSeqCfg!.fuseMode === 'fixed'
+      ? fireSeqCfg!.fuseMode
+      : recordFuse === 0 &&
+          (project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse))
+        ? 'aim'
+        : 'record';
+  const carriesFuse = usesFireSeqMissile && effectiveSeqFuseMode === 'aim';
   const fuseFallback = 3000;
   // The firing role (`fire` in the `sb.hold` spec): the art WA draws on its two
   // firing frames, with its own sheet, strip, window and hand. The firing-state
@@ -2023,7 +2148,8 @@ export function generateLuaCode(project: WeaponProject): string {
     !!ribbonTrail?.enabled &&
     (project.fireType === 'power' ||
       (project.fireType === 'drop' && project.body.fuse) ||
-      usesAirstrikeMissile);
+      usesAirstrikeMissile ||
+      usesFireSeqMissile);
   // PX's effect manager as a live emitter (`fx.emitter`): a ring, sparks, short
   // bolts and a ribbon at a point that either rides the fired round or sits at
   // the muzzle while the turn's worm aims with this weapon. A melee claim eats
@@ -2034,26 +2160,40 @@ export function generateLuaCode(project: WeaponProject): string {
   const emitterRibbon = usesEmitter && !!emitter?.trail?.enabled;
   // The round anchor needs a missile WA builds from this record (a placed mine
   // is a mine entity, a native strike's bombs carry no `m.weapon`; airstrike
-  // takeover missiles DO carry `m.weapon`).
+  // takeover and sequential-fire missiles DO carry `m.weapon`).
   const emitterRoundOk =
     project.fireType === 'power' ||
     (project.fireType === 'drop' && !!project.body.fuse) ||
-    usesAirstrikeMissile;
-  const emitterAnchor: 'round' | 'muzzle' =
-    emitter?.anchor === 'round' && emitterRoundOk ? 'round' : 'muzzle';
-  const emitterProjectileExclusive = emitterRoundOk && !!emitter?.projectileExclusive;
+    usesAirstrikeMissile ||
+    usesFireSeqMissile;
+  const emitterPlaneOk = usesAirstrikePlane;
+  const emitterAnchor: 'round' | 'muzzle' | 'plane' =
+    emitter?.anchor === 'plane' && emitterPlaneOk
+      ? 'plane'
+      : emitter?.anchor === 'round' && emitterRoundOk
+        ? 'round'
+        : 'muzzle';
+  const emitterProjectileExclusive =
+    emitterAnchor !== 'plane' && emitterRoundOk && !!emitter?.projectileExclusive;
   const emitterUsesAim = emitterAnchor === 'muzzle' && !emitterProjectileExclusive;
+  const emitterUsesPlane = usesEmitter && emitterAnchor === 'plane' && emitterPlaneOk;
   // Handing it to the round needs a round, so a placed mine or a strike keeps
   // its emitter at the muzzle instead of leaving one following a missile that
   // will never exist.
   const emitterUsesRound =
     emitterRoundOk &&
-    (emitterAnchor === 'round' || emitter?.carry !== false || emitterProjectileExclusive);
+    (emitterAnchor === 'round' ||
+      (emitterAnchor === 'muzzle' && (emitter?.carry !== false || emitterProjectileExclusive)) ||
+      (emitterAnchor === 'plane' && !!emitter?.planeAlsoRound));
   const emitterCarries = emitterUsesAim && emitterUsesRound;
   // Anything in px_effects needs the module required and installed; the trail
   // module on its own installs itself.
   const usesEffectsSdk =
-    usesExplosionEffect || usesEmitter || usesRibbonTrail || usesAirstrikeStrafeTrail;
+    usesExplosionEffect ||
+    usesEmitter ||
+    usesRibbonTrail ||
+    usesAirstrikeStrafeTrail ||
+    usesPlaneCrashFx;
 
   if (usesHold) {
     lines.push('local holds = require("wf-lib/holds")');
@@ -2067,46 +2207,7 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push('local air = require("wf-lib/wfws_airstrike")');
   }
   if (usesFireSequence) {
-    lines.push('local seq = require("wf-lib/fire_seq")');
-    // The aim clamp (`hold.aim_clamp`) is a limit on the fire angle too: a burst
-    // whose direction comes from the live aim is launched along the clamped aim,
-    // so the shot cannot leave at an angle the art cannot hold. WA's own vector
-    // for a plain record shot is not ours to change.
-    const shotClamp = aimClampOf(project);
-    if (shotClamp) {
-      const lo = Math.max(0, 0.5 - shotClamp.down / 180);
-      const hi = Math.min(1, 0.5 + shotClamp.up / 180);
-      lines.push(`local AIM_LO, AIM_HI = ${formatNumber(lo)}, ${formatNumber(hi)}`);
-      lines.push('local function aim_clamped(a)');
-      lines.push('  if a < AIM_LO then return AIM_LO end');
-      lines.push('  if a > AIM_HI then return AIM_HI end');
-      lines.push('  return a');
-      lines.push('end');
-    }
-    // The worm's live aim as a unit vector: aim 0 is straight down, 1 straight
-    // up, and `facing` mirrors it. `wa.math` keeps it deterministic.
-    lines.push('local function seq_dir(w)');
-    lines.push(`  local ang = (1 - ${shotClamp ? 'aim_clamped(w.aim)' : 'w.aim'}) * math.pi`);
-    lines.push('  if w.facing < 0 then ang = 2 * math.pi - ang end');
-    lines.push('  return wa.math.sin(ang), -wa.math.cos(ang)');
-    lines.push('end');
-  }
-  if (carriesFuse) {
-    // WA's fuse option lives in WA, not in the record: it is the number key the
-    // player holds while aiming (1 to 5 seconds), and WA writes it into the
-    // shots it fires itself. A burst we launch has to carry it, or every round
-    // gets the record's timer (0, which is the fuse the grenade record holds).
-    // `wa.world.keys()` is the turn player's synchronised keyboard, so every
-    // peer reads the same digit on the same frame.
-    lines.push('local FUSE_DEFAULT = ' + String(fuseFallback));
-    lines.push('local FUSE_AIM = { [0x67] = true, [0x68] = true, [0x69] = true }');
-    lines.push('local fuse_by_worm = {} -- worm id -> milliseconds the player picked');
-    lines.push('local fuse_frame = -1');
-    lines.push('local function fuse_of(w)');
-    lines.push('  local ms = fuse_by_worm[w.id]');
-    lines.push('  if ms then return ms end');
-    lines.push('  return FUSE_DEFAULT');
-    lines.push('end');
+    lines.push('local firing = require("wf-lib/wfws_firing")');
   }
   if (usesZap) {
     // Declared here, before the stamp helpers below: `stamp_hit` is a `local
@@ -2225,7 +2326,13 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push('local trail = require("wf-lib/effects/trail")');
   }
   if (usesEffectsSdk) {
-    if (usesEmitter || usesExplosionEffect || usesRibbonTrail || usesAirstrikeStrafeTrail) {
+    if (
+      usesEmitter ||
+      usesExplosionEffect ||
+      usesRibbonTrail ||
+      usesAirstrikeStrafeTrail ||
+      usesPlaneCrashFx
+    ) {
       lines.push('local fx = require("wf-lib/effects/px_effects")');
     }
     if (silencesBlast) {
@@ -2709,28 +2816,99 @@ export function generateLuaCode(project: WeaponProject): string {
   // Install function
   lines.push('  install = function(ctx)');
   if (carriesFuse) {
-    // A statement, so it sits above the claim rather than inside it: the fuse
-    // the player picks while aiming is sampled once per 50 Hz frame, and the
-    // burst reads the last pick off it.
-    lines.push("    -- The fuse the player picked while aiming (WA's fuse option), sampled");
-    lines.push('    -- once per 50 Hz frame: the digit keys are the turn player\'s, from the');
-    lines.push('    -- lockstep keyboard, so every peer sees the same value.');
-    lines.push('    wa.on.worm_message(function()');
-    lines.push('      local now = wa.world.frame() or 0');
-    lines.push('      if now == fuse_frame then return end');
-    lines.push('      fuse_frame = now');
-    lines.push('      local keys = wa.world and wa.world.keys and wa.world.keys() or nil');
-    lines.push('      local digit = keys and keys.digit or nil');
-    lines.push('      if digit == nil then return end');
-    lines.push('      local worms = wa.worms.all()');
-    lines.push('      for i = 1, #worms do');
-    lines.push('        local w = worms[i]');
-    lines.push('        if w.turn and w.weapon == ctx.id and FUSE_AIM[w.state_id]');
-    lines.push('          and digit >= 1 and digit <= 5 then');
-    lines.push('          fuse_by_worm[w.id] = digit * 1000');
-    lines.push('        end');
-    lines.push('      end');
-    lines.push('    end, { msgs = { wa.msg.FRAME_FINISH } })');
+    // Synchronised digit-key (1..5 s) fuse sampler owned by `wfws_firing`.
+    lines.push(`    firing.install_fuse(${fuseFallback})`);
+  }
+  if (usesFireSequence && fireSeqCfg) {
+    const f = fireSeqCfg;
+    const shotClamp = aimClampOf(project);
+    const shotSound = shotSoundPath
+      ? {
+          path: shotSoundPath,
+          every: Math.max(1, Math.round(customSounds?.shotEvery ?? 1)),
+          priority: Math.max(0, Math.round(customSounds?.shotPriority ?? 8)),
+        }
+      : null;
+    const pushSharedFiringRows = (target: string[]) => {
+      target.push('      weapon = ctx.id,');
+      target.push(`      speed = ${formatNumber(f.speed)},`);
+      if (f.standoff > 0) target.push(`      standoff = ${formatNumber(f.standoff)},`);
+      if (f.offsetX !== 0 || f.offsetY !== 0) {
+        target.push(
+          `      offset = { x = ${formatNumber(f.offsetX)}, y = ${formatNumber(f.offsetY)} },`,
+        );
+      }
+      if (f.mode === 'missiles') {
+        if (effectiveSeqFuseMode === 'aim') {
+          target.push('      fuse = "aim",');
+        } else if (effectiveSeqFuseMode === 'fixed' && f.fuseFixedMs > 0) {
+          target.push(`      fuse = ${Math.round(f.fuseFixedMs)},`);
+        }
+        if (f.explodeOnSpace) {
+          target.push('      explode_on_space = true,');
+        }
+        if (f.homing.enabled) {
+          const hParts = [
+            `speed = ${formatNumber(f.homing.speed)}`,
+            `turn = ${formatNumber(f.homing.turn)}`,
+            `frames = ${Math.max(1, Math.round(f.homing.frames))}`,
+          ];
+          if (f.homing.delay > 0) hParts.push(`delay = ${Math.round(f.homing.delay)}`);
+          if (f.homing.sound > 0) hParts.push(`sound = ${Math.round(f.homing.sound)}`);
+          if (f.homing.perShotTarget) hParts.push('per_shot_target = true');
+          target.push(`      homing = { ${hParts.join(', ')} },`);
+        }
+      } else {
+        const aParts: string[] = [];
+        if (f.actorSprite.trim()) aParts.push(`sprite = ${luaQuote(f.actorSprite.trim())}`);
+        aParts.push(`gravity = ${f.actorGravity ? 'true' : 'false'}`);
+        aParts.push(`collide = ${f.actorCollide ? 'true' : 'false'}`);
+        aParts.push(`persist = ${f.actorPersist ? 'true' : 'false'}`);
+        target.push(`      actor = { ${aParts.join(', ')} },`);
+      }
+      if (shotSound) {
+        const sParts = [`path = ${luaQuote(shotSound.path)}`];
+        if (shotSound.every > 1) sParts.push(`every = ${shotSound.every}`);
+        if (shotSound.priority !== 8) sParts.push(`priority = ${shotSound.priority}`);
+        target.push(`      sound = { ${sParts.join(', ')} },`);
+      }
+      if (shotClamp) {
+        const lo = Math.max(0, 0.5 - shotClamp.down / 180);
+        const hi = Math.min(1, 0.5 + shotClamp.up / 180);
+        target.push(`      aim_clamp = { lo = ${formatNumber(lo)}, hi = ${formatNumber(hi)} },`);
+      }
+    };
+
+    if (usesFireSeqNative) {
+      lines.push('    local PAYLOAD = {');
+      pushSharedFiringRows(lines);
+      lines.push('    }');
+    } else if (usesFireSeqTimed) {
+      const customSchedule = parseCustomIntervalsMs(f.customIntervalsMs);
+      lines.push('    local SEQ = {');
+      if (f.mode === 'actors') lines.push('      mode = "actors",');
+      lines.push(`      count = ${Math.max(1, Math.round(f.count))},`);
+      if (customSchedule.length > 0) {
+        lines.push(`      intervals_ms = { ${customSchedule.join(', ')} },`);
+      } else {
+        if (f.firstDelayMs > 0) lines.push(`      first_delay_ms = ${Math.round(f.firstDelayMs)},`);
+        lines.push(`      interval_ms = ${Math.max(20, Math.round(f.intervalMs))},`);
+      }
+      if (f.burstSize > 1) lines.push(`      burst_size = ${Math.round(f.burstSize)},`);
+      if (f.spreadDeg > 0) lines.push(`      spread_deg = ${formatNumber(f.spreadDeg)},`);
+      if (f.spreadX > 0 || f.spreadY > 0) {
+        lines.push(
+          `      spread = { x = ${formatNumber(f.spreadX)}, y = ${formatNumber(f.spreadY)} },`,
+        );
+      }
+      if (!f.liveAim) lines.push('      live_aim = false,');
+      if (f.cancelOnWeaponChange || f.mode === 'actors') {
+        lines.push('      cancel_weapon = ctx.id,');
+      }
+      if (f.scaleByPower) lines.push('      scale_by_power = true,');
+      pushSharedFiringRows(lines);
+      lines.push('    }');
+    }
     lines.push('');
   }
   if (usesZap) {
@@ -2760,14 +2938,20 @@ export function generateLuaCode(project: WeaponProject): string {
       anchor: emitterAnchor,
       usesAim: emitterUsesAim,
       usesRound: emitterUsesRound,
+      usesPlane: emitterUsesPlane,
       carries: emitterCarries,
       projectileExclusive: emitterProjectileExclusive,
       roundOk: emitterRoundOk,
       keepWhileFiring: !!project.hold?.keepWhileFiring,
+      airstrikeMissile: usesAirstrikeMissile,
     });
   }
   if (usesAirstrike && airstrikeCfg) {
-    emitAirstrikeInstallBlock(lines, project, airstrikeCfg);
+    emitAirstrikeInstallBlock(lines, project, airstrikeCfg, {
+      emitterUsesPlane,
+      usesPlaneCrashFx,
+      usesPlaneCrashTaze,
+    });
   }
   if (usesHoldLocal) {
     // With the aiming manager the table is built by `sb.hold`, which returns the
@@ -2795,10 +2979,14 @@ export function generateLuaCode(project: WeaponProject): string {
   lines.push(extraAssignments.length > 0 ? '    local rec = {' : '    wa.weapons.replace{');
   lines.push(`      name = ${luaQuote(project.name)},`);
   const wepPath = wepBundlePath(project);
-  if (wepPath) {
+  if (wepPath && !usesFireSeqNative) {
     // `wep` and `copy_from` are mutually exclusive. The .wep supplies the
     // complete native record; the tables below only carry edits.
     lines.push(`      wep = ${luaQuote(wepPath)},`);
+  } else if (usesFireSeqNative && project.fireType !== 'hitscan') {
+    // Native sequential burst uses a WA gun record (`gun.bullets` + `shot_interval_ms`)
+    // for timing & interruption while the missile payload moves into `projectile = { ... }`.
+    lines.push('      copy_from = "stock.minigun",');
   } else if (donorKnown) {
     lines.push(`      copy_from = ${luaQuote(donor)},`);
   } else {
@@ -2806,6 +2994,9 @@ export function generateLuaCode(project: WeaponProject): string {
       `      -- no copy_from: ${luaQuote(donorName)} is not one of WA's own weapons, ` +
         'and the engine refuses a bundle that names one it does not know',
     );
+  }
+  if (usesFireSeqHoming && !carriedHooks.has('on_click')) {
+    lines.push('      click = "homing",');
   }
   if (meleeGhost) {
     // A ghost that crosses a crate would collect it for the team, which is a
@@ -2852,7 +3043,7 @@ export function generateLuaCode(project: WeaponProject): string {
       clusterArt.push(`homing_sprite = ${luaQuote(clusterBitHomingArt)}`);
     }
   }
-  if (clusterArt.length > 0 && !usesAirstrike) {
+  if (clusterArt.length > 0 && !usesAirstrike && !usesFireSeqNestedProj) {
     lines.push(`      cluster = { ${clusterArt.join(', ')} },`);
   }
 
@@ -2871,7 +3062,7 @@ export function generateLuaCode(project: WeaponProject): string {
   // in a record takes stock ids only. `retarget_strike_sprite_id` writes the
   // strike munition (0x74) and carries the sheet into its homing sprite (0xC0)
   // and cluster sprite (0x138) when they shared the stock body.
-  if (strikeBodyArt && !usesAirstrike) {
+  if (strikeBodyArt && !usesAirstrike && !usesFireSeqNestedProj) {
     lines.push(`      sprite = ${luaQuote(strikeBodyArt)},`);
   }
   if (strikePlaneArt && !usesAirstrike) {
@@ -2930,7 +3121,7 @@ export function generateLuaCode(project: WeaponProject): string {
     claimSdkSheet('trail.BEAM');
     claimSdkSheet('trail.GLOW');
   }
-  if (usesExplosionEffect || usesEmitter) {
+  if (usesExplosionEffect || usesEmitter || usesPlaneCrashFx) {
     claimSdkSheet('trail.BEAM');
     claimSdkSheet('trail.GLOW');
     claimSdkSheet('fx.SPARK');
@@ -3018,7 +3209,7 @@ export function generateLuaCode(project: WeaponProject): string {
   if (usesIntervalSound) packSounds.push(luaQuote(intervalSoundPath!));
   if (shotSoundPath) packSounds.push(luaQuote(shotSoundPath));
   if (usesAirstrike) {
-    for (const role of ['enter', 'loop', 'exit', 'release'] as const) {
+    for (const role of ['enter', 'loop', 'exit', 'release', 'boom'] as const) {
       const wav = airstrikeSoundPath(project, role);
       if (wav && !packSounds.includes(luaQuote(wav))) packSounds.push(luaQuote(wav));
     }
@@ -3055,7 +3246,12 @@ export function generateLuaCode(project: WeaponProject): string {
   const projDonorSlot =
     usesAirstrikeMissile && airstrikeCfg
       ? (airstrikeCfg.payload.projectileDonor || 'bazooka').replace(/^stock\./, '')
-      : null;
+      : usesFireSeqNestedProj && fireSeqCfg
+        ? (
+            fireSeqCfg.payloadDonor ||
+            (project.fireType === 'power' ? donorSlot : 'bazooka')
+          ).replace(/^stock\./, '')
+        : null;
   const baseline = projDonorSlot
     ? stockDonorBaseline(projDonorSlot)
     : project.useWepFile
@@ -3210,10 +3406,36 @@ export function generateLuaCode(project: WeaponProject): string {
     rawFiresSubtype !== undefined && Number.isFinite(Number(rawFiresSubtype))
       ? Number(rawFiresSubtype)
       : undefined;
+  const outerBaseline =
+    usesFireSeqNative && project.fireType !== 'hitscan'
+      ? stockDonorBaseline('minigun')
+      : project.useWepFile
+        ? project.wepBaseline
+        : baselineMatchesDonor
+          ? (donorBaseline ?? currentDonorBaseline)
+          : currentDonorBaseline;
   const firesSubtypeChanged =
-    firesSubtype !== undefined && (!baseline || firesSubtype !== baseline.specialSubtype);
+    firesSubtype !== undefined && (!outerBaseline || firesSubtype !== outerBaseline.specialSubtype);
 
-  if (project.fireType === 'hitscan') {
+  if (usesFireSeqNative && fireSeqCfg) {
+    // Native gun burst: WA's own `gun.bullets` and `shot_interval_ms` own the
+    // firing cadence, spread and interruption; WA's bullet is zeroed & replaced
+    // by `on_fire -> firing.launch(ev, PAYLOAD)`.
+    lines.push('      gun = {');
+    lines.push(`        bullets = ${Math.max(1, Math.round(fireSeqCfg.count))},`);
+    lines.push(`        shot_interval_ms = ${Math.max(0, Math.round(fireSeqCfg.intervalMs))},`);
+    if (fireSeqCfg.burstSize > 1) {
+      lines.push(`        burst_size = ${Math.round(fireSeqCfg.burstSize)},`);
+    }
+    if (fireSeqCfg.spreadDeg > 0) {
+      lines.push(`        spread_deg = ${Math.round(fireSeqCfg.spreadDeg)},`);
+    }
+    lines.push('        damage = 0,');
+    lines.push('        hits = {},');
+    lines.push('        explosion = { push_pct = 0 },');
+    lines.push('        impact_effect = 0,');
+    lines.push('      },');
+  } else if (project.fireType === 'hitscan') {
     const gunTouched =
       !baseline ||
       bodyChanged('damage') ||
@@ -3264,7 +3486,9 @@ export function generateLuaCode(project: WeaponProject): string {
       }
       lines.push('      },');
     }
-  } else if (project.fireType === 'drop' && !body.fuse) {
+  }
+
+  if (project.fireType === 'drop' && !body.fuse && !usesFireSeqNestedProj) {
     const mineTouched =
       silencesBlast ||
       !baseline ||
@@ -3314,11 +3538,12 @@ export function generateLuaCode(project: WeaponProject): string {
       }
       lines.push('      },');
     }
-  } else if (project.fireType === 'cursor' && project.teleport) {
+  } else if (project.fireType === 'cursor' && project.teleport && !usesFireSeqNestedProj) {
     if (!carriedHooks.has('on_select')) {
       lines.push('      on_select = { cursor = true },');
     }
   } else if (
+    usesFireSeqNestedProj ||
     project.fireType === 'power' ||
     // A melee claim borrows a power record for its aim phase (the Sheep
     // Launcher's), so it carries `missile` edits like any projectile: the ghost
@@ -3886,7 +4111,8 @@ export function generateLuaCode(project: WeaponProject): string {
     }
 
     // Payload Burst Selection
-    const burstTouched = burstChanged || clustletTouched || fireTouched;
+    const burstTouched =
+      burstChanged || (burst === 'clusters' && clustletTouched) || (burst === 'fire' && fireTouched);
     if (burstTouched) {
       if (burst === 'fire' && project.fireConfig) {
         lines.push('        burst = "fire",');
@@ -4523,9 +4749,15 @@ export function generateLuaCode(project: WeaponProject): string {
       }
     }
 
-    if (usesAirstrikeMissile && airstrikeCfg) {
+    if ((usesAirstrikeMissile && airstrikeCfg) || usesFireSeqNestedProj) {
       const innerLines = lines.splice(projLinesStart);
-      const rawDonor = (airstrikeCfg.payload.projectileDonor || 'bazooka').replace(/^stock\./, '');
+      const rawDonor =
+        usesAirstrikeMissile && airstrikeCfg
+          ? (airstrikeCfg.payload.projectileDonor || 'bazooka').replace(/^stock\./, '')
+          : (
+              fireSeqCfg?.payloadDonor ||
+              (project.fireType === 'power' ? donorSlot : 'bazooka')
+            ).replace(/^stock\./, '');
       const projDonor = stockDonor(rawDonor) ? `stock.${rawDonor}` : 'stock.bazooka';
       lines.push('      projectile = {');
       lines.push(`        copy_from = ${luaQuote(projDonor)},`);
@@ -4568,7 +4800,8 @@ export function generateLuaCode(project: WeaponProject): string {
     return rows;
   };
   const isMissileFamily =
-    project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse);
+    !usesFireSeqNative &&
+    (project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse));
   const firesRows: string[] = [];
   if (firesSubtypeChanged) {
     firesRows.push(`        subtype = ${firesSubtype},`);
@@ -4704,87 +4937,15 @@ export function generateLuaCode(project: WeaponProject): string {
   // is single-valued, so the three have to share one function or one of them
   // replaces the others.
   const onFire: string[] = [];
-  if (usesFireSequence) {
-    const f = fireSequence!;
-    const count = Math.max(1, Math.round(f.count));
-    const delay = Math.max(1, Math.round(f.delay));
-    const speed = formatNumber(f.speed);
-    const standoff = formatNumber(Math.max(0, f.standoff));
-    const spreadX = formatNumber(Math.max(0, f.spreadX));
-    const spreadY = formatNumber(Math.max(0, f.spreadY));
-    // `w.x + 0` / `w.y + -3` read badly; emit a signed term only when nonzero.
-    const offsetTerm = (value: number) => {
-      const n = Number(value) || 0;
-      if (n === 0) return '';
-      return n > 0 ? ` + ${formatNumber(n)}` : ` - ${formatNumber(-n)}`;
-    };
-    const offX = offsetTerm(f.offsetX);
-    const offY = offsetTerm(f.offsetY);
-    const live = f.liveAim;
-    const shotSound = shotSoundPath
-      ? {
-          path: shotSoundPath,
-          every: Math.max(1, Math.round(customSounds?.shotEvery ?? 1)),
-          priority: Math.max(0, Math.round(customSounds?.shotPriority ?? 8)),
-        }
-      : null;
-    onFire.push('      -- Sequential fire (`wf-lib/fire_seq`): one trigger, a burst.');
-    if (!live) {
-      // Lock the aim to the moment the trigger was pulled.
-      onFire.push('        local dx, dy = seq_dir(ev.worm)');
-    }
-    const call = f.mode === 'actors' ? 'fire_sequential_actor' : 'fire_seq_mis';
-    onFire.push(`        seq.${call}{`);
-    if (f.mode !== 'actors') {
-      onFire.push('          weapon = ctx.id,');
-    }
-    onFire.push('          owner = ev.worm,');
-    if (f.cancelOnWeaponChange || f.mode === 'actors') {
-      // Actors have no default: without it the burst ends on the first tick.
-      onFire.push('          cancel_weapon = ctx.id,');
-    }
-    onFire.push(`          count = ${count}, delay = ${delay},`);
-    if (f.mode === 'actors') {
-      if (f.actorSprite.trim()) {
-        onFire.push(`          sprite = ${luaQuote(f.actorSprite.trim())},`);
-      }
-      onFire.push(
-        `          gravity = ${f.actorGravity ? 'true' : 'false'}, collide = ${
-          f.actorCollide ? 'true' : 'false'
-        }, persist = ${f.actorPersist ? 'true' : 'false'},`,
-      );
-    }
-    if (f.spreadX > 0 || f.spreadY > 0) {
-      onFire.push(`          spread = { x = ${spreadX}, y = ${spreadY} },`);
-    }
-    if (f.standoff > 0) {
-      onFire.push(`          standoff = ${standoff},`);
-    }
-    if (carriesFuse) {
-      // `launch` merges this over the slot's record, so the burst's rounds get
-      // the player's fuse instead of the record's (which is 0 for a grenade).
-      onFire.push('          missile = { fuse = fuse_of(ev.worm) },');
-    }
-    if (live) {
-      onFire.push(`          x = function(i, w) return w.x${offX} end,`);
-      onFire.push(`          y = function(i, w) return w.y${offY} end,`);
-      onFire.push(`          vx = function(i, w) local dx = seq_dir(w) return dx * ${speed} end,`);
-      onFire.push(`          vy = function(i, w) local _, dy = seq_dir(w) return dy * ${speed} end,`);
+  if (usesFireSequence && fireSeqCfg) {
+    if (usesFireSeqNative) {
+      onFire.push('        -- Native gun burst (`wf-lib/wfws_firing`): WA owns cadence & spread.');
+      const fn = fireSeqCfg.mode === 'actors' ? 'actor' : 'launch';
+      onFire.push(`        firing.${fn}(ev, PAYLOAD)`);
     } else {
-      onFire.push(`          x = ev.worm.x${offX}, y = ev.worm.y${offY},`);
-      onFire.push(`          vx = dx * ${speed}, vy = dy * ${speed},`);
+      onFire.push('        -- Custom-cadence sequencer (`wf-lib/wfws_firing`): buffer & per-shot schedule.');
+      onFire.push('        firing.sequence(ev, SEQ)');
     }
-    if (shotSound) {
-      const every = shotSound.every;
-      const guard = every > 1 ? `if i % ${every} == 0 then ` : '';
-      const close = every > 1 ? ' end' : '';
-      onFire.push(
-        `          on_shot = function(i, w) ${guard}wa.sound.play(w, ${luaQuote(
-          shotSound.path,
-        )}, ${shotSound.priority})${close} end,`,
-      );
-    }
-    onFire.push('        }');
   }
   if (hasCarriedOnFire && carriedOnFire) {
     // The parameter alias goes **inside** the region: `hookBodyOf` cuts from the
@@ -5548,21 +5709,29 @@ export function autoDependenciesForProject(
 ): { id: string; reason: string }[] {
   const usesHold = !!(project.hold && project.hold.enabled);
   const usesAirstrike = airstrikeActive(project);
+  const airstrikeCfg = usesAirstrike ? mergeAirstrikeConfig(project.airstrike) : null;
   const usesAirstrikeMissile = takeoverMissileActive(project);
   const usesAirstrikeStrafeTrail =
     usesAirstrike &&
     project.airstrike?.release?.mode === 'strafe' &&
     !!project.airstrike?.strafe?.trailEnabled;
+  const usesPlaneCrashFx = !!airstrikeCfg && planeCrashUsesFxBurst(airstrikeCfg);
+  const usesPlaneCrashTaze = !!airstrikeCfg && planeCrashUsesTaze(airstrikeCfg);
   const usesWfws = usesWfwsBuilder(project) || holdNeedsAimLayer(project);
   const usesElectricMelee = !!project.melee?.enabled && project.melee.kind === 'taze';
   const stampSheet = supportsTerrainStamp(project) ? terrainStampPath(project) : null;
+  const usesFireSeqMissile = fireSequenceMissileActive(project);
   const usesRibbonTrail =
     !!project.ribbonTrail?.enabled &&
     (project.fireType === 'power' ||
       (project.fireType === 'drop' && !!project.body.fuse) ||
-      usesAirstrikeMissile);
+      usesAirstrikeMissile ||
+      usesFireSeqMissile);
   const explodesNatively =
-    project.fireType === 'power' || project.fireType === 'drop' || usesAirstrikeMissile;
+    project.fireType === 'power' ||
+    project.fireType === 'drop' ||
+    usesAirstrikeMissile ||
+    usesFireSeqMissile;
   const usesExplosionEffect = !!project.explosionEffect?.enabled && explodesNatively;
   const usesEmitter = !!project.emitter?.enabled && project.fireType !== 'melee';
   const usesElectricBlast =
@@ -5596,12 +5765,14 @@ export function autoDependenciesForProject(
   if (usesAirstrike) out.push({ id: 'wfws.sdk', reason: 'airstrike takeover' });
   if (usesRibbonTrail) out.push({ id: 'effects.sdk', reason: 'ribbon trail' });
   if (usesAirstrikeStrafeTrail) out.push({ id: 'effects.sdk', reason: 'airstrike strafe trail' });
+  if (usesPlaneCrashFx) out.push({ id: 'effects.sdk', reason: 'plane crash burst' });
   if (usesExplosionEffect) out.push({ id: 'effects.sdk', reason: 'explosion burst' });
   if (usesEmitter) out.push({ id: 'effects.sdk', reason: 'emitter' });
   if (usesElectricBlast) out.push({ id: 'px.electric', reason: 'electric blast taze' });
   if (usesElectricImpact) out.push({ id: 'px.electric', reason: 'electrical pierce taze' });
   if (usesElectricMelee) out.push({ id: 'px.electric', reason: 'electrical melee strike' });
-  if (usesFireSequence) out.push({ id: 'px.fire_seq', reason: 'sequential fire' });
+  if (usesPlaneCrashTaze) out.push({ id: 'px.electric', reason: 'plane crash electric taze' });
+  if (usesFireSequence) out.push({ id: 'wfws.sdk', reason: 'firing engine & burst' });
   return out;
 }
 

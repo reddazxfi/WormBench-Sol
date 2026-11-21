@@ -335,7 +335,10 @@ export async function importBundleWeapon(
     // Detect custom logic inside `on_fire` besides the sequential-fire call
     // and optional `wa.sound.play(...)` calls so extra behavior is flagged.
     let remainder = body;
-    const seqCallMatch = /seq\.(?:fire_seq_mis|fire_sequential_actor)\s*([({])/.exec(remainder);
+    const seqCallMatch =
+      /(?:firing\.(?:launch|actor|sequence)|seq\.(?:fire_seq_mis|fire_sequential_actor))\s*([({])/.exec(
+        remainder,
+      );
     if (seqCallMatch) {
       const openIdx = seqCallMatch.index + seqCallMatch[0].length - 1;
       const openCh = seqCallMatch[1];

@@ -40,6 +40,11 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { WeaponProject, PackArtSlot, ClustletConfig, RibbonTrailConfig } from '../src/types/weapon';
 import {
   generateLuaCode,
+  autoDependenciesForProject,
+  airstrikePlaneSheetPath,
+  airstrikeStrafeSheetPath,
+  airstrikeCasingSheetPath,
+  airstrikeSoundPath,
   bitFlightSheetPath,
   behaviorStateSheetPath,
   missileFlightSheetPath,
@@ -55,10 +60,11 @@ import {
   flashSheetPath,
   terrainStampPath,
 } from '../src/utils/luaGenerator';
+import { DEFAULT_AIRSTRIKE } from '../src/data/airstrike';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../src/data/explosionPresets';
 import { stockDonor } from '../src/data/stockDonors';
 import { DEFAULT_CUSTOM_SOUNDS } from '../src/data/soundPresets';
-import { DEFAULT_FIRE_SEQUENCE } from '../src/data/fireSequence';
+import { DEFAULT_FIRE_SEQUENCE, mergeFireSequenceConfig } from '../src/data/fireSequence';
 import { DEFAULT_TERRAIN_STAMP, STAMP_FRAMES } from '../src/data/terrainStamp';
 import { DEFAULT_EMITTER, DEFAULT_EMITTER_RING, DEFAULT_EMITTER_TRAIL } from '../src/data/emitter';
 import { DEFAULT_AIM_CLIP } from '../src/data/aimClip';
@@ -554,6 +560,8 @@ function makeOp(partial: {
   carried?: Partial<NonNullable<WeaponProject['carriedLua']>>;
   /** The author's own snippet box, for a test that merges it with a carry. */
   customLua?: string;
+  /** Opt-in Lua airstrike takeover (`wf-lib/wfws_airstrike`). */
+  airstrike?: WeaponProject['airstrike'];
 }): WeaponProject {
   return {
     id: partial.id,
@@ -629,7 +637,10 @@ function makeOp(partial: {
     terrainStamp: { ...DEFAULT_TERRAIN_STAMP, ...partial.terrainStamp },
     emitter: { ...DEFAULT_EMITTER, ...partial.emitter },
     customSounds: { ...DEFAULT_CUSTOM_SOUNDS, ...partial.customSounds },
-    fireSequence: { ...DEFAULT_FIRE_SEQUENCE, ...partial.fireSequence },
+    fireSequence: partial.fireSequence
+      ? mergeFireSequenceConfig(partial.fireSequence)
+      : { ...DEFAULT_FIRE_SEQUENCE },
+    airstrike: partial.airstrike,
     extraDependencies: [],
     hold: {
       enabled: false,
@@ -2468,6 +2479,260 @@ const TESTS: TestCase[] = [
     watch:
       'The overhead worm never hit with the flag on (the clip angle not applied, `follow_swing` not emitted, or the strike using the clip angle of its own tick rather than the hit frame), both worms hit (the box widened instead of turned: the angle must rotate the vector, not add width), the worm ahead hit as well with the flag on (the angle applied twice, or mirrored with `facing` in the wrong order so the box sweeps both ways), or the toggle changing nothing (the panel writing `followSwing` and the generator reading a stale `follow_swing`).',
   },
+  {
+    project: makeOp({
+      id: 'wftest.61_airstrike_takeover',
+      name: 'WF 61 Airstrike Takeover',
+      slot: 'air_strike',
+      fireType: 'cursor',
+      body: { damage: 35 },
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'arrows',
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'offmap', y: -208, side: 16 },
+        plane: { ...DEFAULT_AIRSTRIKE.plane, spriteMode: 'stock', stockSprite: 'airjetg', facingFlip: true },
+        speed: { ...DEFAULT_AIRSTRIKE.speed, cruise: 16 },
+        release: {
+          ...DEFAULT_AIRSTRIKE.release,
+          mode: 'drop',
+          pattern: 'sequential',
+          count: 5,
+          cadenceUnit: 'distance',
+          spacing: 32,
+          lead: true,
+        },
+        payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'missile', projectileDonor: 'bazooka', inheritVx: 0.25 },
+      },
+      missileSprite: {
+        enabled: true,
+        mode: 'custom',
+        anim: 'track',
+        animSpeed: 15,
+        spinRate: 0,
+        scale: 1,
+        frames: 1,
+        fps: 15,
+        sheetFile: file(ICE_PNG, 'bomb.png'),
+      },
+      explosion: { ...DEFAULT_EXPLOSION_EFFECT, enabled: true, preset: 'electric', damageType: 'blast' },
+    }),
+    intent:
+      '`wf-lib/wfws_airstrike` sequential drop takeover with directional arrows (`copy_from = "stock.air_strike"`, no `on_select.cursor`), `projectile = { copy_from = "stock.bazooka" }`, `sb.flight`, and `fx.burst` on impact.',
+    expect:
+      'Press Left or Right while targeting the map to flip the flyover side; the green jet releases 5 custom-art bombs spaced 32 px apart leading onto the click X, and each impact plays `fx.burst` via `m.weapon == ctx.id`.',
+    watch:
+      'Only dropping from one side (`on_select = { cursor = true }` emitted on a directional strike), or bombs exploding without `fx.burst` / custom art (missing `projectile = { copy_from = ... }`).',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.62_airstrike_crash',
+      name: 'WF 62 Airstrike Crash Dive',
+      slot: 'napalm_strike',
+      fireType: 'cursor',
+      body: { damage: 25 },
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'arrows',
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'offmap', y: -210, side: 24 },
+        plane: {
+          ...DEFAULT_AIRSTRIKE.plane,
+          spriteMode: 'custom',
+          sheet: { file: file(ICE_PNG, 'plane.png'), fileName: 'plane.png', previewUrl: '' },
+          frames: 1,
+          facingFlip: true,
+          collide: true,
+          crashOnTerrain: true,
+          crashOnWater: true,
+          boomMode: 'custom',
+          boomDamage: 75,
+          boomRadius: 110,
+          boomPushPct: 120,
+          boomCraterRadius: 55,
+          boomHitKind: 'fire',
+          boomVisual: 'fx',
+          boomFires: 2,
+          boomFxBurst: { enabled: true, color: '#ff5511', radius: 72, smoke: true },
+        },
+        speed: {
+          ...DEFAULT_AIRSTRIKE.speed,
+          cruise: 18,
+          release: 7,
+          min: 5,
+          exit: 18,
+          decel: 2,
+          accel: 1.5,
+          recoverMode: 'ramp',
+          slowDistance: 120,
+          altitudeMode: 'crash_dive',
+          diveVy: 3,
+        },
+        release: { ...DEFAULT_AIRSTRIKE.release, mode: 'drop', pattern: 'sequential', count: 3, spacing: 28, lead: true },
+        payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'missile', projectileDonor: 'grenade' },
+      },
+    }),
+    intent:
+      'Custom plane strip with 5-phase additive speed ramp (`slow_distance = 120`, `decel`, `accel`), `crash_dive` terrain impact (`crash_on_terrain = true`), and `boom_mode = "custom"` (`wa.world.blast`, `boom_hit_kind = "fire"`, `fx.burst`, and plane boom fires).',
+    expect:
+      'Custom plane decelerates smoothly over the target while releasing 3 grenades, dives into terrain, and detonates with a custom fire-tagged blast crater + burst particles.',
+    watch:
+      'Load failure on `boom_hit_kind` or custom plane failing to detonate against terrain (`wa.land.trace`/`solid` missing).',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.63_airstrike_strafe',
+      name: 'WF 63 Airstrike Strafe',
+      slot: 'air_strike',
+      fireType: 'cursor',
+      body: { damage: 22 },
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'arrows',
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'offmap', y: -260, side: 400 },
+        plane: { ...DEFAULT_AIRSTRIKE.plane, spriteMode: 'stock', stockSprite: 'airjetb', timeoutFrames: 600 },
+        speed: {
+          ...DEFAULT_AIRSTRIKE.speed,
+          cruise: 15,
+          min: 0.2,
+          exit: 15,
+          engageRange: 380,
+          damping: 0.96,
+          releaseDamping: 0.984,
+          growth: 1.08,
+          recoverMin: 0.2,
+        },
+        release: { ...DEFAULT_AIRSTRIKE.release, mode: 'strafe', count: 8, cadenceUnit: 'frames', framesBetween: 4, windup: 20 },
+        strafe: {
+          ...DEFAULT_AIRSTRIKE.strafe,
+          bulletSpeed: 32,
+          steerFrames: 3,
+          maxFuseMs: 2500,
+          trailEnabled: true,
+          trailMax: 8,
+          trailCoreWidth: 4,
+          trailGlowWidth: 9,
+          trailColor: '#ffaa44',
+          casingEnabled: true,
+          casingFrames: 4,
+          casingSheet: art('missile_trail', TRAIL_4, 4),
+        },
+        payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'missile', projectileDonor: 'bazooka' },
+      },
+    }),
+    intent:
+      'Attack Helicopter-style `strafe` takeover: multiplicative hover damping (`engage_range = 380`, `release_damping = 0.984`, `growth = 1.08`), `frames_between = 4`, ribbon trails (`wf-lib/effects/trail`), and spinning shell casings (`airstrike_casing`).',
+    expect:
+      'Blue jet brakes as it nears click X, hovers while firing 8 steered tracer rounds with orange ribbon trails and spinning brass casings, then accelerates away cleanly.',
+    watch:
+      'Casings sprite missing from `mod.toml` / `sprites/` or shots stalling because multiplicative recovery lacks `recover_min`.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.64_airstrike_direct',
+      name: 'WF 64 Airstrike Direct Drop',
+      slot: 'mine_strike',
+      fireType: 'cursor',
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'none',
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'payload', spawnAt: 'cursor' },
+        release: { ...DEFAULT_AIRSTRIKE.release, mode: 'drop', pattern: 'offsets', count: 3, offsets: [-36, 0, 36] },
+        payload: {
+          ...DEFAULT_AIRSTRIKE.payload,
+          kind: 'mine',
+          vx: 0,
+          vy: 1,
+          mine: { fuse: 500, arm: 0, damage: 45, radius: 52, dudProof: false },
+        },
+      },
+    }),
+    intent:
+      'Payload-only direct click takeover (`entry.mode = "payload"`, `direction = "none"`, `on_select = { cursor = true }`) dropping 3 live mines at cursor X/Y using `offsets` with zero plane actor spawned.',
+    expect:
+      'Clicking anywhere immediately drops 3 armed mines at offsets `-36, 0, +36` around the cursor with no aircraft flyover.',
+    watch:
+      'Nothing happens on click (missing `on_select = { cursor = true }`) or mines failing to spawn.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.65_firing_native',
+      name: 'WF 65 Native Gun Burst',
+      slot: 'grenade',
+      fireType: 'power',
+      fireSequence: {
+        ...DEFAULT_FIRE_SEQUENCE,
+        enabled: true,
+        engine: 'native',
+        mode: 'missiles',
+        count: 5,
+        intervalMs: 60,
+        burstSize: 2,
+        spreadDeg: 6,
+        payloadDonor: 'bazooka',
+        speed: 16,
+        standoff: 20,
+        homing: {
+          enabled: true,
+          speed: 15,
+          turn: 0.22,
+          frames: 150,
+          delay: 6,
+          sound: 0,
+          perShotTarget: false,
+        },
+      },
+      customSounds: {
+        shotEnabled: true,
+        shot: soundAsset(INTERVAL_WAV, 'shot.wav'),
+        shotEvery: 1,
+        shotPriority: 8,
+      },
+    }),
+    intent:
+      '`wf-lib/wfws_firing` `engine = "native"`: outer claim copies `stock.minigun` (`gun.bullets = 5`, `gun.burst_size = 2`, `gun.spread_deg = 6`, zeroed gun damage/`explosion = { push_pct = 0 }`, no `fires.launch_power_pct`), while `projectile = { copy_from = "stock.bazooka" }` launches homing rockets from `firing.launch(ev, PAYLOAD)`.',
+    expect:
+      'Hold Space to fire 5 two-rocket volleys along WA spread vectors, homing onto the selected target (`worm.target`), while interrupting cleanly if shot mid-burst.',
+    watch:
+      'Bundle fails load (`gun.explosion.power` or `fires.launch_power_pct` on a gun claim), rockets drop unscaled, or homing never steers.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.66_firing_timed',
+      name: 'WF 66 Timed Sequencer',
+      slot: 'bazooka',
+      fireType: 'power',
+      body: { damage: 30, fuse_time_ms: 0 },
+      fireSequence: {
+        ...DEFAULT_FIRE_SEQUENCE,
+        enabled: true,
+        engine: 'timed',
+        mode: 'missiles',
+        count: 4,
+        firstDelayMs: 120,
+        intervalMs: 80,
+        customIntervalsMs: '120, 40, 80, 120',
+        burstSize: 1,
+        spreadDeg: 4,
+        speed: 22,
+        standoff: 22,
+        offsetX: 0,
+        offsetY: -2,
+        liveAim: false,
+        scaleByPower: true,
+        fuseMode: 'aim',
+        explodeOnSpace: true,
+      },
+    }),
+    intent:
+      '`wf-lib/wfws_firing` `engine = "timed"`: `firing.sequence(ev, SEQ)` with custom `intervals_ms`, locked aim (`live_aim = false`), `scale_by_power = true` (`0..1` `ev.power`), `explode_on_space = true`, and synchronised 1..5 digit fuse sampler (`firing.install_fuse`).',
+    expect:
+      'Press digit 2, charge Space halfway (`~50%`), and release: 4 rockets leave after 120 ms wait along the locked launch angle at ~half speed with 2 s fuses, and Space detonates the active shot early.',
+    watch:
+      'Shots move 100x too slow (`ev.power / 100` bug), digit fuse stays at 3 s, or timed sequence ignores custom intervals.',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2671,17 +2936,50 @@ for (const test of TESTS) {
     writeFileSync(join(BUNDLE, 'sounds', folder, 'shot.wav'), INTERVAL_WAV);
   }
 
-  if (project.ribbonTrail.enabled) usesRibbon = true;
-  if (project.fireSequence?.enabled) usesFireSeq = true;
-  if (project.hold?.enabled) usesHolds = true;
-  if (
-    project.explosionEffect?.enabled &&
-    (project.fireType === 'power' || project.fireType === 'drop')
-  ) {
-    usesExplosion = true;
-    // Either mode: the overlay arms WA's own blast, the replacement arms its
-    // own, and both go through the same module.
-    if (project.explosionEffect.damageType === 'electric') usesElectric = true;
+  const planePath = airstrikePlaneSheetPath(project);
+  if (planePath && project.airstrike?.plane?.sheet?.file) {
+    mkdirSync(join(BUNDLE, 'sprites', folder), { recursive: true });
+    const frames = Math.max(1, project.airstrike.plane.frames ?? 1);
+    writeFileSync(join(BUNDLE, planePath), roleSheet(ICE_BMP, ICE_PNG, frames));
+    usedSheets.add(planePath);
+    if (frames > 1) {
+      spriteDecls.set(planePath, {
+        frames,
+        fps: Math.max(1, project.airstrike.plane.fps ?? 15),
+        play: project.airstrike.plane.play ?? 'loop',
+      });
+    }
+  }
+  const strafePath = airstrikeStrafeSheetPath(project);
+  if (strafePath && project.airstrike?.strafe?.artSheet?.file) {
+    mkdirSync(join(BUNDLE, 'sprites', folder), { recursive: true });
+    const frames = Math.max(1, project.airstrike.strafe.artFrames ?? 1);
+    writeFileSync(join(BUNDLE, strafePath), roleSheet(ICE_BMP, ICE_PNG, frames));
+    usedSheets.add(strafePath);
+    if (frames > 1) spriteDecls.set(strafePath, { frames, fps: 15, play: 'loop' });
+  }
+  const casingPath = airstrikeCasingSheetPath(project);
+  if (casingPath && project.airstrike?.strafe?.casingSheet?.file) {
+    mkdirSync(join(BUNDLE, 'sprites', folder), { recursive: true });
+    const frames = Math.max(1, project.airstrike.strafe.casingFrames ?? 1);
+    writeFileSync(join(BUNDLE, casingPath), roleSheet(GRENADE_BMP, TRAIL_4, frames));
+    usedSheets.add(casingPath);
+    if (frames > 1) spriteDecls.set(casingPath, { frames, fps: 15, play: 'loop' });
+  }
+  for (const role of ['enter', 'loop', 'exit', 'release', 'boom'] as const) {
+    const sndPath = airstrikeSoundPath(project, role);
+    if (sndPath) {
+      mkdirSync(join(BUNDLE, 'sounds', folder), { recursive: true });
+      writeFileSync(join(BUNDLE, sndPath), INTERVAL_WAV);
+    }
+  }
+
+  for (const dep of autoDependenciesForProject(project)) {
+    if (dep.id === 'wf.sdk') usesHolds = true;
+    else if (dep.id === 'wfws.sdk') usesBuilders = true;
+    else if (dep.id === 'effects.sdk') usesExplosion = true;
+    else if (dep.id === 'px.electric') usesElectric = true;
+    else if (dep.id === 'px.fire_seq') usesFireSeq = true;
   }
 
   const position = getStockPanelPosition(project.slot);
@@ -2734,7 +3032,7 @@ writeFileSync(join(BUNDLE, 'mod.toml'), toml.join('\n'));
 // whatever copy happens to be installed in `Mods/`, which may be an older
 // version without the API they use (that is how WF 44 lost its stamp:
 // `sb.heading` did not exist and the callback aborted on the nil call).
-for (const rel of ['mod.toml', 'lib/wfws_sprite_builder.lua']) {
+for (const rel of ['mod.toml', 'lib/wfws_sprite_builder.lua', 'lib/wfws_airstrike.lua', 'lib/wfws_firing.lua']) {
   const dest = join(BUNDLE, 'wf-lib', 'wfws_sdk', rel);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, readFileSync(join(ROOT, 'spec', 'lua_sdk', 'wfws_sdk', rel)));

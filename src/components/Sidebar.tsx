@@ -68,20 +68,20 @@ const ProjectCard: React.FC<{ project: WeaponProject; onCopyId: () => void }> = 
         : ARCHETYPE_BADGE[project.fireType] ?? project.fireType;
 
   return (
-    <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/80 dark:bg-stone-900/60 p-3">
-      <div className="flex items-start gap-2.5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-800">
+    <div className="space-y-2.5 px-1">
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80">
           {project.customIconPreview ? (
             <img
               src={project.customIconPreview}
               alt=""
               width={36}
               height={36}
-              className="h-full w-full object-contain"
+              className="h-8 w-8 object-contain"
               style={{ imageRendering: 'pixelated' }}
             />
           ) : (
-            <span className="font-heading text-[11px] font-bold uppercase text-stone-500 dark:text-stone-300">
+            <span className="font-heading text-[11px] font-semibold uppercase text-stone-500 dark:text-stone-300">
               {project.slot.slice(0, 3)}
             </span>
           )}
@@ -93,7 +93,7 @@ const ProjectCard: React.FC<{ project: WeaponProject; onCopyId: () => void }> = 
           <button
             type="button"
             onClick={onCopyId}
-            className="mt-0.5 max-w-full truncate rounded font-mono text-[10px] text-forge-700 hover:underline dark:text-forge-300"
+            className="mt-0.5 block max-w-full truncate font-mono text-[11px] text-stone-500 transition-colors hover:text-forge-600 dark:text-stone-400 dark:hover:text-forge-400 cursor-pointer"
             title="Copy unique weapon ID"
           >
             {project.id}
@@ -101,7 +101,7 @@ const ProjectCard: React.FC<{ project: WeaponProject; onCopyId: () => void }> = 
         </div>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-stone-200/70 pt-2 text-[11px] text-stone-500 dark:border-stone-800 dark:text-stone-400">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-stone-500 dark:text-stone-400">
         <span className="font-medium text-stone-700 dark:text-stone-200">{typeText}</span>
         <span aria-hidden="true">·</span>
         <span className="truncate">
@@ -134,62 +134,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCopyId,
   rail,
 }) => (
-  <aside className="fixed inset-y-0 left-0 z-40 hidden w-68 flex-col border-r border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900 lg:flex">
-    <div className="shrink-0 border-b border-stone-100 px-4 py-3 dark:border-stone-800">
-      <img
-        src={assetUrl('assets/wormforge-logo.png')}
-        alt="WormForge"
-        width={327}
-        height={57}
-        className="h-7 w-auto"
-      />
-      <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400 dark:text-stone-500">
-        Weapon Studio
+  <aside className="fixed inset-y-0 left-0 z-40 hidden w-68 flex-col border-r border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900 lg:flex">
+    <div className="flex shrink-0 items-center justify-between border-b border-stone-200/80 px-4 py-3.5 dark:border-stone-800">
+      <div className="min-w-0">
+        <img
+          src={assetUrl('assets/wormforge-logo.png')}
+          alt="WormForge Weapon Studio"
+          width={327}
+          height={57}
+          className="h-6 w-auto"
+        />
+        <div className="mt-0.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">
+          Weapon Studio
+        </div>
       </div>
+      <button
+        type="button"
+        onClick={() => setIsDark(!isDark)}
+        className="rounded-lg border border-stone-200 p-1.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100 cursor-pointer"
+        title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+        aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+      >
+        {isDark ? <Sun className="h-3.5 w-3.5" aria-hidden="true" /> : <Moon className="h-3.5 w-3.5" aria-hidden="true" />}
+      </button>
     </div>
 
     {/* Workspace tabs stay pinned near the top so they never get pushed off-screen
         on shorter monitors regardless of how many weapons a bundle contains. */}
-    <nav className="shrink-0 border-b border-stone-100 px-3 py-2.5 dark:border-stone-800" aria-label="Workspace">
-      <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400 dark:text-stone-500">
-        Studio
-      </div>
-      <div className="space-y-0.5">
+    <nav className="shrink-0 border-b border-stone-200/80 px-3 py-3 dark:border-stone-800" aria-label="Workspace">
+      <div className="space-y-1">
         {WORKSPACE.map(({ id, label, hint, icon: Icon, key }) => {
           const active = activeTab === id;
-          const iconTint =
-            id === 'editor'
-              ? 'text-forge-500'
-              : id === 'hold'
-                ? 'text-amber-500'
-                : id === 'effects'
-                  ? 'text-sky-500'
-                  : 'text-orange-500';
           return (
             <button
               key={id}
               type="button"
               onClick={() => setActiveTab(id)}
               aria-current={active ? 'page' : undefined}
-              className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors cursor-pointer ${
+              className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors cursor-pointer ${
                 active
-                  ? 'bg-forge-50 text-forge-800 dark:bg-forge-950/40 dark:text-forge-200'
-                  : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/60 dark:hover:text-stone-100'
+                  ? 'bg-forge-50/90 text-stone-950 dark:bg-forge-950/50 dark:text-white'
+                  : 'text-stone-600 hover:bg-stone-100/80 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/70 dark:hover:text-stone-100'
               }`}
             >
               <Icon
-                className={`h-4 w-4 shrink-0 ${active ? 'text-forge-600 dark:text-forge-400' : iconTint}`}
+                className={`h-4 w-4 shrink-0 transition-colors ${
+                  active
+                    ? 'text-forge-600 dark:text-forge-400'
+                    : 'text-stone-400 group-hover:text-stone-600 dark:text-stone-500 dark:group-hover:text-stone-300'
+                }`}
                 aria-hidden="true"
               />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold">{label}</span>
-                <span className="block truncate text-[10px] font-normal text-stone-400 dark:text-stone-500">{hint}</span>
+                <span className={`block truncate text-xs ${active ? 'font-semibold' : 'font-medium'}`}>
+                  {label}
+                </span>
+                <span className="block truncate text-[10px] text-stone-400 dark:text-stone-500">
+                  {hint}
+                </span>
               </span>
               <kbd
-                className={`rounded border px-1 py-0.5 font-mono text-[9px] tabular-nums ${
+                className={`font-mono text-[10px] tabular-nums ${
                   active
-                    ? 'border-forge-200 bg-white/70 text-forge-600 dark:border-forge-800 dark:bg-forge-950/40 dark:text-forge-300'
-                    : 'border-stone-200 bg-stone-50 text-stone-400 dark:border-stone-700 dark:bg-stone-800/60 dark:text-stone-500'
+                    ? 'text-forge-600 dark:text-forge-400'
+                    : 'text-stone-400 dark:text-stone-500'
                 }`}
               >
                 {key}
@@ -200,67 +208,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
     </nav>
 
-    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2.5">
+    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3.5">
       <ProjectCard project={project} onCopyId={onCopyId} />
       {rail}
-      <button
-        type="button"
-        onClick={onBrowsePxl}
-        className="flex w-full items-center gap-2 rounded-lg border border-stone-200 bg-stone-50/80 px-2.5 py-1.5 text-xs font-semibold text-stone-700 transition-colors hover:border-amber-400 hover:bg-amber-50/70 dark:border-stone-800 dark:bg-stone-900/60 dark:text-stone-200 dark:hover:border-amber-700 dark:hover:bg-amber-950/30 cursor-pointer"
-      >
-        <Library className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-        <span className="flex-1 text-left">Sprite libraries</span>
-        {pxlLibraryCount > 0 && (
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-            {pxlLibraryCount}
-          </span>
-        )}
-        <ChevronRight className="h-3 w-3 opacity-50" aria-hidden="true" />
-      </button>
+      <div className="border-t border-stone-200/80 pt-3 dark:border-stone-800">
+        <button
+          type="button"
+          onClick={onBrowsePxl}
+          className="flex w-full items-center gap-2 rounded-lg border border-stone-200 bg-white px-2.5 py-2 text-xs font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 dark:border-stone-700/80 dark:bg-stone-800/50 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 cursor-pointer"
+        >
+          <Library className="h-3.5 w-3.5 text-stone-500 dark:text-stone-400" aria-hidden="true" />
+          <span className="flex-1 text-left">Sprite libraries</span>
+          {pxlLibraryCount > 0 && (
+            <span className="font-mono text-[11px] font-semibold tabular-nums text-forge-600 dark:text-forge-400">
+              {pxlLibraryCount}
+            </span>
+          )}
+          <ChevronRight className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
+        </button>
+      </div>
     </div>
 
-    <div className="shrink-0 border-t border-stone-200 p-2.5 dark:border-stone-800">
+    <div className="shrink-0 space-y-2 border-t border-stone-200/90 p-3 dark:border-stone-800">
       <div className="grid grid-cols-2 gap-1.5">
         <button
           type="button"
           onClick={onImportWep}
-          className="flex items-center justify-center gap-1.5 rounded-lg border border-amber-300/80 bg-amber-50/75 px-2 py-1.5 text-[11px] font-semibold text-amber-900 transition-colors hover:border-amber-400 hover:bg-amber-100/80 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40 cursor-pointer"
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-800/70 dark:text-stone-200 dark:hover:bg-stone-800 cursor-pointer whitespace-nowrap"
           title="Import a Project X .wep weapon file"
         >
-          <Upload className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+          <Upload className="h-3.5 w-3.5 shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
           <span className="truncate">Import .wep</span>
         </button>
         <button
           type="button"
           onClick={onBrowseMods}
-          className="flex items-center justify-center gap-1.5 rounded-lg border border-sky-300/80 bg-sky-50/75 px-2 py-1.5 text-[11px] font-semibold text-sky-900 transition-colors hover:border-sky-400 hover:bg-sky-100/80 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40 cursor-pointer"
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-800/70 dark:text-stone-200 dark:hover:bg-stone-800 cursor-pointer whitespace-nowrap"
           title="Read installed WormForge mods"
         >
-          <FolderSearch className="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+          <FolderSearch className="h-3.5 w-3.5 shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
           <span className="truncate">Read mods</span>
         </button>
       </div>
       <button
         type="button"
         onClick={onExportZip}
-        className="mt-1.5 flex w-full items-center gap-2 rounded-lg bg-forge-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-forge-700 dark:bg-forge-500 dark:hover:bg-forge-400 cursor-pointer"
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-forge-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-forge-700 dark:bg-forge-500 dark:hover:bg-forge-400 cursor-pointer whitespace-nowrap"
       >
-        <Download className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="flex-1 text-left">Export Mod (.zip)</span>
+        <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>Export Mod (.zip)</span>
       </button>
-
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-[10px] text-stone-400 dark:text-stone-500">Worms Armageddon 3.8+</span>
-        <button
-          type="button"
-          onClick={() => setIsDark(!isDark)}
-          className="rounded-md border border-stone-200 p-1.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
-          title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-          aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-        >
-          {isDark ? <Sun className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" /> : <Moon className="h-3.5 w-3.5" aria-hidden="true" />}
-        </button>
-      </div>
     </div>
   </aside>
 );
@@ -295,18 +292,17 @@ export const MobileBar: React.FC<MobileBarProps> = ({
   setIsDark,
   weaponSwitcher,
 }) => (
-  <div className="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 lg:hidden">
-    <div className="flex items-center gap-2.5 px-4 py-2">
+  <div className="sticky top-0 z-40 border-b border-stone-200/90 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 lg:hidden">
+    <div className="flex items-center gap-2 px-4 py-2">
       <img src={assetUrl('assets/wormforge-logo.png')} alt="WormForge" width={327} height={57} className="h-5 w-auto shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{project.name}</div>
-        <div className="truncate font-mono text-[10px] text-stone-400">{project.id}</div>
       </div>
       {weaponSwitcher}
       <button
         type="button"
         onClick={onImportWep}
-        className="rounded-md border border-amber-300/80 bg-amber-50/75 p-1.5 text-amber-700 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-300"
+        className="rounded-lg border border-stone-200 bg-white p-1.5 text-stone-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
         aria-label="Import .wep"
         title="Import .wep"
       >
@@ -315,13 +311,13 @@ export const MobileBar: React.FC<MobileBarProps> = ({
       <button
         type="button"
         onClick={onBrowsePxl}
-        className="relative rounded-md border border-amber-300/80 bg-amber-50/75 p-1.5 text-amber-700 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-300"
+        className="relative rounded-lg border border-stone-200 bg-white p-1.5 text-stone-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
         aria-label="Sprite libraries"
         title="Sprite libraries (.pxl)"
       >
         <Library className="h-4 w-4" aria-hidden="true" />
         {pxlLibraryCount > 0 && (
-          <span className="absolute -right-1 -top-1 rounded-full bg-amber-600 px-1 font-mono text-[8px] font-bold leading-tight text-white">
+          <span className="absolute -right-1 -top-1 rounded-full bg-forge-600 px-1 font-mono text-[8px] font-bold leading-tight text-white tabular-nums">
             {pxlLibraryCount}
           </span>
         )}
@@ -329,7 +325,7 @@ export const MobileBar: React.FC<MobileBarProps> = ({
       <button
         type="button"
         onClick={onBrowseMods}
-        className="rounded-md border border-sky-300/80 bg-sky-50/75 p-1.5 text-sky-700 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-300"
+        className="rounded-lg border border-stone-200 bg-white p-1.5 text-stone-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
         aria-label="Read installed mods"
         title="Read installed mods"
       >
@@ -338,7 +334,7 @@ export const MobileBar: React.FC<MobileBarProps> = ({
       <button
         type="button"
         onClick={onExportZip}
-        className="rounded-md bg-forge-600 p-1.5 text-white dark:bg-forge-500"
+        className="rounded-lg bg-forge-600 p-1.5 text-white dark:bg-forge-500"
         aria-label="Export mod zip"
         title="Export mod zip"
       >
@@ -347,14 +343,14 @@ export const MobileBar: React.FC<MobileBarProps> = ({
       <button
         type="button"
         onClick={() => setIsDark(!isDark)}
-        className="rounded-md border border-stone-300 p-1.5 text-stone-600 dark:border-stone-700 dark:text-stone-300"
+        className="rounded-lg border border-stone-200 p-1.5 text-stone-600 dark:border-stone-700 dark:text-stone-300"
         aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
         title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
       >
         {isDark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
       </button>
     </div>
-    <div className="grid grid-cols-4 gap-1 px-3 pb-2">
+    <div className="grid grid-cols-4 border-t border-stone-200/70 px-2 dark:border-stone-800">
       {WORKSPACE.map(({ id, icon: Icon }) => {
         const short =
           id === 'editor'
@@ -362,21 +358,25 @@ export const MobileBar: React.FC<MobileBarProps> = ({
             : id === 'hold'
               ? 'Hold'
               : id === 'effects'
-                ? 'Effects'
+                ? 'Libraries'
                 : 'Bundle';
+        const active = activeTab === id;
         return (
           <button
             key={id}
             type="button"
             onClick={() => setActiveTab(id)}
-            className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] font-medium ${
-              activeTab === id
-                ? 'bg-forge-50 text-forge-800 dark:bg-forge-950/40 dark:text-forge-200'
-                : 'text-stone-500 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800/60'
+            className={`relative flex items-center justify-center gap-1.5 py-2 text-[11px] font-medium transition-colors whitespace-nowrap ${
+              active
+                ? 'text-forge-600 dark:text-forge-400'
+                : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
             }`}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">{short}</span>
+            {active && (
+              <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-forge-600 dark:bg-forge-400" />
+            )}
           </button>
         );
       })}

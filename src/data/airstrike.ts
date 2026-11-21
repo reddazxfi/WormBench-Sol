@@ -48,10 +48,25 @@ export const DEFAULT_AIRSTRIKE: AirstrikeConfig = {
     asObject: false,
     hp: 0,
     deadDamage: 25,
+    crashOnTerrain: false,
+    crashOnWater: true,
+    boomMode: 'native',
     boomDamage: 80,
     boomKind: 100,
+    boomBelow: false,
+    boomRadius: 120,
+    boomPushPct: 100,
+    boomCraterRadius: 60,
+    boomHitKind: 'blast',
+    boomVisual: 'native',
+    boomSound: { id: 0 },
     boomFires: 0,
-    crashOnWater: true,
+    boomFxBurst: {
+      enabled: false,
+      color: '#ff7a2f',
+      radius: 64,
+      smoke: true,
+    },
     exitMargin: 64,
     timeoutFrames: 900,
     fadeOutFrames: 0,
@@ -183,6 +198,8 @@ export function mergeAirstrikeConfig(raw?: Partial<AirstrikeConfig>): AirstrikeC
     plane: {
       ...DEFAULT_AIRSTRIKE.plane,
       ...(raw.plane ?? {}),
+      boomSound: { ...DEFAULT_AIRSTRIKE.plane.boomSound, ...(raw.plane?.boomSound ?? {}) },
+      boomFxBurst: { ...DEFAULT_AIRSTRIKE.plane.boomFxBurst, ...(raw.plane?.boomFxBurst ?? {}) },
       soundEnter: { ...DEFAULT_AIRSTRIKE.plane.soundEnter, ...(raw.plane?.soundEnter ?? {}) },
       soundLoop: { ...DEFAULT_AIRSTRIKE.plane.soundLoop, ...(raw.plane?.soundLoop ?? {}) },
       soundExit: { ...DEFAULT_AIRSTRIKE.plane.soundExit, ...(raw.plane?.soundExit ?? {}) },
@@ -229,6 +246,11 @@ export function airstrikeActive(project: WeaponProject): boolean {
  */
 export function takeoverMissileActive(project: WeaponProject): boolean {
   return airstrikeActive(project) && (project.airstrike?.payload?.kind ?? 'missile') === 'missile';
+}
+
+/** True when airstrike takeover is active with a flying aircraft (`entry.mode !== 'payload'`). */
+export function supportsAirstrikePlane(project: WeaponProject): boolean {
+  return airstrikeActive(project) && (project.airstrike?.entry?.mode ?? 'offmap') !== 'payload';
 }
 
 export interface AirstrikePreset {
@@ -385,6 +407,57 @@ export const AIRSTRIKE_PRESETS: AirstrikePreset[] = [
           lead: true,
         },
         payload: { ...base.payload, kind: 'missile', inheritVx: 0.4, vx: 1.5, vy: 2.5 },
+      };
+    },
+  },
+  {
+    id: 'kamikaze_dive',
+    label: 'Kamikaze Dive',
+    summary: 'Dives straight into the clicked target and detonates the aircraft on terrain impact',
+    apply: (cur) => {
+      const base = cloneAirstrikeConfig(DEFAULT_AIRSTRIKE);
+      return {
+        ...base,
+        enabled: cur.enabled,
+        plane: {
+          ...base.plane,
+          stockSprite: 'airjeto',
+          bankAngleApproach: 6,
+          bankAngleRelease: 32,
+          bankRate: 1.6,
+          crashOnTerrain: true,
+          crashOnWater: true,
+          boomMode: 'custom',
+          boomDamage: 90,
+          boomRadius: 130,
+          boomPushPct: 140,
+          boomCraterRadius: 68,
+          boomHitKind: 'blast',
+          boomVisual: 'both',
+          boomFires: 2,
+          boomFxBurst: {
+            enabled: true,
+            color: '#ff7a2f',
+            radius: 72,
+            smoke: true,
+          },
+        },
+        speed: {
+          ...base.speed,
+          cruise: 16,
+          release: 15,
+          exit: 18,
+          slowDistance: 280,
+          altitudeMode: 'crash_dive',
+          diveVy: 0,
+        },
+        release: {
+          ...base.release,
+          mode: 'drop',
+          pattern: 'sequential',
+          count: 0,
+          lead: false,
+        },
       };
     },
   },

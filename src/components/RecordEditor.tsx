@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { bitActionOf, visibleRecordTabs, type RecordTabId } from '../data/recordTabs';
 import { bitBuilderMode } from '../data/spriteBuilder';
+import { fireSequenceMissileActive } from '../data/fireSequence';
 import { FIRE_SUBTYPES, fireSubtypeLabel } from '../data/fireSubtypes';
 import { PackSpriteUpload } from './PackSpriteUpload';
 import { NumberInput, useNumberDraft } from './NumberInput';
@@ -259,7 +260,7 @@ export const SectionHeader: React.FC<{
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2" title={tip}>
-        <h3 className="flex items-center gap-1.5 font-heading text-sm font-bold uppercase tracking-wide text-stone-900 dark:text-stone-100">
+        <h3 className="flex items-center gap-1.5 font-heading text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
           {icon}
           <span>{title}</span>
         </h3>
@@ -289,14 +290,14 @@ export const SubSectionTitle: React.FC<{
   const tip = buildTooltip(desc, code);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide ${tone}`} title={tip}>
+      <div className={`flex items-center gap-1.5 font-heading text-xs font-semibold tracking-tight ${tone}`} title={tip}>
         <span>{title}</span>
         {tip && (
           <span
             tabIndex={0}
             role="tooltip"
             title={tip}
-            className="-m-1.5 shrink-0 cursor-help p-1.5 font-normal normal-case text-stone-400 transition-colors hover:text-stone-600 dark:hover:text-stone-200"
+            className="-m-1.5 shrink-0 cursor-help p-1.5 font-sans font-normal text-stone-400 transition-colors hover:text-stone-600 dark:hover:text-stone-200"
           >
             <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
@@ -361,7 +362,8 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
     bitAction,
     project.fireType,
     project.teleport,
-    body.fuse
+    body.fuse,
+    fireSequenceMissileActive(project)
   );
 
   // Normalize any legacy or transitional tab id cleanly so panels never blank out.
@@ -748,27 +750,19 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
   return (
     <section
       aria-label="Weapon Mechanics Workbench"
-      className="overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900"
+      className="overflow-hidden rounded-xl border border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900"
     >
       {/* Unified Armory Workbench Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/80 bg-stone-50/80 px-3 py-2.5 dark:border-stone-800 dark:bg-stone-950/60">
-        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Weapon mechanics sections">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/80 bg-stone-50/70 px-3 dark:border-stone-800 dark:bg-stone-950/50">
+        <div
+          className="flex flex-wrap items-center gap-1"
+          role="tablist"
+          aria-label="Weapon mechanics sections"
+        >
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const active = normalizedTab === tab.id;
             const whisper = tabWhisper(tab.id);
-            const activeClass =
-              tab.id === 'sprite' || tab.id === 'gun' || tab.id === 'gun_mine'
-                ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500'
-                : tab.id === 'action' || tab.id === 'burst'
-                  ? 'bg-amber-600 text-white shadow-xs dark:bg-amber-500'
-                  : 'bg-forge-600 text-white shadow-xs dark:bg-forge-500';
-            const inactiveIconClass =
-              tab.id === 'sprite' || tab.id === 'gun' || tab.id === 'gun_mine'
-                ? 'text-sky-500'
-                : tab.id === 'action' || tab.id === 'burst'
-                  ? 'text-amber-500'
-                  : 'text-forge-500';
             return (
               <button
                 key={tab.id}
@@ -777,25 +771,31 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 aria-selected={active}
                 title={tab.hint}
                 onClick={() => onSelectSubTab(tab.id)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`relative inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   active
-                    ? activeClass
-                    : 'border border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:hover:border-stone-600 dark:hover:text-white'
+                    ? 'text-stone-950 dark:text-white'
+                    : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
                 }`}
               >
                 <Icon
-                  className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-white' : inactiveIconClass}`}
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    active
+                      ? 'text-forge-600 dark:text-forge-400'
+                      : 'text-stone-400 dark:text-stone-500'
+                  }`}
                   aria-hidden="true"
                 />
                 <span>{tab.label}</span>
                 {whisper && (
-                  <span
-                    className={`font-mono text-[10px] capitalize ${
-                      active ? 'text-white/85' : 'text-amber-600 dark:text-amber-400'
-                    }`}
-                  >
+                  <span className="font-mono text-[10px] font-medium capitalize text-forge-600 dark:text-forge-400">
                     · {whisper}
                   </span>
+                )}
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-forge-600 dark:bg-forge-400"
+                  />
                 )}
               </button>
             );
@@ -804,17 +804,17 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
 
         {/* Dropped Weapon Mode Switcher (Proximity Mine vs Timed Dynamite) */}
         {project.fireType === 'drop' && (
-          <div className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white p-0.5 dark:border-stone-700 dark:bg-stone-900">
+          <div className="my-1.5 inline-flex items-center gap-0.5 rounded-lg border border-stone-200 bg-stone-100 p-0.5 dark:border-stone-700 dark:bg-stone-900">
             <button
               type="button"
               onClick={() => updateBody({ fuse: false, fuse_time_ms: 0 })}
               className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 !body.fuse
-                  ? 'bg-sky-600 text-white shadow-xs'
+                  ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                   : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'
               }`}
             >
-              <CircleDot className="h-3 w-3" aria-hidden="true" />
+              <CircleDot className={`h-3 w-3 ${!body.fuse ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
               <span>Proximity Mine</span>
             </button>
             <button
@@ -827,11 +827,11 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
               }
               className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 body.fuse
-                  ? 'bg-amber-600 text-white shadow-xs'
+                  ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                   : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'
               }`}
             >
-              <Clock className="h-3 w-3" aria-hidden="true" />
+              <Clock className={`h-3 w-3 ${body.fuse ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
               <span>Timed Dynamite</span>
             </button>
           </div>
@@ -1577,43 +1577,45 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
           {project.burst === 'clusters' && (
             <div className="space-y-4">
               {/* Inner Cluster Sub-Navigation Bar */}
-              <div className="flex flex-wrap items-center gap-1.5 border-b border-stone-200/80 pb-3 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setClusterView('physics')}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    clusterView === 'physics'
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : 'border border-stone-200 bg-white text-stone-600 hover:border-sky-300 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300'
-                  }`}
-                >
-                  <Sparkles className="h-3 w-3" aria-hidden="true" />
-                  <span>Ejection &amp; Bit Physics</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClusterView('targets')}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    clusterView === 'targets'
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : 'border border-stone-200 bg-white text-stone-600 hover:border-sky-300 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300'
-                  }`}
-                >
-                  <Target className="h-3 w-3" aria-hidden="true" />
-                  <span>Bit Targets</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClusterView('action')}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    clusterView === 'action'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'border border-stone-200 bg-white text-stone-600 hover:border-amber-300 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300'
-                  }`}
-                >
-                  <Zap className="h-3 w-3" aria-hidden="true" />
-                  <span>Bit Action: {bitActionTitle}</span>
-                </button>
+              <div className="flex flex-wrap items-center gap-1 border-b border-stone-200/80 pb-3 dark:border-stone-800">
+                <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-stone-200 bg-stone-100 p-0.5 dark:border-stone-800 dark:bg-stone-950/60">
+                  <button
+                    type="button"
+                    onClick={() => setClusterView('physics')}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      clusterView === 'physics'
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
+                    }`}
+                  >
+                    <Sparkles className={`h-3 w-3 ${clusterView === 'physics' ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
+                    <span>Ejection &amp; Bit Physics</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClusterView('targets')}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      clusterView === 'targets'
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
+                    }`}
+                  >
+                    <Target className={`h-3 w-3 ${clusterView === 'targets' ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
+                    <span>Bit Targets</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClusterView('action')}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      clusterView === 'action'
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
+                    }`}
+                  >
+                    <Zap className={`h-3 w-3 ${clusterView === 'action' ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
+                    <span>Bit Action: {bitActionTitle}</span>
+                  </button>
+                </div>
               </div>
 
               {clusterView === 'physics' && (
@@ -2335,7 +2337,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-0.5 text-[10px] font-semibold uppercase text-stone-400">
+                <span className="mr-0.5 text-[11px] font-medium text-stone-500 dark:text-stone-400">
                   Presets:
                 </span>
                 <button
@@ -2348,7 +2350,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                       'missile.trail.speed': 250,
                     })
                   }
-                  className="rounded-md border border-sky-200 bg-sky-50/75 px-2 py-1 text-[11px] font-semibold text-sky-800 transition-colors hover:bg-sky-100 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   Smoke
                 </button>
@@ -2362,7 +2364,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                       'missile.trail.speed': 180,
                     })
                   }
-                  className="rounded-md border border-amber-200 bg-amber-50/75 px-2 py-1 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   Sparks
                 </button>
@@ -2376,14 +2378,14 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                       'missile.trail.speed': 320,
                     })
                   }
-                  className="rounded-md border border-sky-200 bg-sky-50/75 px-2 py-1 text-[11px] font-semibold text-sky-800 transition-colors hover:bg-sky-100 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   Heavy Smoke
                 </button>
                 <button
                   type="button"
                   onClick={() => updateOverride('missile.trail.enabled', false)}
-                  className="rounded-md border border-stone-200 bg-white px-2 py-1 text-[11px] font-medium text-forge-600 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-forge-400 dark:hover:bg-stone-700 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="rounded-md px-2 py-1 text-[11px] font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   Clear
                 </button>
@@ -2830,14 +2832,20 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
             code="on_explode, simulation hooks"
             desc="Run custom Lua logic during game events inside wa.weapons.replace{ ... } (e.g. cutting craters or spawning extra missiles)."
             right={
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 bg-stone-100 px-3 py-1.5 dark:border-stone-700 dark:bg-stone-800">
+              <label
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
+                  project.enableCustomLua
+                    ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                    : 'border-stone-200 bg-white hover:border-stone-300 dark:border-stone-700 dark:bg-stone-800/80 dark:hover:border-stone-600'
+                }`}
+              >
                 <input
                   type="checkbox"
                   checked={project.enableCustomLua || false}
                   onChange={(e) => onChange({ enableCustomLua: e.target.checked })}
                   className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
                 />
-                <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">
                   Enable Custom Lua
                 </span>
               </label>
@@ -2913,7 +2921,7 @@ end,`,
                 rows={12}
                 value={project.customLuaSnippet || ''}
                 onChange={(e) => onChange({ customLuaSnippet: e.target.value })}
-                className="w-full resize-y select-text rounded-xl border border-stone-300 bg-stone-950 p-4 font-mono text-xs leading-relaxed text-forge-400 focus:ring-1 focus:ring-forge-500 dark:border-stone-700"
+                className="w-full resize-y select-text rounded-xl border border-stone-800 bg-stone-950 p-4 font-mono text-xs leading-relaxed text-stone-100 placeholder:text-stone-500 focus:outline-hidden focus:ring-2 focus:ring-forge-500"
                 placeholder="on_explode = function(ev) ... end,"
               />
 

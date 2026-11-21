@@ -94,18 +94,16 @@ const StripFrame: React.FC<{
 const ModeChip: React.FC<{
   label: string;
   on: boolean;
-  accent: 'amber' | 'forge';
+  accent?: 'amber' | 'forge';
   title?: string;
   onClick: () => void;
-}> = ({ label, on, accent, title, onClick }) => (
+}> = ({ label, on, title, onClick }) => (
   <label
     title={title}
-    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1 ${
+    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1 transition-colors ${
       on
-        ? accent === 'amber'
-          ? 'border-amber-300 bg-amber-50/80 dark:border-amber-800/70 dark:bg-amber-950/30'
-          : 'border-forge-300 bg-forge-50/80 dark:border-forge-800/70 dark:bg-forge-950/30'
-        : 'border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900'
+        ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+        : 'border-stone-200 bg-white hover:border-stone-300 dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600'
     }`}
   >
     <input
@@ -114,17 +112,13 @@ const ModeChip: React.FC<{
       // A pair, not two switches: ticking the other one is the only way to
       // change it, so clicking the active box keeps it active.
       onChange={() => onClick()}
-      className={`h-3.5 w-3.5 cursor-pointer rounded focus:ring-forge-500 ${
-        accent === 'amber' ? 'text-amber-600' : 'text-forge-600'
-      }`}
+      className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
     />
     <span
       className={`whitespace-nowrap text-[11px] font-semibold ${
         on
-          ? accent === 'amber'
-            ? 'text-amber-900 dark:text-amber-100'
-            : 'text-forge-900 dark:text-forge-100'
-          : 'text-stone-700 dark:text-stone-200'
+          ? 'text-stone-950 dark:text-stone-100'
+          : 'text-stone-600 dark:text-stone-300'
       }`}
     >
       {label}
@@ -212,14 +206,14 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
       <SectionHeader
         title="Terrain Stamp"
         code="wa.land.stamp"
-        icon={<Stamp className="h-4 w-4 text-sky-500" aria-hidden="true" />}
+        icon={<Stamp className="h-4 w-4 text-forge-500" aria-hidden="true" />}
         desc="Burns the round's picture into the terrain where it bursts: frame 0 points up, the 32-frame strip turns clockwise, and the round's own rotation picks the frame (velocity for a native sheet). A built-in engine verb, so no library dependency."
         right={
           <label
-            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 ${
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
               stamp.enabled
-                ? 'border-sky-200 bg-sky-50/80 dark:border-sky-800/70 dark:bg-sky-950/30'
-                : 'border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-900'
+                ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                : 'border-stone-200 bg-white hover:border-stone-300 dark:border-stone-700 dark:bg-stone-800/80 dark:hover:border-stone-600'
             }`}
             title={
               stamp.enabled
@@ -243,8 +237,8 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
             <span
               className={`text-xs font-semibold ${
                 stamp.enabled
-                  ? 'text-sky-900 dark:text-sky-200'
-                  : 'text-stone-500 dark:text-stone-400'
+                  ? 'text-stone-900 dark:text-stone-100'
+                  : 'text-stone-600 dark:text-stone-300'
               }`}
             >
               Enable Stamp
@@ -290,7 +284,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
             />
             {sheet ? (
               <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white p-2 dark:border-stone-700 dark:bg-stone-900">
-                <ImageIcon className="h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
+                <ImageIcon className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-semibold text-stone-800 dark:text-stone-200">
                     {sheet.sourceName || sheet.fileName || 'stamp.png'}
@@ -330,7 +324,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={baking}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-4 text-xs font-semibold text-stone-600 transition-colors hover:border-sky-400 hover:text-sky-700 disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300 dark:hover:border-sky-600 dark:hover:text-sky-300"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-4 text-xs font-semibold text-stone-600 transition-colors hover:border-forge-400 hover:text-stone-900 disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300 dark:hover:border-forge-500 dark:hover:text-white"
                 >
                   {baking ? (
                     <>
@@ -386,7 +380,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                   onClick={() => update({ onImpact: option.id })}
                   className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     stamp.onImpact === option.id
-                      ? 'bg-sky-600 text-white shadow-xs'
+                      ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                       : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
                   }`}
                 >
@@ -414,7 +408,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                   step={STAMP_STEP_DEG}
                   value={stamp.fixedAngle}
                   onChange={(e) => update({ fixedAngle: Number(e.target.value) })}
-                  className="h-1.5 w-full cursor-pointer accent-sky-600"
+                  className="h-1.5 w-full cursor-pointer accent-forge-500"
                 />
                 <div className="w-28 shrink-0">
                   <UnitNumberInput
@@ -629,7 +623,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                       onClick={() => update({ blend: option.id })}
                       className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                         stamp.blend === option.id
-                          ? 'bg-sky-600 text-white shadow-xs'
+                          ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                           : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
                       }`}
                     >

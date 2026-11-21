@@ -665,3 +665,20 @@ These are engine behaviours, not static checks:
   first contact and that no mole or `wsv*` frame appears under the sheet.
 - A state swap despawns and respawns the follower; watch for a one-frame flicker.
 - Roaming: check the `pre` phase still runs while the animal is on the ground.
+
+## `wf-lib/wfws_airstrike` (0.18.0)
+
+Lockstep Lua airstrike takeover (`on_click = function(ev) air.strike(ev) end`) for cursor weapons (`fireType = "cursor"`, non-teleport).
+
+- **Entry modes**: `"offmap"` (fly in from the left/right map edge), `"above"` (spawn above the drop window), and `"payload"` (instant cursor/sky drop with no plane actor).
+- **Direction rules**: `"arrows"` keeps directional strike arrow input via `copy_from = "stock.air_strike"` without `on_select = { cursor = true }` (emitting `on_select = { cursor = true }` forces `apply_drop_fire` and zeroes arrow selection). Non-directional direct clicks (`direction = "none"`) emit `on_select = { cursor = true }`.
+- **Missile takeover & hooks**: Declare a separate `projectile = { copy_from = "stock.<missile>", ... }` table on `wa.weapons.replace{...}` so `wa.weapons.launch{ weapon = ctx.id }` assigns `m.weapon == ctx.id` to bombs and cluster bits (`air.is_main(m.id)`, `air.is_bit(m)`), enabling `sb.flight`, `on_explode`, ribbon trails, explosion bursts, round emitters, and terrain stamps.
+- **Release & speed**: Supports `"drop"` and `"strafe"` modes (plus mixed `release.phases`), 7 release patterns (`sequential`, `burst`, `ripple`, `pairs`, `carpet`, `random_window`, `offsets`), 5-phase speed ramps (`approach -> slow -> release -> recover -> exit`), additive/multiplicative speed control, `crash_dive` terrain/water crash (`wa.land.trace`/`solid` + `wa.world.blast` / `hull:explode`), and `pcall` retries on `"object pool is full"`. Notice `boom_hit_kind == "blast"` is normalized to `nil` when calling `wa.world.blast` (0.9.9 treats `nil` as plain blast).
+
+## `wf-lib/wfws_firing` (0.18.0)
+
+Unified lockstep firing engine replacing `px.fire_seq` while adding a native WA gun-timed path:
+
+- **Native gun mode (`firing.launch`, `firing.actor`)**: Pairs an outer `"stock.minigun"` / gun claim (`gun.bullets`, `gun.shot_interval_ms`, `gun.burst_size`, integer `gun.spread_deg`, zeroed `gun.damage = 0` and `gun.explosion = { push_pct = 0 }`) with a separate `projectile = { copy_from = "stock.<missile>" }` record. WA handles firing cadence and interruption while `on_fire` launches real missiles or actors along WA's prepared `ev.vx`/`ev.vy`.
+- **Timed sequencer (`firing.sequence`)**: Deterministic 50 Hz ticker holding `worm.shots_fired`/`shots_to_fire` across `first_delay_ms`, uniform `interval_ms` or per-shot `intervals_ms`, optional `live_aim`, `aim_clamp`, `cancel_weapon` / `NOT_FIRING` interruption, `firing.cancel`, and `max_ticks` timeout protection.
+- **Fuses, homing & power**: `firing.install_fuse(default_ms)` + `firing.fuse(record_ms, worm)` samples synchronised `wa.world.keys().digit` (`1..5` -> `1000..5000` ms) whenever `record_ms == 0`. `scale_by_power = true` multiplies speed directly by `ev.power` (`0.0 .. 1.0`, matching WA `WORM_FIRE_POWER`). `firing.homing.lock` provides PX-compatible `pre` near-snap (`< 50 px`) and `post` every-other-frame steering, and `firing.chain` / `anim*` tracks `buffer -> fire -> after` hold windows.

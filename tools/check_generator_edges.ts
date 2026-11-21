@@ -31,6 +31,8 @@ import { DEFAULT_BODY } from '../src/data/defaults';
 import { DEFAULT_MELEE } from '../src/data/melee';
 import { DEFAULT_EMITTER, DEFAULT_EMITTER_RING, DEFAULT_EMITTER_TRAIL } from '../src/data/emitter';
 import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
+import { DEFAULT_AIRSTRIKE } from '../src/data/airstrike';
+import { DEFAULT_FIRE_SEQUENCE } from '../src/data/fireSequence';
 import { scanLua } from '../src/utils/modLib/luaTable';
 import { parseWepBinary } from '../src/utils/wepParser';
 import { DEFAULT_IMPORT_HOLD, readBundleFeatures } from '../src/utils/modLib/importFeatures';
@@ -326,9 +328,10 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
   // The path is also in the claim's `sounds` list, which comes first; the play
   // call itself is what has to sit inside the trigger.
   const playAt = seqText.indexOf(`wa.sound.play(ev.worm, "${launchPath}"`);
+  const firingAt = seqText.search(/firing\.(?:sequence|launch)\(ev,/);
   check(
     'a burst plays the launch WAV inside its own on_fire',
-    fireAt >= 0 && playAt > fireAt && playAt < seqText.indexOf('seq.fire_seq_mis{') && !seqText.includes('LAUNCH_SOUND'),
+    fireAt >= 0 && playAt > fireAt && firingAt > playAt && !seqText.includes('LAUNCH_SOUND'),
     playAt < 0 ? 'no play' : 'the play is outside the trigger',
   );
 }
@@ -1676,6 +1679,128 @@ local afterHook = 42`;
   check('own hold art keeps the empty-handed pose', holdAsLine(ownHold) === undefined, String(holdAsLine(ownHold)));
   const imported = builder({ holdAs: 'stock.banana_bomb' });
   check('an imported hold_as is written as it came', holdAsLine(imported) === 'stock.banana_bomb', String(holdAsLine(imported)));
+}
+
+// ---- Airstrike Takeover & Fire Sequential (0.9.9 schema + edges) ----------
+{
+  const nativeCursor = makeProject({
+    slot: 'air_strike',
+    based_on: 'stock.air_strike',
+    donorBaseline: stockDonorBaseline('air_strike'),
+    fireType: 'cursor',
+    teleport: false,
+    airstrike: { ...DEFAULT_AIRSTRIKE, enabled: false },
+  });
+  const nativeCursorOff = generateLuaCode(nativeCursor);
+  const plainCursor = generateLuaCode({ ...nativeCursor, airstrike: undefined });
+  check('airstrike enabled=false is byte-identical to undefined', nativeCursorOff === plainCursor);
+
+  const dirTakeover = generateLuaCode({
+    ...nativeCursor,
+    airstrike: {
+      ...DEFAULT_AIRSTRIKE,
+      enabled: true,
+      direction: 'arrows',
+      plane: {
+        ...DEFAULT_AIRSTRIKE.plane,
+        collide: true,
+        crashOnTerrain: true,
+        boomMode: 'custom',
+        boomHitKind: 'blast',
+        boomVisual: 'fx',
+      },
+      payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'missile', projectileDonor: 'bazooka' },
+    },
+  });
+  check(
+    'directional airstrike takeover emits air.install, air.strike, projectile, omits on_select.cursor and omits "blast" kind',
+    dirTakeover.includes('require("wf-lib/wfws_airstrike")') &&
+      dirTakeover.includes('air.install(ctx, {') &&
+      dirTakeover.includes('on_click = function(ev) air.strike(ev) end,') &&
+      dirTakeover.includes('copy_from = "stock.bazooka",') &&
+      !dirTakeover.includes('on_select = { cursor = true }') &&
+      !dirTakeover.includes('boom_hit_kind = "blast"'),
+    dirTakeover,
+  );
+
+  const directTakeover = generateLuaCode({
+    ...nativeCursor,
+    airstrike: {
+      ...DEFAULT_AIRSTRIKE,
+      enabled: true,
+      direction: 'none',
+      entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'payload', spawnAt: 'cursor' },
+      plane: { ...DEFAULT_AIRSTRIKE.plane, boomMode: 'custom', boomHitKind: 'fire', crashOnTerrain: true },
+      payload: { ...DEFAULT_AIRSTRIKE.payload, kind: 'mine' },
+    },
+  });
+  check(
+    'non-directional direct airstrike emits on_select = { cursor = true } and omits projectile when kind != missile',
+    directTakeover.includes('on_select = { cursor = true },') && !directTakeover.includes('projectile = {'),
+    directTakeover,
+  );
+
+  const nativeSeq = makeProject({
+    slot: 'grenade',
+    based_on: 'stock.grenade',
+    donorBaseline: stockDonorBaseline('grenade'),
+    fireType: 'power',
+    recordOverrides: { 'fires.launch_power_pct': 80 },
+    fireSequence: {
+      ...DEFAULT_FIRE_SEQUENCE,
+      enabled: true,
+      engine: 'native',
+      mode: 'missiles',
+      count: 4,
+      burstSize: 2,
+      spreadDeg: 5.4,
+      payloadDonor: 'bazooka',
+    },
+  });
+  const nativeSeqLua = generateLuaCode(nativeSeq);
+  const outerFiresBeforeProj = nativeSeqLua.split('projectile = {')[1]?.split('fires = {')[1] ?? '';
+  const claimBeforeProj = nativeSeqLua.slice(0, nativeSeqLua.indexOf('projectile = {'));
+  check(
+    'native fireSequence emits gun.explosion = { push_pct = 0 }, integer spread_deg, no gun.explosion.power, and no outer launch_power_pct',
+    nativeSeqLua.includes('copy_from = "stock.minigun",') &&
+      nativeSeqLua.includes('explosion = { push_pct = 0 },') &&
+      !nativeSeqLua.includes('explosion = { power = 0 }') &&
+      nativeSeqLua.includes('spread_deg = 5,') &&
+      !claimBeforeProj.includes('launch_power_pct') &&
+      nativeSeqLua.includes('firing.launch(ev, PAYLOAD)'),
+    outerFiresBeforeProj + nativeSeqLua,
+  );
+
+  const timedSeq = makeProject({
+    slot: 'bazooka',
+    based_on: 'stock.bazooka',
+    donorBaseline: stockDonorBaseline('bazooka'),
+    fireType: 'power',
+    body: { ...DEFAULT_BODY, fuse_time_ms: 0 },
+    fireSequence: {
+      ...DEFAULT_FIRE_SEQUENCE,
+      enabled: true,
+      engine: 'timed',
+      count: 3,
+      customIntervalsMs: '120, 40',
+      scaleByPower: true,
+      explodeOnSpace: true,
+      fuseMode: 'aim',
+      homing: { enabled: true, speed: 15, turn: 0.25, frames: 90, delay: 10, sound: 0, perShotTarget: false },
+    },
+  });
+  const timedSeqLua = generateLuaCode(timedSeq);
+  check(
+    'timed fireSequence emits firing.install_fuse, intervals_ms, scale_by_power, explode_on_space, homing, and firing.sequence',
+    timedSeqLua.includes('firing.install_fuse(3000)') &&
+      timedSeqLua.includes('intervals_ms = { 120, 40 },') &&
+      timedSeqLua.includes('scale_by_power = true,') &&
+      timedSeqLua.includes('explode_on_space = true,') &&
+      timedSeqLua.includes('fuse = "aim",') &&
+      timedSeqLua.includes('homing = {') &&
+      timedSeqLua.includes('firing.sequence(ev, SEQ)'),
+    timedSeqLua,
+  );
 }
 
 if (failed > 0) {

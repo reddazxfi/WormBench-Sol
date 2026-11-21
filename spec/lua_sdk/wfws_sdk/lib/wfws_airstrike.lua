@@ -196,10 +196,23 @@ local function normalize_spec(weapon_id, raw)
       as_object = opt(plane_r.as_object, false),
       hp = math.max(0, opt(plane_r.hp, 0)),
       dead_damage = math.max(0, opt(plane_r.dead_damage, 25)),
+      crash_on_terrain = opt(plane_r.crash_on_terrain, false),
+      crash_on_water = opt(plane_r.crash_on_water, true),
+      boom_mode = opt(plane_r.boom_mode, "native"),
       boom_damage = math.max(0, opt(plane_r.boom_damage, 80)),
       boom_kind = opt(plane_r.boom_kind, 100),
+      boom_below = opt(plane_r.boom_below, false),
+      boom_radius = math.max(1, opt(plane_r.boom_radius, 120)),
+      boom_push_pct = math.max(0, opt(plane_r.boom_push_pct, 100)),
+      boom_crater_radius = math.max(0, math.min(200, opt(plane_r.boom_crater_radius, 60))),
+      boom_hit_kind = plane_r.boom_hit_kind,
+      boom_visual = opt(plane_r.boom_visual, "native"),
+      boom_sound = plane_r.boom_sound,
       boom_fires = math.max(0, math.floor(opt(plane_r.boom_fires, 0))),
-      crash_on_water = opt(plane_r.crash_on_water, true),
+      boom_fire_count = math.max(1, math.floor(opt(plane_r.boom_fire_count, 7))),
+      boom_fire_duration = math.max(100, math.floor(opt(plane_r.boom_fire_duration, 1500))),
+      boom_fire_up_power = math.max(0, opt(plane_r.boom_fire_up_power, 55)),
+      boom_fire_damage = math.max(0, opt(plane_r.boom_fire_damage, 9)),
       exit_margin = math.max(0, opt(plane_r.exit_margin, 64)),
       timeout_frames = math.max(1, math.floor(opt(plane_r.timeout_frames, 900))),
       fade_out_frames = math.max(0, math.floor(opt(plane_r.fade_out_frames, 0))),
@@ -770,18 +783,42 @@ local function boom_plane(s)
       FIRE_REQ.y = s.y + f[2]
       FIRE_REQ.vx = 0
       FIRE_REQ.vy = 0
-      FIRE_REQ.count = 7
-      FIRE_REQ.duration = 1500
-      FIRE_REQ.up_power = 55
-      FIRE_REQ.damage = 9
+      FIRE_REQ.count = pc.boom_fire_count
+      FIRE_REQ.duration = pc.boom_fire_duration
+      FIRE_REQ.up_power = pc.boom_fire_up_power
+      FIRE_REQ.damage = pc.boom_fire_damage
       pcall(wa.fire.spawn, FIRE_REQ)
     end
+  end
+  if pc.boom_sound ~= nil and wa.sound and wa.sound.play then
+    wa.sound.play(s.hull or s.owner, pc.boom_sound)
   end
   if s.spec.effects.on_plane_boom then
     s.spec.effects.on_plane_boom(s)
   end
-  if s.hull and not s.hull.dead and s.hull.explode then
-    s.hull:explode({ damage = pc.boom_damage, id = pc.boom_kind, below = false })
+  if pc.boom_mode == "custom" then
+    if (pc.boom_damage > 0 or pc.boom_crater_radius > 0) and wa.world and wa.world.blast then
+      wa.world.blast({
+        owner = s.owner,
+        x = s.x,
+        y = s.y,
+        damage = pc.boom_damage,
+        radius = pc.boom_radius,
+        push_pct = pc.boom_push_pct,
+        terrain_radius = pc.boom_crater_radius,
+        kind = (pc.boom_hit_kind and pc.boom_hit_kind ~= "blast") and pc.boom_hit_kind or nil,
+      })
+    end
+    local want_native_vis = pc.boom_visual == "native" or pc.boom_visual == "both"
+    if want_native_vis and s.hull and not s.hull.dead and s.hull.explode then
+      s.hull:explode({ damage = 0, id = pc.boom_kind, below = pc.boom_below })
+    elseif pc.boom_sound == nil and pc.boom_visual ~= "none" and s.owner and wa.sound and wa.sound.play then
+      wa.sound.play(s.owner, wa.random(69, 71))
+    end
+  else
+    if s.hull and not s.hull.dead and s.hull.explode then
+      s.hull:explode({ damage = pc.boom_damage, id = pc.boom_kind, below = pc.boom_below })
+    end
   end
   s.done = true
   s.phase = "done"
@@ -1123,6 +1160,7 @@ local function step_plane(s)
   local spd = spec.speed
   local rel = spec.release
 
+  local prev_x, prev_y = s.x, s.y
   s.tick = elapsed
   s.firing_flash = 0
 
@@ -1135,9 +1173,23 @@ local function step_plane(s)
     return
   end
 
-  if pc.collide and pc.crash_on_water and s.phase == "exit" and wa.world.water then
+  local function resolve_crash_dive_rate()
+    if spd.dive_vy ~= 0 then return math.abs(spd.dive_vy) end
+    if s.dive_rate == nil then
+      local dist_x = math.max(16, math.abs(s.tx - s.x))
+      local ticks = math.max(1, dist_x / math.max(1, s.vx))
+      s.dive_rate = math.max(1.2, math.min(18, math.max(16, s.ty - s.y) / ticks))
+    end
+    return s.dive_rate
+  end
+
+  if (pc.collide or pc.crash_on_terrain) and pc.crash_on_water and wa.world.water then
     local water_y = wa.world.water()
     if s.y >= water_y and s.x > -300 and s.x < s.map_w + 300 then
+      if s.hull and not s.hull.dead then
+        s.hull.x = s.x
+        s.hull.y = s.y
+      end
       boom_plane(s)
       return
     end
@@ -1182,6 +1234,9 @@ local function step_plane(s)
     if s.cooldown > 0 then
       s.cooldown = s.cooldown - 1
     end
+    if spd.altitude_mode == "crash_dive" then
+      s.y = math.min(spd.max_y, s.y + resolve_crash_dive_rate())
+    end
     if s.cooldown <= 0 and ready_gate then
       if s.count == 0 then
         s.phase = "recover"
@@ -1201,7 +1256,9 @@ local function step_plane(s)
     if spd.decel > 0 and s.vx > rel_floor then s.vx = math.max(rel_floor, s.vx - spd.decel) end
     if spd.min >= 0 and s.vx < spd.min then s.vx = spd.min end
 
-    if spd.altitude_mode == "dive" and spd.dive_vy ~= 0 then
+    if spd.altitude_mode == "crash_dive" then
+      s.y = math.min(spd.max_y, s.y + resolve_crash_dive_rate())
+    elseif spd.altitude_mode == "dive" and spd.dive_vy ~= 0 then
       s.y = math.max(spd.min_y, math.min(spd.max_y, s.y + math.abs(spd.dive_vy)))
     elseif spd.altitude_mode == "climb" and spd.dive_vy ~= 0 then
       s.y = math.max(spd.min_y, math.min(spd.max_y, s.y - math.abs(spd.dive_vy)))
@@ -1313,6 +1370,9 @@ local function step_plane(s)
   end
 
   if s.phase == "recover" then
+    if spd.altitude_mode == "crash_dive" then
+      s.y = math.min(spd.max_y, s.y + resolve_crash_dive_rate())
+    end
     local p_elapsed = now - s.phase_start
     if p_elapsed >= spd.recover_delay then
       local exit_v = spd.exit ~= nil and spd.exit or spd.cruise
@@ -1339,7 +1399,9 @@ local function step_plane(s)
   end
 
   if s.phase == "exit" then
-    if spd.altitude_mode ~= "level" and spd.dive_vy ~= 0 and math.abs(s.y - s.init_y) > 0.5 then
+    if spd.altitude_mode == "crash_dive" then
+      s.y = math.min(spd.max_y, s.y + resolve_crash_dive_rate())
+    elseif spd.altitude_mode ~= "level" and spd.dive_vy ~= 0 and math.abs(s.y - s.init_y) > 0.5 then
       if s.y > s.init_y then
         s.y = math.max(s.init_y, s.y - math.abs(spd.dive_vy))
       else
@@ -1359,6 +1421,43 @@ local function step_plane(s)
   end
 
   s.x = s.x + s.dir * s.vx
+  s.vy = s.y - prev_y
+
+  -- Deterministic terrain impact check when crash_on_terrain is enabled
+  if pc.crash_on_terrain and wa.land and s.x >= 0 and s.x < s.map_w and s.y >= 0 then
+    local hit_x, hit_y = nil, nil
+    if wa.land.trace then
+      local h = wa.land.trace(math.floor(prev_x), math.floor(prev_y), math.floor(s.x), math.floor(s.y))
+      if h and (h.hit == nil or h.hit) then
+        hit_x = h.x or s.x
+        hit_y = h.y or s.y
+      end
+    end
+    if not hit_x and wa.land.solid and wa.land.solid(math.floor(s.x), math.floor(s.y)) then
+      hit_x, hit_y = s.x, s.y
+    end
+    if hit_x then
+      s.x, s.y = hit_x, hit_y
+      if s.hull and not s.hull.dead then
+        s.hull.x = s.x
+        s.hull.y = s.y
+      end
+      boom_plane(s)
+      return
+    end
+  end
+
+  if (pc.collide or pc.crash_on_terrain) and pc.crash_on_water and wa.world.water then
+    local water_y = wa.world.water()
+    if s.y >= water_y and s.x > -300 and s.x < s.map_w + 300 then
+      if s.hull and not s.hull.dead then
+        s.hull.x = s.x
+        s.hull.y = s.y
+      end
+      boom_plane(s)
+      return
+    end
+  end
 
   -- Exit despawn check after motion
   local past_right = s.dir > 0 and s.x > s.map_w + pc.exit_margin
@@ -1539,6 +1638,8 @@ function M.strike(ev, explicit_weapon_id)
     y = start_y,
     init_y = start_y,
     vx = spd.cruise,
+    vy = 0,
+    dive_rate = nil,
     tx = ev.x,
     ty = ev.y,
     stages = stages,
@@ -1660,6 +1761,10 @@ function M.strike(ev, explicit_weapon_id)
 
   if pc.sound_enter ~= nil and wa.sound and wa.sound.play then
     wa.sound.play(s.hull or ev.worm, pc.sound_enter)
+  end
+
+  if spec.effects.on_start then
+    spec.effects.on_start(s)
   end
 
   return s

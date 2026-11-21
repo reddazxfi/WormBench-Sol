@@ -87,9 +87,20 @@ export function visibleRecordTabs(
   _bitAction: string,
   fireType?: FireType,
   teleport?: boolean,
-  bodyFuse?: boolean
+  bodyFuse?: boolean,
+  fireSeqMissile?: boolean
 ): RecordTabDef[] {
   if (fireType === 'hitscan') {
+    if (fireSeqMissile) {
+      return [
+        { id: 'gun', label: 'Firearm Specs', hint: 'Bullets, spread cone, damage & hits', icon: Crosshair },
+        { id: 'missile', label: 'Payload Physics', hint: 'Nested projectile gravity, wind, fuse & blast', icon: Bomb },
+        { id: 'action', label: 'Missile Action', hint: 'Bounce, homing, roam, dig & targets', icon: Zap },
+        { id: 'burst', label: 'Explodes Into', hint: 'Single blast, cluster bits or fire', icon: Sparkles },
+        { id: 'sprite', label: 'Sprites & Trail', hint: 'Missile sprite, smoke trail & sounds', icon: Sliders },
+        { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
+      ];
+    }
     return [
       { id: 'gun', label: 'Firearm Specs', hint: 'Bullets, spread cone, damage & hits', icon: Crosshair },
       { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },

@@ -71,7 +71,7 @@ check(
   bundles.some((bundle) => bundle.id === 'wfws.sdk'),
   bundles.map((bundle) => bundle.id).join(', '),
 );
-check('test pack has 60 weapons', weapons.length === 60, String(weapons.length));
+check('test pack has 66 weapons', weapons.length === 66, String(weapons.length));
 
 const byName = new Map(weapons.map((weapon) => [weapon.name, weapon]));
 const projects = new Map<string, WeaponProject>();
@@ -114,8 +114,17 @@ for (const weapon of weapons) {
   if (text.includes('fx.burst{') || text.includes('blast.explode{')) {
     check(`${name}: explosion burst enabled`, p.explosionEffect.enabled);
   }
-  if (text.includes('seq.fire_seq_mis') || text.includes('seq.fire_sequential_actor')) {
+  if (
+    text.includes('firing.launch(') ||
+    text.includes('firing.actor(') ||
+    text.includes('firing.sequence(') ||
+    text.includes('seq.fire_seq_mis') ||
+    text.includes('seq.fire_sequential_actor')
+  ) {
     check(`${name}: fire sequence enabled`, !!p.fireSequence?.enabled);
+  }
+  if (text.includes('air.install(ctx,')) {
+    check(`${name}: airstrike enabled`, !!p.airstrike?.enabled);
   }
   if (text.includes('sheep_sprites')) {
     hasFile(`${name}: roam sheet 1`, p.roamSheets?.flight1);
@@ -369,6 +378,7 @@ function fullProject(p: WeaponProject, name: string): WeaponProject {
     explosionEffect: p.explosionEffect ?? DEFAULT_EXPLOSION_EFFECT,
     terrainStamp: p.terrainStamp,
     emitter: p.emitter,
+    airstrike: p.airstrike,
     fireSequence: p.fireSequence ?? DEFAULT_FIRE_SEQUENCE,
     customSounds: p.customSounds ?? DEFAULT_CUSTOM_SOUNDS,
     extraDependencies: p.extraDependencies ?? [],
@@ -422,8 +432,11 @@ for (const [name, p] of projects) {
     ['local TRAIL =', 'local TRAIL = {'],
     ['fx.burst{', 'fx.burst{'],
     ['blast.explode{', 'blast.explode{'],
-    ['seq.fire_seq_mis', 'seq.fire_seq_mis{'],
-    ['seq.fire_sequential_actor', 'seq.fire_sequential_actor{'],
+    ['air.install(ctx,', 'air.install(ctx, {'],
+    ['firing.launch(ev, PAYLOAD)', 'firing.launch(ev, PAYLOAD)'],
+    ['firing.sequence(ev, SEQ)', 'firing.sequence(ev, SEQ)'],
+    ['seq.fire_seq_mis', 'firing.sequence(ev, SEQ)'],
+    ['seq.fire_sequential_actor', 'firing.sequence(ev, SEQ)'],
     ['sheep_sprites', 'sheep_sprites = {'],
     ['flash = {', 'flash = {'],
   ];
@@ -601,14 +614,12 @@ return {
   const seqLua = generateLuaCode(fullProject(project('WF 29 Sequential Fire')!, 'WF 29 Sequential Fire'));
   check(
     'WF 29: the burst carries the fuse',
-    seqLua.includes('missile = { fuse = fuse_of(ev.worm) },'),
+    seqLua.includes('fuse = "aim",'),
     'launched rounds get the record fuse (0)',
   );
   check(
     'WF 29: the fuse option is sampled from the digit keys',
-    seqLua.includes('keys.digit') &&
-      seqLua.includes('fuse_by_worm[w.id] = digit * 1000') &&
-      /FUSE_DEFAULT = \d+/.test(seqLua),
+    seqLua.includes('wf-lib/wfws_firing') && seqLua.includes('firing.install_fuse('),
     'no fuse tracker',
   );
   // A record with its own fuse keeps it: WA only offers the 1-5 keys for the
@@ -616,13 +627,17 @@ return {
   const seqBase = project('WF 29 Sequential Fire')!;
   const pinnedLua = generateLuaCode(
     fullProject(
-      { ...seqBase, body: { ...seqBase.body, fuse_time_ms: 5000 } } as WeaponProject,
+      {
+        ...seqBase,
+        body: { ...seqBase.body, fuse_time_ms: 5000 },
+        fireSequence: { ...seqBase.fireSequence!, fuseMode: 'record' },
+      } as WeaponProject,
       'Pinned Fuse',
     ),
   );
   check(
     'WF 29: a pinned fuse is left to the record',
-    !pinnedLua.includes('fuse_of') && !pinnedLua.includes('FUSE_DEFAULT'),
+    !pinnedLua.includes('firing.install_fuse') && !pinnedLua.includes('fuse = "aim"'),
     'a pinned timer was overridden by the fuse keys',
   );
   const flashLua = generateLuaCode(fullProject(project('WF 32 Hold Flash')!, 'WF 32 Hold Flash'));
@@ -1306,9 +1321,9 @@ return {
   const firearmLua = generateLuaCode(fullProject(firearm, 'WF 54 Fire Angle Clamp'));
   check(
     'WF 54: the clamp limits the burst direction',
-    /local AIM_LO, AIM_HI = 0\.3333, 0\.6667/.test(firearmLua) &&
-      /local ang = \(1 - aim_clamped\(w\.aim\)\) \* math\.pi/.test(firearmLua),
-    'seq_dir does not use the clamped aim',
+    firearmLua.includes('aim_clamp = { lo = 0.3333, hi = 0.6667 }') &&
+      firearmLua.includes('firing.sequence(ev, SEQ)'),
+    'SEQ does not carry aim_clamp',
   );
   check(
     'WF 53: the clamp is emitted into the hold spec',
@@ -1864,6 +1879,7 @@ return {
     fireSequence: {
       ...DEFAULT_FIRE_SEQUENCE,
       enabled: true,
+      engine: 'timed',
       offsetX: 0,
       offsetY: 0,
       liveAim: false,
@@ -2014,6 +2030,74 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
   );
   const bazooka = project('WF 01 Builder Track');
   check('a builder weapon on a launcher has none', !!bazooka && bazooka.holdAs === undefined, String(bazooka?.holdAs));
+}
+
+// ---- WF 61..66: Airstrike Takeover & Fire Sequential round-trip -----------
+{
+  const p61 = project('WF 61 Airstrike Takeover');
+  check(
+    'WF 61: imports airstrike takeover, projectile donor, builder, and explosion FX',
+    !!p61?.airstrike?.enabled &&
+      p61.airstrike.direction === 'arrows' &&
+      p61.airstrike.payload.projectileDonor === 'bazooka' &&
+      p61.missileSprite.enabled &&
+      p61.explosionEffect.enabled &&
+      (notesByName.get('WF 61 Airstrike Takeover') ?? []).every((n) => !n.includes('not carried')),
+    JSON.stringify(notesByName.get('WF 61 Airstrike Takeover')),
+  );
+  const p62 = project('WF 62 Airstrike Crash Dive');
+  check(
+    'WF 62: imports crash_dive, custom plane strip, crashOnTerrain, and custom blast',
+    !!p62?.airstrike?.enabled &&
+      p62.airstrike.speed.altitudeMode === 'crash_dive' &&
+      p62.airstrike.plane.crashOnTerrain === true &&
+      p62.airstrike.plane.boomMode === 'custom' &&
+      p62.airstrike.plane.boomHitKind === 'fire' &&
+      !!p62.airstrike.plane.sheet?.file,
+    JSON.stringify(p62?.airstrike?.plane),
+  );
+  const p63 = project('WF 63 Airstrike Strafe');
+  check(
+    'WF 63: imports strafe mode, multiplicative damping/growth, trail, and casing sheet',
+    !!p63?.airstrike?.enabled &&
+      p63.airstrike.release.mode === 'strafe' &&
+      p63.airstrike.strafe.trailEnabled === true &&
+      p63.airstrike.strafe.casingEnabled === true &&
+      !!p63.airstrike.strafe.casingSheet?.file,
+    JSON.stringify(p63?.airstrike?.strafe),
+  );
+  const p64 = project('WF 64 Airstrike Direct Drop');
+  check(
+    'WF 64: imports payload-only mine drop with direction=none',
+    !!p64?.airstrike?.enabled &&
+      p64.airstrike.direction === 'none' &&
+      p64.airstrike.entry.mode === 'payload' &&
+      p64.airstrike.payload.kind === 'mine',
+    JSON.stringify(p64?.airstrike?.entry),
+  );
+  const p65 = project('WF 65 Native Gun Burst');
+  check(
+    'WF 65: imports native firing engine, burstSize, spreadDeg, and homing',
+    !!p65?.fireSequence?.enabled &&
+      p65.fireSequence.engine === 'native' &&
+      p65.fireSequence.count === 5 &&
+      p65.fireSequence.burstSize === 2 &&
+      p65.fireSequence.spreadDeg === 6 &&
+      !!p65.fireSequence.homing?.enabled,
+    JSON.stringify(p65?.fireSequence),
+  );
+  const p66 = project('WF 66 Timed Sequencer');
+  check(
+    'WF 66: imports timed firing engine, custom intervals, scaleByPower, and aim fuse',
+    !!p66?.fireSequence?.enabled &&
+      p66.fireSequence.engine === 'timed' &&
+      p66.fireSequence.customIntervalsMs === '120, 40, 80, 120' &&
+      p66.fireSequence.scaleByPower === true &&
+      p66.fireSequence.explodeOnSpace === true &&
+      p66.fireSequence.fuseMode === 'aim' &&
+      p66.fireSequence.liveAim === false,
+    JSON.stringify(p66?.fireSequence),
+  );
 }
 
 if (failures.length > 0) {

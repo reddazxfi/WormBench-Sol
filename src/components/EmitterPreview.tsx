@@ -502,9 +502,10 @@ export function EmitterPreview({ config, roundOk }: EmitterPreviewProps) {
 
   const configKey = JSON.stringify(config);
   const seed = 1337 + replay * 7919;
-  const noAim = roundOk && (config.anchor === 'round' || !!config.projectileExclusive);
+  const isPlaneAnchor = config.anchor === 'plane';
+  const noAim = isPlaneAnchor || (roundOk && (config.anchor === 'round' || !!config.projectileExclusive));
   // A muzzle emitter only hands itself to a round the record can fire.
-  const flies = roundOk && (noAim || config.carry !== false);
+  const flies = isPlaneAnchor || (roundOk && (noAim || config.carry !== false));
   const total = loopLength(config, flies, noAim);
 
   // The SDK's own art, loaded once.

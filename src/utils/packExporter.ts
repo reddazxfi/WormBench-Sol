@@ -286,7 +286,7 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
     if (casingPath && air.strafe.casingSheet?.file) {
       addSheet(casingPath, air.strafe.casingSheet.file);
     }
-    for (const role of ['enter', 'loop', 'exit', 'release'] as const) {
+    for (const role of ['enter', 'loop', 'exit', 'release', 'boom'] as const) {
       const wavPath = airstrikeSoundPath(project, role);
       const spec =
         role === 'enter'
@@ -295,7 +295,9 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
             ? air.plane.soundLoop
             : role === 'exit'
               ? air.plane.soundExit
-              : air.release.sound;
+              : role === 'boom'
+                ? air.plane.boomSound
+                : air.release.sound;
       if (wavPath && spec?.file?.file) plain.push({ path: wavPath, source: spec.file.file });
     }
   }
@@ -332,6 +334,7 @@ export interface WfwsLibraries {
   modToml: string;
   spriteBuilderLua: string;
   airstrikeLua?: string;
+  firingLua?: string;
 }
 
 /** A library bundle an export ships when a weapon requires its modules. */
@@ -450,6 +453,9 @@ export async function emitPackFiles(
   await put('wf-lib/wfws_sdk/lib/wfws_sprite_builder.lua', libraries.wfws.spriteBuilderLua);
   if (libraries.wfws.airstrikeLua) {
     await put('wf-lib/wfws_sdk/lib/wfws_airstrike.lua', libraries.wfws.airstrikeLua);
+  }
+  if (libraries.wfws.firingLua) {
+    await put('wf-lib/wfws_sdk/lib/wfws_firing.lua', libraries.wfws.firingLua);
   }
 
   // The effects SDK travels the same way when **any** weapon of the pack requires
@@ -609,6 +615,14 @@ export function validateBundle(
     if (source.includes('air.strike(') && !source.includes('wf-lib/wfws_airstrike')) {
       problems.push(
         `${project.name || project.id}: calls \`air.strike\` without requiring \`wf-lib/wfws_airstrike\``,
+      );
+    }
+    if (
+      /\bfiring\.(?:launch|actor|sequence|homing|fuse)\b/.test(source) &&
+      !source.includes('wf-lib/wfws_firing')
+    ) {
+      problems.push(
+        `${project.name || project.id}: calls \`firing.*\` without requiring \`wf-lib/wfws_firing\``,
       );
     }
     const availableRequires = availableRequiresForCheck(source, manifestDeps, localLuaModules);

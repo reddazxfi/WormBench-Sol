@@ -24,7 +24,7 @@ export const SDK_MODULE_EXPORTS: Record<string, string[]> = {
     'wf-lib/lightning',
     'wf-lib/px_sprite_builder',
   ],
-  'wfws.sdk': ['wf-lib/wfws_sprite_builder', 'wf-lib/wfws_airstrike'],
+  'wfws.sdk': ['wf-lib/wfws_sprite_builder', 'wf-lib/wfws_airstrike', 'wf-lib/wfws_firing'],
   'effects.sdk': [
     'wf-lib/effects/trail',
     'wf-lib/effects/px_effects',

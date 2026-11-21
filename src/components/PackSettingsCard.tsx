@@ -91,16 +91,16 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
   return (
     <section
       aria-label="Bundle Settings"
-      className="overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900"
+      className="overflow-hidden rounded-xl border border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50/80 px-4 py-2 dark:bg-stone-950/60">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50/70 px-4 py-2.5 dark:bg-stone-950/50">
         <button
           type="button"
           onClick={() => setExpanded((prev) => !prev)}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-left cursor-pointer"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left cursor-pointer"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900">
             {iconPreview ? (
               <img
                 src={iconPreview}
@@ -112,34 +112,36 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
               <Boxes className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
             )}
           </span>
-          <h2 className="font-heading text-xs font-bold uppercase tracking-wider text-stone-900 dark:text-stone-100">
+          <h2 className="font-heading text-xs font-semibold tracking-tight text-stone-900 dark:text-stone-100">
             Bundle Settings
           </h2>
           <span className="text-stone-300 dark:text-stone-700" aria-hidden="true">
             ·
           </span>
-          <span className="truncate text-[11px] font-medium text-stone-700 dark:text-stone-200">
+          <span className="truncate text-xs font-medium text-stone-700 dark:text-stone-200">
             {pack.name || pack.id}
           </span>
           <span className="text-[11px] text-stone-500 dark:text-stone-400 tabular-nums">
             ({pack.weapons.length} weapon{pack.weapons.length === 1 ? '' : 's'})
           </span>
-        </button>
-        <div className="flex items-center gap-2">
-          <span className="hidden items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-0.5 font-mono text-[10px] text-stone-500 sm:inline-flex dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
-            <Boxes className="h-3 w-3" aria-hidden="true" />
+          <span className="hidden text-stone-300 sm:inline dark:text-stone-700" aria-hidden="true">
+            ·
+          </span>
+          <span className="hidden font-mono text-[11px] text-stone-500 sm:inline dark:text-stone-400">
             WormForge/Mods/{folder}/
           </span>
+        </button>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 py-1 text-[11px] font-semibold text-stone-600 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 whitespace-nowrap shrink-0 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 cursor-pointer"
           >
             <span>{expanded ? 'Hide' : 'Edit'}</span>
             {expanded ? (
-              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+              <ChevronUp className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
             ) : (
-              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+              <ChevronDown className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
             )}
           </button>
         </div>
@@ -181,10 +183,10 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
               <button
                 type="button"
                 onClick={() => packIconRef.current?.click()}
-                className="inline-flex items-center gap-1 rounded-md border border-sky-300/80 bg-sky-50/75 px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
                 title="A pack has one icon: it is written once, as sprites/<bundle>/icon.png, and named by mod_icon."
               >
-                <ImageIcon className="h-3 w-3 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+                <ImageIcon className="h-3 w-3 text-stone-500 dark:text-stone-400" aria-hidden="true" />
                 <span>{pack.iconFile ? 'Replace' : 'Upload PNG'}</span>
               </button>
               <SpritePickButton
@@ -196,7 +198,7 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
                 <button
                   type="button"
                   onClick={clearPackIcon}
-                  className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-forge-600 dark:hover:bg-stone-800 dark:hover:text-forge-400 cursor-pointer"
+                  className="rounded-md p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-rose-600 dark:hover:bg-stone-800 dark:hover:text-rose-400 cursor-pointer"
                   title="Remove the bundle icon: the first weapon's icon is used, or none"
                   aria-label="Remove the bundle icon"
                 >
@@ -215,11 +217,11 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
           {many ? (
             <>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                  Bundle id
+                <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Bundle ID
                 </span>
                 <input
-                  className={inputClass}
+                  className={`${inputClass} font-mono`}
                   value={pack.id}
                   title="Unique across every installed bundle, and the namespace its weapons live under; it names the folder under WormForge/Mods/."
                   onChange={(event) => renameBundle(event.target.value)}
@@ -227,8 +229,8 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                  Bundle name
+                <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Bundle Name
                 </span>
                 <input
                   className={inputClass}
@@ -239,7 +241,7 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
                   Author
                 </span>
                 <input
@@ -250,28 +252,28 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
                   Version
                 </span>
                 <input
-                  className={inputClass}
+                  className={`${inputClass} font-mono tabular-nums`}
                   value={pack.version}
                   onChange={(event) => onChange({ version: event.target.value })}
                 />
               </label>
             </>
           ) : (
-            <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[10px] leading-relaxed text-stone-500 sm:col-span-2 dark:border-stone-800 dark:bg-stone-950/40 dark:text-stone-400">
+            <p className="rounded-lg bg-stone-50/80 px-3 py-2 text-[11px] leading-relaxed text-stone-500 sm:col-span-2 dark:bg-stone-950/40 dark:text-stone-400">
               The bundle id, name, author and version are the weapon&apos;s own while it is
-              alone, so they are edited in <strong>Weapon Loadout</strong> above
+              alone, so they are edited in <strong className="font-semibold text-stone-700 dark:text-stone-200">Weapon Loadout</strong> below
               {mainWeapon ? ` (${mainWeapon.name}, ${mainWeapon.id})` : ''}. Add a second weapon
               and this bundle gets an identity of its own.
             </p>
           )}
 
           <label className="block">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Profile name
+            <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
+              Profile Name
             </span>
             <input
               className={inputClass}
@@ -283,11 +285,11 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Replaces bundles
+            <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
+              Replaces Bundles
             </span>
             <input
-              className={inputClass}
+              className={`${inputClass} font-mono`}
               value={replacesText}
               placeholder="px.ports, other.bundle"
               title="Bundle ids this pack takes over, comma separated. Each id is written into `replaces`."
@@ -299,8 +301,8 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
             />
           </label>
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Profile description
+            <span className="mb-1 block text-xs font-semibold text-stone-700 dark:text-stone-300">
+              Profile Description
             </span>
             <input
               className={inputClass}

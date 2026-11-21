@@ -1,5 +1,76 @@
 # WormForge Weapon Studio, Engineering Notes (API 4.0)
 
+### Studio UI polish and visual system unification
+
+A pure presentation and hierarchy pass across the main Weapon Record page, Hold
+& Sprites, Lua Libraries, and Bundle/Code views. No editor state, tooltips,
+keyboard shortcuts (`1`–`4`, `Space`), previews, `.wep`/mod import paths, or Lua
+generators changed.
+
+**Design conventions established (both light and dark themes):**
+
+- **Single-elevation chrome:** Workspace cards use one hairline border
+  (`rounded-xl border border-stone-200/90 bg-white dark:border-stone-800
+  dark:bg-stone-900`) with a quiet header band
+  (`border-b border-stone-200/80 bg-stone-50/70 dark:border-stone-800
+  dark:bg-stone-950/50`) instead of stacked nested boxes or tinted callouts.
+- **One accent (`forge`), reserved semantics:** `forge-600`/`forge-500` marks
+  active tab underlines, enabled feature toggles (`border-forge-400/70
+  bg-forge-50/70` / `dark:border-forge-600/60 dark:bg-forge-950/35`), active
+  segmented thumbs (`bg-white text-stone-900 shadow-xs ring-1
+  ring-forge-500/35`), and the sole primary CTA (**Export Mod (.zip)**). `amber`
+  is kept for real warnings and `rose` for errors or destructive actions; multi-color
+  rainbow tab/slot/badge accents were removed.
+- **Title-case display headings & unboxed metadata:** Section headers use
+  title-case `Chakra Petch` (`font-heading`) instead of uppercase tracked
+  labels, and static status counts / active hints render as inline `·`-separated
+  monospace (`tabular-nums`) rather than boxed pills.
+- **Dark code viewport contrast:** Code textareas and `<pre>` blocks on
+  `bg-stone-950` use `text-stone-100` rather than red `text-forge-300`/`400`.
+
+**Changes by area:**
+
+- **App shell & navigation (`src/App.tsx`, `Sidebar.tsx`, `PackRail.tsx`,
+  `SpritePickButton.tsx`):** Flattened the sidebar project card and pack rail
+  into hairline-separated neutral blocks, moved the light/dark toggle into the
+  brand header row, dropped rainbow nav icon tints, neutralized secondary
+  utility buttons (including `SpritePickButton`) so **Export Mod (.zip)** is the
+  single red CTA, updated `MobileBar` to underline active tabs, and collapsed
+  the main `<header>` into a single-row workspace breadcrumb with an unboxed
+  multi-weapon switcher.
+- **Main page — Weapon Record (`PackSettingsCard.tsx`, `WeaponSettings.tsx`,
+  `RecordEditor.tsx`):** Unified Bundle Settings, Weapon Loadout, and the record
+  workbench onto the same flat card + header-band chrome. Aligned the 3-column
+  Firing Core (`Weapon Type` / `Base Template` / `Inventory Slot`) on one row
+  with the `Melee strike` toggle and `Cursor Mode` (`Air Strike` / `Teleport`)
+  segmented switcher in a balanced strip underneath. Replaced the multi-color
+  record tabs with a `2px` Forge underline tab strip (`· {whisper}` inline),
+  unified the Mine/Dynamite switcher, `Explodes Into` inner tabs, and trail
+  presets, and fixed Custom Lua `<textarea>` contrast.
+- **Lua Libraries — Effects (`EffectsWorkspace.tsx`, `EffectsCards.tsx`,
+  `EmitterCard.tsx`, `TerrainStampCard.tsx`, `FireSequenceCard.tsx`):** Matched
+  `RecordEditor`'s underline tab strip, updated the Air Strike empty state to
+  note that enabling Airstrike Takeover with a Missile payload unlocks library
+  hooks, unified enable toggles, preset buttons, segmented controls, and range
+  slider accents across all library cards, and flattened sky-tinted inner boxes
+  in `EmitterCard` into neutral bands.
+- **Hold & Sprites (`HoldPreview.tsx`):** Standardized both the **Worm Aim &
+  Hold Art Builder** and **Missile & Projectile Flight Sprite Builder** into
+  header-band studio cards, converted posture and `Aim & Swing` / `Firing
+  Frames` tabs to unified segmented switchers with inline `· on` / `· 1`
+  indicators, replaced the six rainbow hotbar/banner themes (`amber` / `sky` /
+  `purple` / `indigo` / `forge` / `orange`) with a single Forge active slot ring
+  and neutral role strip, neutralized asset upload controls, and switched the
+  generated `sb.flight` `<pre>` block to `text-stone-100`.
+- **Bundle & Code (`BundleDependencies.tsx`, `CarriedLuaPanel.tsx`,
+  `LuaPreviewModal.tsx`):** Unified card chrome and header strips, replaced
+  boxed count pills in `CarriedLuaPanel` with inline `·`-separated tabular
+  summaries, calmed `KIND_STYLE` tags to neutral/forge tones, switched both
+  code viewports to `text-stone-100`, and updated the `mod.toml` footer copy in
+  `LuaPreviewModal` to omit the "API version 4" wording.
+
+---
+
 ### Cluster bits ask the builder a frame too early
 
 The bits-only ribbon trail was reported from play: the round flew bare as
@@ -5034,4 +5105,15 @@ reads the `0x1E4` header and hold-slot trailer on both `.pxl` blocks and
 standalone `.wep` files, and `readSpriteScripts` extracts `LoadSprite` frame
 counts, `CWormAnimParams` hold geometry, `WeapSpriteParams` flight parameters,
 and `CSoundFile` WAVs without executing PX C-script.
+
+### Airstrike Takeover & Fire Sequential Checkup (`wfws.sdk 0.18.0`, 0.9.9)
+
+- Audited Studio Build integration against WormForge 0.9.9 (`lua-weapons.md`, `weapon-records.md`, `src/data/recordSchema.ts`, `custom_explosion.lua`, `wfcheck 0.9.9`):
+  - Fixed `luaGenerator.ts` `usesFireSeqNative` `gun` block: replaced invalid `explosion = { power = 0 }` with `explosion = { push_pct = 0 }`, rounded `gun.spread_deg` to an integer, excluded `usesFireSeqNative` from outer `isMissileFamily` (`fires.launch_power_pct` is Missile-only), and compared outer `fires.subtype` against the outer donor (`stock.minigun` / `stock.air_strike`) instead of `projDonorSlot`.
+  - Fixed `luaGenerator.ts` `burstTouched` so inactive `clustlet` edits no longer emit redundant `burst = "nothing",` diffs (restoring byte-identical `54_fire_angle_clamp.lua` round-trips).
+  - Fixed `wfws_firing.lua` `scale_by_power`: multiplies by `ev.power` directly (`0.0 .. 1.0`) rather than `ev.power / 100`.
+  - Fixed `wfws_airstrike.lua` `wa.world.blast` call: normalizes `boom_hit_kind = "blast"` to `nil` (default plain blast).
+  - Fixed `importFeatures.ts` round-trip for `wf-lib/wfws_firing`: reads nested `offset = { x, y }`, respects `cancel_weapon` for `timed` vs `native`, and aligns default shot priority with generator default `8`.
+- Added WF 61..66 (`61_airstrike_takeover`, `62_airstrike_crash`, `63_airstrike_strafe`, `64_airstrike_direct`, `65_firing_native`, `66_firing_timed`) to `tools/gen_test_pack.ts` (using `autoDependenciesForProject` + `mergeFireSequenceConfig`), added generator edge & import assertions in `tools/check_generator_edges.ts` / `tools/check_mod_import.ts`, added `tools/lua/harness_firing.py` (with `ev.power` mutation check), updated `spec/lua_sdk/wfws_sdk/README.md`, and synced `D:\Worms Armageddon\WormForge\Mods\wf-lib\wfws_sdk\`.
+
 

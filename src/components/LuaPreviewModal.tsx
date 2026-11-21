@@ -83,10 +83,10 @@ export const LuaPreviewModal: React.FC<LuaPreviewModalProps> = ({
   };
 
   const containerContent = (
-    <div className={`flex flex-col ${inline ? 'h-full' : 'max-h-[85vh]'} bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-xs transition-colors`}>
+    <div className={`flex flex-col ${inline ? 'h-full' : 'max-h-[85vh]'} bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 rounded-xl overflow-hidden transition-colors`}>
       {/* File Selector Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/60">
-        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-stone-200/60 dark:bg-stone-700/60 rounded-lg">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-950/50">
+        <div className="flex flex-wrap items-center gap-1 p-0.5 bg-stone-200/60 dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 rounded-lg">
           {many && onSelectWeapon && (
             <span className="pl-1 pr-0.5">
               <WeaponSwitcher pack={pack!} activeIndex={activeWeaponIndex} onSelect={onSelectWeapon} />
@@ -95,39 +95,39 @@ export const LuaPreviewModal: React.FC<LuaPreviewModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveFile('lua')}
-            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-md transition-colors cursor-pointer ${
               activeFile === 'lua'
-                ? 'bg-white dark:bg-stone-900 text-forge-600 dark:text-forge-400 font-bold shadow-xs'
+                ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-semibold shadow-xs ring-1 ring-forge-500/35'
                 : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            <FileCode2 className="w-3.5 h-3.5" />
+            <FileCode2 className={`w-3.5 h-3.5 ${activeFile === 'lua' ? 'text-forge-500' : ''}`} />
             weapons/{sanitizeModFolder(shown.id)}.lua
           </button>
 
           <button
             type="button"
             onClick={() => setActiveFile('mod_toml')}
-            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-md transition-colors cursor-pointer ${
               activeFile === 'mod_toml'
-                ? 'bg-white dark:bg-stone-900 text-forge-600 dark:text-forge-400 font-bold shadow-xs'
+                ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-semibold shadow-xs ring-1 ring-forge-500/35'
                 : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            <Settings className="w-3.5 h-3.5" />
+            <Settings className={`w-3.5 h-3.5 ${activeFile === 'mod_toml' ? 'text-forge-500' : ''}`} />
             mod.toml
           </button>
 
           <button
             type="button"
             onClick={() => setActiveFile('profile_toml')}
-            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-md transition-colors cursor-pointer ${
               activeFile === 'profile_toml'
-                ? 'bg-white dark:bg-stone-900 text-forge-600 dark:text-forge-400 font-bold shadow-xs'
+                ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-semibold shadow-xs ring-1 ring-forge-500/35'
                 : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            <UserCheck className="w-3.5 h-3.5" />
+            <UserCheck className={`w-3.5 h-3.5 ${activeFile === 'profile_toml' ? 'text-forge-500' : ''}`} />
             profiles/{profileName}.toml
           </button>
         </div>
@@ -136,17 +136,17 @@ export const LuaPreviewModal: React.FC<LuaPreviewModalProps> = ({
           <button
             type="button"
             onClick={copyToClipboard}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-700 dark:text-stone-300 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 border border-stone-300 dark:border-stone-700 rounded-md transition-colors shadow-2xs"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-700 dark:text-stone-200 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 border border-stone-200 dark:border-stone-700 rounded-lg transition-colors cursor-pointer"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-forge-500" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Copied!' : 'Copy Code'}</span>
+            {copied ? <Check className="w-3.5 h-3.5 text-forge-500" /> : <Copy className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />}
+            <span>{copied ? 'Copied' : 'Copy Code'}</span>
           </button>
 
           {!inline && onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 rounded-md"
+              className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 rounded-md cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -155,24 +155,24 @@ export const LuaPreviewModal: React.FC<LuaPreviewModalProps> = ({
       </div>
 
       {activeFile === 'lua' && luaFindings.length > 0 && (
-        <div className="border-b border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-900">
+        <div className="border-b border-stone-200/80 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-900">
           <LuaFindings findings={luaFindings} limit={4} />
         </div>
       )}
 
       {/* Code Editor Viewport */}
-      <div className="flex-1 overflow-auto bg-stone-950 p-4 font-mono text-xs leading-relaxed text-forge-400">
+      <div className="flex-1 overflow-auto bg-stone-950 p-4 font-mono text-xs leading-relaxed text-stone-100">
         <pre className="whitespace-pre-wrap select-text">{getActiveContent()}</pre>
       </div>
 
       {/* Footer Info */}
-      <div className="px-4 py-2.5 bg-stone-100/80 dark:bg-stone-800/80 border-t border-stone-200 dark:border-stone-800 text-[11px] text-stone-500 dark:text-stone-400 flex items-center justify-between">
+      <div className="px-4 py-2.5 bg-stone-50/80 dark:bg-stone-950/60 border-t border-stone-200/80 dark:border-stone-800 text-[11px] text-stone-500 dark:text-stone-400 flex items-center justify-between gap-2">
         <span>
           {activeFile === 'lua' && 'Component definition file executed when match loads.'}
-          {activeFile === 'mod_toml' && 'Mod manifest declaring components, API version 4 & sprite animations.'}
+          {activeFile === 'mod_toml' && 'Mod manifest declaring components, dependencies & sprite animations.'}
           {activeFile === 'profile_toml' && 'Profile scheme placing the weapon alongside stock weapons for testing.'}
         </span>
-        <span className="font-mono text-forge-600 dark:text-forge-400 font-semibold">
+        <span className="font-mono text-stone-600 dark:text-stone-400 shrink-0">
           WormForge bundle
         </span>
       </div>

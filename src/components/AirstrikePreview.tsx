@@ -487,6 +487,39 @@ export const AirstrikePreview: React.FC<AirstrikePreviewProps> = ({
       }
     }
 
+    // Terrain crash explosion ring when crashOnTerrain triggers on impact
+    if (sim.crashPoint && activeFrame.tick >= sim.crashPoint.tick) {
+      const age = activeFrame.tick - sim.crashPoint.tick;
+      if (age < 32) {
+        const t = age / 32;
+        const cx = sx(sim.crashPoint.x);
+        const cy = sy(sim.crashPoint.y);
+        const maxR =
+          config.plane.boomMode === 'custom'
+            ? Math.max(18, Math.min(68, (config.plane.boomRadius / SIM_WORLD_W) * CANVAS_W))
+            : Math.max(18, Math.min(56, (config.plane.boomDamage / 100) * 34));
+        const r = 6 + t * maxR;
+        const burstHex =
+          (config.plane.boomMode === 'custom' &&
+            (config.plane.boomVisual === 'fx' || config.plane.boomVisual === 'both')) ||
+          config.plane.boomFxBurst?.enabled
+            ? config.plane.boomFxBurst?.color || '#ff7a2f'
+            : '#f97316';
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - t);
+        ctx.fillStyle = burstHex;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 2.5 * (1 - t * 0.6);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // Minimal corner caption
     ctx.fillStyle = 'rgba(226,232,240,0.72)';
     ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';

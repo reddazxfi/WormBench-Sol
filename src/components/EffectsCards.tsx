@@ -9,6 +9,7 @@ import type {
 } from '../types/weapon';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../data/explosionPresets';
 import { takeoverMissileActive } from '../data/airstrike';
+import { fireSequenceMissileActive } from '../data/fireSequence';
 import { bitBuilderMode } from '../data/spriteBuilder';
 import { DEFAULT_CUSTOM_SOUNDS, INTERVAL_PRESETS, SOUND_PRIORITIES } from '../data/soundPresets';
 import { ExplosionPreview } from './ExplosionPreview';
@@ -42,21 +43,24 @@ export function supportsRibbonTrail(project: WeaponProject): boolean {
   return (
     project.fireType === 'power' ||
     (project.fireType === 'drop' && !!project.body.fuse) ||
-    takeoverMissileActive(project)
+    takeoverMissileActive(project) ||
+    fireSequenceMissileActive(project)
   );
 }
 
 /**
  * WA blasts a thrown/launched missile and a placed mine. A native strike's
  * bombs are created from the strike's own record copy, not a weapon slot, so
- * the claim's `on_explode` never runs for them; Lua airstrike takeover launches
- * missiles through this claim's `projectile` table so `on_explode` runs.
+ * the claim's `on_explode` never runs for them; Lua airstrike takeover and
+ * `wf-lib/wfws_firing` launch missiles through this claim's `projectile` table so
+ * `on_explode` runs.
  */
 export function supportsExplosionEffect(project: WeaponProject): boolean {
   return (
     project.fireType === 'power' ||
     project.fireType === 'drop' ||
-    takeoverMissileActive(project)
+    takeoverMissileActive(project) ||
+    fireSequenceMissileActive(project)
   );
 }
 
@@ -81,7 +85,8 @@ export function supportsIntervalSound(project: WeaponProject): boolean {
   return (
     project.fireType === 'power' ||
     (project.fireType === 'drop' && !!project.body.fuse) ||
-    takeoverMissileActive(project)
+    takeoverMissileActive(project) ||
+    fireSequenceMissileActive(project)
   );
 }
 
@@ -117,17 +122,23 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
       <SectionHeader
         title="Ribbon Trail"
         code="wf-lib/effects/trail (effects.sdk)"
-        icon={<Zap className="h-4 w-4 text-sky-500" aria-hidden="true" />}
+        icon={<Zap className="h-4 w-4 text-forge-500" aria-hidden="true" />}
         desc="Samples the flying projectile and draws an additive tapered beam + glow ribbon trail. Automatically adds effects.sdk to mod dependencies."
         right={
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-1.5 dark:border-sky-800/70 dark:bg-sky-950/30">
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
+              ribbon.enabled
+                ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                : 'border-stone-200 bg-white hover:border-stone-300 dark:border-stone-700 dark:bg-stone-800/80 dark:hover:border-stone-600'
+            }`}
+          >
             <input
               type="checkbox"
               checked={ribbon.enabled}
               onChange={(e) => update({ enabled: e.target.checked })}
               className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
             />
-            <span className="text-xs font-semibold text-sky-900 dark:text-sky-200">
+            <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">
               Enable Trail
             </span>
           </label>
@@ -138,28 +149,24 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
         {/* Controls Column */}
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+            <span className="mr-0.5 text-[11px] font-medium text-stone-500 dark:text-stone-400">
               Presets:
             </span>
             {[
               {
                 name: 'PX Bullet',
-                tone: 'border-sky-300/80 bg-sky-50/80 text-sky-800 hover:bg-sky-100 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200',
                 patch: { max: 12, every: 2, vanish: 2, coreWidth: 8, glowWidth: 13, color: '#ffffff' },
               },
               {
                 name: 'Thin Streak',
-                tone: 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200',
                 patch: { max: 8, every: 1, vanish: 2, coreWidth: 3, glowWidth: 6, color: '#ffffff' },
               },
               {
                 name: 'Plasma Blue',
-                tone: 'border-sky-300/80 bg-sky-50/80 text-sky-800 hover:bg-sky-100 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200',
                 patch: { max: 14, every: 1, vanish: 2, coreWidth: 6, glowWidth: 15, color: '#4cb5ff' },
               },
               {
                 name: 'Solar Amber',
-                tone: 'border-amber-300/80 bg-amber-50/80 text-amber-800 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200',
                 patch: { max: 12, every: 1, vanish: 1, coreWidth: 5, glowWidth: 12, color: '#ff9436' },
               },
             ].map((preset) => (
@@ -167,7 +174,7 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
                 key={preset.name}
                 type="button"
                 onClick={() => update(preset.patch)}
-                className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${preset.tone}`}
+                className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {preset.name}
               </button>
@@ -308,7 +315,13 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
           </div>
 
           {/* PX's hue cycle, one clock for the whole ribbon. */}
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 dark:border-sky-800/70 dark:bg-sky-950/30">
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+              ribbon.rainbow
+                ? 'border-forge-400/70 bg-forge-50/60 dark:border-forge-600/60 dark:bg-forge-950/30'
+                : 'border-stone-200 bg-stone-50/70 hover:border-stone-300 dark:border-stone-800 dark:bg-stone-950/40 dark:hover:border-stone-700'
+            }`}
+          >
             <input
               id="ribbon-rainbow"
               type="checkbox"
@@ -316,8 +329,8 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
               onChange={(e) => update({ rainbow: e.target.checked })}
               className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
             />
-            <span className="text-xs font-semibold text-sky-900 dark:text-sky-200">Rainbow</span>
-            <span className="text-[11px] text-sky-700/80 dark:text-sky-300/80">
+            <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">Rainbow</span>
+            <span className="text-[11px] text-stone-500 dark:text-stone-400">
               cycle the hue along the ribbon and with the clock (PX SetRainbowMode)
             </span>
           </label>
@@ -344,7 +357,7 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
                     onClick={() => update({ target: value })}
                     className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       (ribbon.target ?? 'main') === value
-                        ? 'bg-sky-600 text-white shadow-xs'
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                         : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
                     }`}
                   >
@@ -437,17 +450,23 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
       <SectionHeader
         title="Explosion Burst"
         code="wf-lib/effects/px_effects (effects.sdk)"
-        icon={<Sparkles className="h-4 w-4 text-amber-500" aria-hidden="true" />}
+        icon={<Sparkles className="h-4 w-4 text-forge-500" aria-hidden="true" />}
         desc="Shockwave ring and squashed lens rendered from on_explode using beam, beam_glow, and optional smoke sheets."
         right={
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-1.5 dark:border-amber-800/70 dark:bg-amber-950/30">
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
+              fx.enabled
+                ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                : 'border-stone-200 bg-white hover:border-stone-300 dark:border-stone-700 dark:bg-stone-800/80 dark:hover:border-stone-600'
+            }`}
+          >
             <input
               type="checkbox"
               checked={fx.enabled}
               onChange={(e) => update({ enabled: e.target.checked })}
               className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
             />
-            <span className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+            <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">
               Enable Burst
             </span>
           </label>
@@ -486,9 +505,7 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                   onClick={() => update({ mode: option.id })}
                   className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     fx.mode === option.id
-                      ? option.id === 'blast'
-                        ? 'bg-forge-600 text-white shadow-xs'
-                        : 'bg-sky-600 text-white shadow-xs'
+                      ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                       : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
                   }`}
                 >
@@ -519,7 +536,7 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                   onClick={() => update({ target: option.id })}
                   className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     (fx.target ?? 'all') === option.id
-                      ? 'bg-amber-600 text-white shadow-xs'
+                      ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                       : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
                   }`}
                 >
@@ -531,7 +548,7 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
 
           {/* Presets */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+            <span className="mr-0.5 text-[11px] font-medium text-stone-500 dark:text-stone-400">
               Presets:
             </span>
             {(Object.keys(EXPLOSION_PRESETS) as ExplosionPreset[]).map((preset) => (
@@ -542,10 +559,8 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                 onClick={() => update({ ...EXPLOSION_PRESETS[preset].patch, preset })}
                 className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   fx.preset === preset
-                    ? preset === 'ember'
-                      ? 'border-amber-600 bg-amber-600 text-white'
-                      : 'border-sky-600 bg-sky-600 text-white'
-                    : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700'
+                    ? 'border-forge-500/70 bg-forge-50 text-forge-800 dark:border-forge-500/50 dark:bg-forge-950/40 dark:text-forge-200'
+                    : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800'
                 }`}
               >
                 {EXPLOSION_PRESETS[preset].label}
@@ -553,7 +568,13 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
             ))}
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 dark:border-amber-800/70 dark:bg-amber-950/30">
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+              fx.rainbow
+                ? 'border-forge-400/70 bg-forge-50/60 dark:border-forge-600/60 dark:bg-forge-950/30'
+                : 'border-stone-200 bg-stone-50/70 hover:border-stone-300 dark:border-stone-800 dark:bg-stone-950/40 dark:hover:border-stone-700'
+            }`}
+          >
             <input
               id="explosion-rainbow"
               type="checkbox"
@@ -561,9 +582,9 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
               onChange={(e) => update({ rainbow: e.target.checked, preset: 'custom' })}
               className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
             />
-            <span className="text-xs font-semibold text-amber-900 dark:text-amber-200">Rainbow</span>
-            <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-              cycle every pass through the spectrum for the burst's life (PX CreateRainbowExplosion)
+            <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">Rainbow</span>
+            <span className="text-[11px] text-stone-500 dark:text-stone-400">
+              cycle every pass through the spectrum for the burst&apos;s life (PX CreateRainbowExplosion)
             </span>
           </label>
 
@@ -862,9 +883,7 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                     onClick={() => update({ damageType: option.id })}
                     className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       fx.damageType === option.id
-                        ? option.id === 'electric'
-                          ? 'bg-sky-600 text-white shadow-xs'
-                          : 'bg-forge-600 text-white shadow-xs'
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                         : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
                     }`}
                   >
@@ -950,9 +969,9 @@ export function SoundUpload({ id, asset, disabled, onPick, onRemove }: SoundUplo
           disabled={disabled}
           onClick={() => inputRef.current?.click()}
           title="Mono or stereo 8/16-bit PCM WAV exported under sounds/<mod_folder>/."
-          className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300/80 bg-sky-50/75 px-2.5 py-1.5 text-[11px] font-semibold text-sky-900 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
         >
-          <Volume2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+          <Volume2 className="h-3.5 w-3.5 text-stone-500 dark:text-stone-400" aria-hidden="true" />
           <span>{asset?.file ? 'Replace WAV' : 'Upload WAV'}</span>
         </button>
         <SpritePickButton
@@ -1011,7 +1030,7 @@ export function CustomSoundsCard({ project, onChange }: CardProps) {
       <SectionHeader
         title="Custom WAV Audio"
         code="sounds / wa.sound.play"
-        icon={<Volume2 className="h-4 w-4 text-sky-500" aria-hidden="true" />}
+        icon={<Volume2 className="h-4 w-4 text-forge-500" aria-hidden="true" />}
         desc="Import custom PCM WAV files declared in the mod's sounds list and played via wa.sound.play without using native WA sample slots."
       />
 
@@ -1145,8 +1164,8 @@ export function CustomSoundsCard({ project, onChange }: CardProps) {
                 </select>
               </div>
               {customOnExplode && (
-                <p className="text-[11px] text-sky-700 dark:text-sky-300">
-                  Merged automatically into your custom Lua <code className="font-mono">on_explode</code> hook.
+                <p className="text-[11px] text-stone-600 dark:text-stone-400">
+                  Merged automatically into your custom Lua <code className="font-mono text-forge-600 dark:text-forge-400">on_explode</code> hook.
                 </p>
               )}
             </div>
@@ -1190,7 +1209,7 @@ export function CustomSoundsCard({ project, onChange }: CardProps) {
               />
 
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                <span className="mr-0.5 text-[11px] font-medium text-stone-500 dark:text-stone-400">
                   Presets:
                 </span>
                 {INTERVAL_PRESETS.map((preset) => (
@@ -1204,7 +1223,7 @@ export function CustomSoundsCard({ project, onChange }: CardProps) {
                         intervalLimit: preset.limit,
                       })
                     }
-                    className="rounded-md border border-amber-200 bg-amber-50/75 px-2 py-1 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+                    className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     {preset.label}
                   </button>

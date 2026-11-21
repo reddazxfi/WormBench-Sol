@@ -663,32 +663,82 @@ export interface CustomSoundsConfig {
   intervalPriority: number;
 }
 
+export type FireSequenceEngine = 'native' | 'timed';
+
+export type FireSequenceFuseMode = 'record' | 'aim' | 'fixed';
+
+export interface FireSequenceHoming {
+  enabled: boolean;
+  /** Homing flight speed in px/frame. */
+  speed: number;
+  /** Fraction of velocity error closed every other frame (0.05..1.0). */
+  turn: number;
+  /** Homing duration in 50 Hz frames (e.g. 180 = 3.6 s). */
+  frames: number;
+  /** Delay in 50 Hz frames before steering kicks in. */
+  delay: number;
+  /** Optional stock sound id played 3 frames before homing starts (0 = none). */
+  sound: number;
+  /** Re-read `ev.target` on each round instead of locking burst start target. */
+  perShotTarget: boolean;
+}
+
 /**
- * `wf-lib/fire_seq` (`px.fire_seq`): one `on_fire` fires a burst. The first shot
- * leaves immediately; a hidden timer actor fires the rest `delay` frames apart
- * and holds WA's shot counters, so the worm stays in its firing pose.
+ * `wf-lib/wfws_firing` (`wfws.sdk`): unified sequential firing engine.
+ * - `native`: WA gun record (`gun.bullets` + `gun.shot_interval_ms`) + nested
+ *   `projectile = { ... }` + `firing.launch(ev, PAYLOAD)` (zero ticker actor).
+ * - `timed`: custom-cadence sequencer (`firing.sequence(ev, SPEC)`) supporting
+ *   pre-shot animation buffers (`firstDelayMs`), uniform or manual per-shot
+ *   cooldown schedules (`customIntervalsMs`), and any weapon record family.
  */
 export interface FireSequenceConfig {
   enabled: boolean;
-  /** Real WA missiles (`fire_seq_mis`) or Lua actors (`fire_sequential_actor`). */
+  /** Execution engine: WA native gun cadence or wfws_firing custom sequencer. */
+  engine?: FireSequenceEngine;
+  /** Real WA missiles (`firing.launch`) or Lua actors (`firing.actor`). */
   mode: 'missiles' | 'actors';
   /** Total shots per trigger pull, the first one included. */
   count: number;
-  /** Frames between shots (50 Hz). */
+  /** Uniform interval between subsequent shots in ms (50 Hz = multiples of 20 ms). */
+  intervalMs?: number;
+  /** Initial animation/charge buffer in ms before shot 1 fires (timed engine). */
+  firstDelayMs?: number;
+  /**
+   * Optional comma-separated per-shot delays in ms (timed engine), e.g.
+   * "300, 20, 20, 20" or "200, 120, 60, 20". Last value repeats for remaining shots.
+   */
+  customIntervalsMs?: string;
+  /** Pellets fired per shot (`gun.burst_size` in native, `burst_size` in timed). */
+  burstSize?: number;
+  /** Angular spread cone in degrees (`gun.spread_deg` in native, `spread_deg` in timed). */
+  spreadDeg?: number;
+  /** Stock projectile donor for nested `projectile = { copy_from = "stock.<donor>" }`. */
+  payloadDonor?: string;
+  /** Fuse override for launched rounds: keep record, digit keys 1..5, or fixed ms. */
+  fuseMode?: FireSequenceFuseMode;
+  /** Fixed fuse duration in ms when `fuseMode === 'fixed'`. */
+  fuseFixedMs?: number;
+  /** Chilli Bomb binding: set `explode_on_space = true` on launched missiles. */
+  explodeOnSpace?: boolean;
+  /** Scale launch speed by WA fire power (`ev.power`) on power-bar weapons (timed engine). */
+  scaleByPower?: boolean;
+  /** Optional lockstep homing (`click = "homing"` + `firing.homing.lock`). */
+  homing?: FireSequenceHoming;
+  /** Legacy frames-between-shots mirror (`intervalMs / 20`, kept for compatibility). */
   delay: number;
-  /** Launch speed in px/frame along the worm's aim. */
+  /** Launch speed in px/frame along the firing vector. */
   speed: number;
   /** Pixels along each shot's velocity, so it does not start inside the worm. */
   standoff: number;
-  /** Random velocity jitter, ± per axis. */
+  /** Optional Cartesian velocity jitter, ± per axis (timed engine). */
   spreadX: number;
   spreadY: number;
-  /** Spawn offset from the worm, in pixels. */
+  /** Spawn offset from the worm/muzzle, in pixels. */
   offsetX: number;
   offsetY: number;
-  /** Read aim again for every shot (functions of `(i, w)`) instead of locking it. */
+  /** Read aim again for every shot (timed engine) instead of locking initial aim. */
   liveAim: boolean;
-  /** End the burst when the worm stops holding this weapon. */
+  /** End the burst when the worm stops holding this weapon (timed engine). */
   cancelOnWeaponChange: boolean;
   /** Actors mode: the spawned sheet and its physics. */
   actorSprite: string;
@@ -800,13 +850,18 @@ export interface EmitterTrailConfig {
  */
 export interface EmitterConfig {
   enabled: boolean;
-  /** `round` rides the fired projectile; `muzzle` sits at the worm's aim. */
-  anchor: 'round' | 'muzzle';
+  /** `round` rides the fired projectile; `muzzle` sits at the worm's aim; `plane` rides an airstrike takeover plane. */
+  anchor: 'round' | 'muzzle' | 'plane';
   /**
    * Muzzle only: once the round exists, the emitter follows it instead of the
    * worm, which is how PX hands its aiming effect to the spawned missile.
    */
   carry: boolean;
+  /**
+   * Plane anchor only: also attach the emitter to each dropped missile payload
+   * round in addition to riding the strike plane.
+   */
+  planeAlsoRound?: boolean;
   /**
    * Disable the emitter while aiming so it only spawns on fired projectiles,
    * even when `anchor` is `muzzle`.
@@ -1096,9 +1151,12 @@ export type AirstrikePattern =
   | 'offsets';
 export type AirstrikeCadenceUnit = 'distance' | 'frames';
 export type AirstrikeRecoverMode = 'ramp' | 'snap' | 'hold';
-export type AirstrikeAltitudeMode = 'level' | 'dive' | 'climb';
+export type AirstrikeAltitudeMode = 'level' | 'dive' | 'climb' | 'crash_dive';
 export type AirstrikePayloadKind = 'missile' | 'mine' | 'crate' | 'actor' | 'fire' | 'bullet';
 export type AirstrikePlayMode = 'loop' | 'once' | 'pingpong';
+export type AirstrikeBoomMode = 'native' | 'custom';
+export type AirstrikeBoomVisual = 'native' | 'fx' | 'both' | 'none';
+export type AirstrikeBoomHitKind = 'blast' | 'taze' | 'fire' | 'kamikaze';
 
 export interface AirstrikeSheetAsset {
   file?: File;
@@ -1168,10 +1226,25 @@ export interface AirstrikeConfig {
     asObject: boolean;
     hp: number;
     deadDamage: number;
+    crashOnTerrain: boolean;
+    crashOnWater: boolean;
+    boomMode: AirstrikeBoomMode;
     boomDamage: number;
     boomKind: number;
+    boomBelow: boolean;
+    boomRadius: number;
+    boomPushPct: number;
+    boomCraterRadius: number;
+    boomHitKind: AirstrikeBoomHitKind;
+    boomVisual: AirstrikeBoomVisual;
+    boomSound: AirstrikeSoundSpec;
     boomFires: number;
-    crashOnWater: boolean;
+    boomFxBurst: {
+      enabled: boolean;
+      color: string;
+      radius: number;
+      smoke: boolean;
+    };
     exitMargin: number;
     timeoutFrames: number;
     fadeOutFrames: number;

@@ -178,12 +178,12 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
   return (
     <section
       aria-label="Weapon Loadout"
-      className="overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900"
+      className="overflow-hidden rounded-xl border border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900"
     >
       {/* Top Armory Header Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/80 bg-stone-50/80 px-4 py-2.5 dark:border-stone-800 dark:bg-stone-950/60">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-          <h2 className="font-heading text-xs font-bold uppercase tracking-wider text-stone-900 dark:text-stone-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/80 bg-stone-50/70 px-4 py-2.5 dark:border-stone-800 dark:bg-stone-950/50">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <h2 className="font-heading text-xs font-semibold tracking-tight text-stone-900 dark:text-stone-100">
             Weapon Loadout
           </h2>
           <span className="text-stone-300 dark:text-stone-700" aria-hidden="true">
@@ -214,14 +214,17 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
           )}
           className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             showHandling
-              ? 'border-sky-500 bg-sky-600 text-white shadow-xs dark:border-sky-400 dark:bg-sky-500'
-              : 'border-sky-300/80 bg-sky-50/75 text-sky-800 hover:border-sky-400 hover:bg-sky-100/80 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40'
+              ? 'border-forge-500/60 bg-forge-50 text-forge-800 dark:border-forge-500/50 dark:bg-forge-950/40 dark:text-forge-200'
+              : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800'
           }`}
         >
-          <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+          <SlidersHorizontal
+            className={`h-3 w-3 ${showHandling ? 'text-forge-600 dark:text-forge-400' : 'text-stone-500 dark:text-stone-400'}`}
+            aria-hidden="true"
+          />
           <span>Turn Handling</span>
           <ChevronDown
-            className={`h-3 w-3 transition-transform ${showHandling ? 'rotate-180' : ''}`}
+            className={`h-3 w-3 transition-transform ${showHandling ? 'rotate-180 text-forge-600 dark:text-forge-400' : 'text-stone-400'}`}
             aria-hidden="true"
           />
         </button>
@@ -268,9 +271,9 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
                 <button
                   type="button"
                   onClick={() => iconInputRef.current?.click()}
-                  className="inline-flex items-center gap-1 rounded-md border border-sky-300/80 bg-sky-50/75 px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 dark:border-sky-700/60 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <ImageIcon className="h-3 w-3 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+                  <ImageIcon className="h-3 w-3 text-stone-500 dark:text-stone-400" aria-hidden="true" />
                   <span>{project.customIconFile ? 'Replace' : 'Upload PNG'}</span>
                 </button>
                 <SpritePickButton
@@ -282,7 +285,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
                   <button
                     type="button"
                     onClick={removeCustomIcon}
-                    className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-forge-600 dark:hover:bg-stone-800 dark:hover:text-forge-400 cursor-pointer"
+                    className="rounded-md p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-rose-600 dark:hover:bg-stone-800 dark:hover:text-rose-400 cursor-pointer"
                     title="Revert to stock slot icon"
                     aria-label="Revert to stock slot icon"
                   >
@@ -369,9 +372,13 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
 
         {/* Description (1 clean line) */}
         <div>
+          <TooltipLabel
+            label="Description"
+            desc="Short weapon summary shown in the WormForge mod loader."
+            htmlFor="ws-description"
+          />
           <input
             id="ws-description"
-            aria-label="Weapon description"
             type="text"
             value={project.description}
             onChange={(e) => onChange({ description: e.target.value })}
@@ -382,7 +389,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
         </div>
 
         {/* Row 2: Compact 3-Dropdown Firing Core */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-stone-200/80 pt-3.5 dark:border-stone-800">
           {/* Fire Archetype Dropdown */}
           <div>
             <TooltipLabel
@@ -428,52 +435,6 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
                 <option value="melee">{MELEE_OPTION.label}</option>
               )}
             </select>
-
-            {/* Melee is a custom claim, not a fire type, so it is its own switch. */}
-            <label
-              className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-stone-200 bg-stone-50/70 px-2.5 py-2 dark:border-stone-700 dark:bg-stone-900/50"
-              title={`${MELEE_OPTION.desc} The record stays an ordinary power one, so the physics tabs come back the moment the claim is off.`}
-            >
-              <input
-                type="checkbox"
-                id="ws-melee-toggle"
-                checked={project.fireType === 'melee'}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    const melee = project.melee ?? DEFAULT_MELEE;
-                    onChange({
-                      fireType: 'melee',
-                      teleport: false,
-                      // A melee weapon wants a power record WA still fires, so the
-                      // worm gets an aim phase for the swing to take over.
-                      slot: MELEE_OPTION.defaultDonor,
-                      based_on: MELEE_OPTION.defaultDonor,
-                      panel_icon: project.customIconFile
-                        ? project.panel_icon
-                        : MELEE_OPTION.defaultDonor,
-                      melee: { ...melee, enabled: true },
-                    });
-                  } else {
-                    // Off means off: the record keeps its donor (a melee weapon's
-                    // Sheep Launcher is a valid projectile record) and only the
-                    // claim goes.
-                    onChange({
-                      fireType: lastWaFireType.current,
-                      melee: { ...(project.melee ?? DEFAULT_MELEE), enabled: false },
-                    });
-                  }
-                }}
-                className="mt-0.5 h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
-              />
-              <span className="text-[11px] leading-snug">
-                <span className="font-semibold text-stone-700 dark:text-stone-200">
-                  Melee strike
-                </span>{' '}
-                <span className="text-stone-500 dark:text-stone-400">
-                  custom claim, not a WA fire type
-                </span>
-              </span>
-            </label>
           </div>
 
           {/* Based On Donor Dropdown */}
@@ -536,40 +497,90 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
           </div>
         </div>
 
-        {/* Cursor sub-mode switcher (Air Strike vs Teleport) */}
-        {project.fireType === 'cursor' && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 dark:border-stone-800 dark:bg-stone-950/60">
-            <span className="text-xs font-medium text-stone-600 dark:text-stone-300">
-              Cursor Mode
+        {/* Mode Strip: Melee Claim Toggle + Cursor Sub-mode */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-50/80 px-3 py-2 dark:bg-stone-950/40">
+          <label
+            className="flex cursor-pointer items-center gap-2"
+            title={`${MELEE_OPTION.desc} The record stays an ordinary power one, so the physics tabs come back the moment the claim is off.`}
+          >
+            <input
+              type="checkbox"
+              id="ws-melee-toggle"
+              checked={project.fireType === 'melee'}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  const melee = project.melee ?? DEFAULT_MELEE;
+                  onChange({
+                    fireType: 'melee',
+                    teleport: false,
+                    // A melee weapon wants a power record WA still fires, so the
+                    // worm gets an aim phase for the swing to take over.
+                    slot: MELEE_OPTION.defaultDonor,
+                    based_on: MELEE_OPTION.defaultDonor,
+                    panel_icon: project.customIconFile
+                      ? project.panel_icon
+                      : MELEE_OPTION.defaultDonor,
+                    melee: { ...melee, enabled: true },
+                  });
+                } else {
+                  // Off means off: the record keeps its donor (a melee weapon's
+                  // Sheep Launcher is a valid projectile record) and only the
+                  // claim goes.
+                  onChange({
+                    fireType: lastWaFireType.current,
+                    melee: { ...(project.melee ?? DEFAULT_MELEE), enabled: false },
+                  });
+                }
+              }}
+              className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+            />
+            <span className="text-xs leading-snug">
+              <span className="font-semibold text-stone-800 dark:text-stone-100">
+                Melee strike
+              </span>
+              <span className="mx-1.5 text-stone-300 dark:text-stone-700" aria-hidden="true">
+                ·
+              </span>
+              <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                Custom swing claim (replaces fire with hold animation &amp; scan box)
+              </span>
             </span>
-            <div className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white p-0.5 dark:border-stone-700 dark:bg-stone-900">
-              <button
-                type="button"
-                onClick={() => onChange({ teleport: false })}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  !project.teleport
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'
-                }`}
-              >
-                <Plane className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Air Strike Plane</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onChange({ teleport: true })}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  project.teleport
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'
-                }`}
-              >
-                <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Cursor Teleport</span>
-              </button>
+          </label>
+
+          {project.fireType === 'cursor' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                Cursor Mode
+              </span>
+              <div className="inline-flex items-center gap-0.5 rounded-lg border border-stone-200 bg-stone-100 p-0.5 dark:border-stone-700 dark:bg-stone-900">
+                <button
+                  type="button"
+                  onClick={() => onChange({ teleport: false })}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    !project.teleport
+                      ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                      : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Plane className={`h-3 w-3 ${!project.teleport ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
+                  <span>Air Strike</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange({ teleport: true })}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    project.teleport
+                      ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                      : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Navigation className={`h-3 w-3 ${project.teleport ? 'text-forge-600 dark:text-forge-400' : ''}`} aria-hidden="true" />
+                  <span>Teleport</span>
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Imported .wep Override Strip */}
         {project.wepFile && (
@@ -611,7 +622,10 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
         )}
 
         {/* Row 3: Match Rules Bar */}
-        <div className="border-t border-stone-200/80 pt-3 dark:border-stone-800">
+        <div className="space-y-2.5 border-t border-stone-200/80 pt-3.5 dark:border-stone-800">
+          <div className="text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+            Match Defaults
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <TooltipLabel
@@ -723,12 +737,12 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
 
         {/* Row 4: Collapsible Native Turn Handling Drawer */}
         {showHandling && (
-          <div className="border-t border-stone-200/80 pt-3 dark:border-stone-800 space-y-3">
+          <div className="border-t border-stone-200/80 pt-3.5 dark:border-stone-800 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 dark:text-stone-400">
+              <span className="font-heading text-xs font-semibold tracking-tight text-stone-800 dark:text-stone-200">
                 Native Turn Handling Overrides
               </span>
-              <span className="text-[11px] text-stone-400">
+              <span className="text-[11px] text-stone-500 dark:text-stone-400">
                 Written into <code className="font-mono">handling</code> when changed
               </span>
             </div>

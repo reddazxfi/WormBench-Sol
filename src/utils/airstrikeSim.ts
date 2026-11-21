@@ -54,6 +54,8 @@ export interface AirstrikeSimResult {
   frames: SimFrame[];
   /** Peak horizontal speed for normalizing the speed readout bar. */
   maxSpeed: number;
+  /** Present when a diving aircraft impacts terrain with crashOnTerrain enabled. */
+  crashPoint?: { tick: number; x: number; y: number };
 }
 
 export const SIM_WORLD_W = 1280;
@@ -423,6 +425,18 @@ export function simulateAirstrikePreview(
   let bankAngle = pc.bankAngleApproach;
   let gunAngle = -Math.PI;
   let fadeAlpha = 255;
+  let diveRate: number | null = null;
+  let crashPoint: { tick: number; x: number; y: number } | undefined;
+
+  const resolveCrashDiveRate = (): number => {
+    if (spd.diveVy !== 0) return Math.abs(spd.diveVy);
+    if (diveRate === null) {
+      const distX = Math.max(16, Math.abs(targetX - x));
+      const ticks = Math.max(1, distX / Math.max(1, vx));
+      diveRate = Math.max(1.2, Math.min(18, Math.max(16, targetY - y) / ticks));
+    }
+    return diveRate;
+  };
 
   const updateAimAndBank = (instant: boolean) => {
     let targetAng: number;
@@ -483,6 +497,9 @@ export function simulateAirstrikePreview(
 
       const readyGate = count > 0 && spd.engageRange <= 0 ? crossedX(dir, drops[0], x) : true;
       if (cooldown > 0) cooldown -= 1;
+      if (spd.altitudeMode === 'crash_dive') {
+        y = Math.min(SIM_GROUND_Y, y + resolveCrashDiveRate());
+      }
       if (cooldown <= 0 && readyGate) {
         if (count === 0) {
           phase = 'recover';
@@ -502,8 +519,10 @@ export function simulateAirstrikePreview(
       if (spd.decel > 0 && vx > relFloor) vx = Math.max(relFloor, vx - spd.decel);
       if (spd.min >= 0 && vx < spd.min) vx = spd.min;
 
-      if (spd.altitudeMode === 'dive' && spd.diveVy !== 0) {
-        y = Math.min(SIM_GROUND_Y - 70, y + Math.abs(spd.diveVy));
+      if (spd.altitudeMode === 'crash_dive') {
+        y = Math.min(SIM_GROUND_Y, y + resolveCrashDiveRate());
+      } else if (spd.altitudeMode === 'dive' && spd.diveVy !== 0) {
+        y = Math.min(pc.crashOnTerrain ? SIM_GROUND_Y : SIM_GROUND_Y - 70, y + Math.abs(spd.diveVy));
       } else if (spd.altitudeMode === 'climb' && spd.diveVy !== 0) {
         y = Math.max(24, y - Math.abs(spd.diveVy));
       }
@@ -568,6 +587,9 @@ export function simulateAirstrikePreview(
     }
 
     if (phase === 'recover') {
+      if (spd.altitudeMode === 'crash_dive') {
+        y = Math.min(SIM_GROUND_Y, y + resolveCrashDiveRate());
+      }
       const pElapsed = tick - phaseStart;
       if (pElapsed >= spd.recoverDelay) {
         const exitV = spd.exit !== null && spd.exit !== undefined ? spd.exit : spd.cruise;
@@ -591,7 +613,9 @@ export function simulateAirstrikePreview(
     }
 
     if (phase === 'exit') {
-      if (spd.altitudeMode !== 'level' && spd.diveVy !== 0 && Math.abs(y - initY) > 0.5) {
+      if (spd.altitudeMode === 'crash_dive') {
+        y = Math.min(SIM_GROUND_Y, y + resolveCrashDiveRate());
+      } else if (spd.altitudeMode !== 'level' && spd.diveVy !== 0 && Math.abs(y - initY) > 0.5) {
         if (y > initY) y = Math.max(initY, y - Math.abs(spd.diveVy));
         else y = Math.min(initY, y + Math.abs(spd.diveVy));
       }
@@ -613,6 +637,26 @@ export function simulateAirstrikePreview(
       fadeAlpha,
       releasedSoFar: released,
     });
+
+    if (pc.crashOnTerrain && x >= 0 && x <= worldW && y >= SIM_GROUND_Y - 1) {
+      crashPoint = { tick, x, y: SIM_GROUND_Y };
+      const tailEnd = Math.min(maxTicks, tick + 34);
+      for (let t = tick + 1; t < tailEnd; t++) {
+        frames.push({
+          tick: t,
+          phase: 'done',
+          hasPlane: false,
+          x,
+          y: SIM_GROUND_Y,
+          vx: 0,
+          bankDeg: bankAngle,
+          gunAngleRad: gunAngle,
+          fadeAlpha: 0,
+          releasedSoFar: released,
+        });
+      }
+      break;
+    }
 
     x += dir * vx;
     updateAimAndBank(false);
@@ -656,5 +700,6 @@ export function simulateAirstrikePreview(
     demoProjectiles,
     frames,
     maxSpeed,
+    crashPoint,
   };
 }

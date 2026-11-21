@@ -18,6 +18,9 @@
  */
 import type {
   AirstrikeAltitudeMode,
+  AirstrikeBoomHitKind,
+  AirstrikeBoomMode,
+  AirstrikeBoomVisual,
   AirstrikeCadenceUnit,
   AirstrikeConfig,
   AirstrikeDirectionMode,
@@ -67,7 +70,7 @@ import {
 } from '../../data/spriteBuilder';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../../data/explosionPresets';
 import { DEFAULT_EMITTER } from '../../data/emitter';
-import { DEFAULT_FIRE_SEQUENCE } from '../../data/fireSequence';
+import { DEFAULT_FIRE_SEQUENCE, DEFAULT_FIRE_SEQUENCE_HOMING } from '../../data/fireSequence';
 import { DEFAULT_CUSTOM_SOUNDS } from '../../data/soundPresets';
 import {
   DEFAULT_TERRAIN_STAMP,
@@ -1600,17 +1603,26 @@ export async function readBundleFeatures(args: {
       /return\s+p\.x(?:\s*([+-])\s*([\d.]+))?,\s*p\.y(?:\s*([+-])\s*([\d.]+))?,\s*p\.vx,\s*p\.vy/.exec(
         moduleText,
       );
+    const planeReturnMatch =
+      /return\s+s\.x(?:\s*([+-])\s*s\.dir\s*\*\s*([\d.]+))?,\s*s\.y(?:\s*([+-])\s*([\d.]+))?,\s*\(s\.vx/.exec(
+        moduleText,
+      );
     const signed = (sign?: string, mag?: string): number =>
       mag === undefined ? 0 : (sign === '-' ? -1 : 1) * Number(mag);
-    const anchor: 'round' | 'muzzle' =
-      str(t.anchor) === 'round' || /emitter_start\(ev\.worm\.x/.test(moduleText)
-        ? 'round'
-        : 'muzzle';
+    const anchor: 'round' | 'muzzle' | 'plane' =
+      str(t.anchor) === 'plane' || /emitter_start_plane\(s\)/.test(moduleText)
+        ? 'plane'
+        : str(t.anchor) === 'round' || /emitter_start\(ev\.worm\.x/.test(moduleText)
+          ? 'round'
+          : 'muzzle';
     const speed = isTable(reach?.speed) ? num(reach.speed['1']) : undefined;
     project.emitter = {
       ...base,
       enabled: true,
       anchor,
+      planeAlsoRound:
+        t.plane_also_round === true ||
+        (anchor === 'plane' && /EMITTER_ROUNDS\[m\.id\]/.test(moduleText)),
       // `carry` is written into the table; older exports only set the flag in
       // the hand-off.
       carry:
@@ -1630,10 +1642,14 @@ export async function readBundleFeatures(args: {
       radialAngle,
       posX: muzzleBlockMatch
         ? signed(muzzlePosXMatch?.[1], muzzlePosXMatch?.[2])
-        : signed(roundReturnMatch?.[1], roundReturnMatch?.[2]),
+        : anchor === 'plane' && planeReturnMatch
+          ? signed(planeReturnMatch[1], planeReturnMatch[2])
+          : signed(roundReturnMatch?.[1], roundReturnMatch?.[2]),
       posY: muzzleBlockMatch
         ? signed(muzzlePosYMatch?.[1], muzzlePosYMatch?.[2])
-        : signed(roundReturnMatch?.[3], roundReturnMatch?.[4]),
+        : anchor === 'plane' && planeReturnMatch
+          ? signed(planeReturnMatch[3], planeReturnMatch[4])
+          : signed(roundReturnMatch?.[3], roundReturnMatch?.[4]),
       preset: str(t.preset) === 'thunder' ? 'thunder' : 'electric',
       spark: t.spark !== false,
       glow: t.glow !== false,
@@ -1756,11 +1772,111 @@ export async function readBundleFeatures(args: {
     notes.push(isBlast ? 'explosion burst (blast)' : 'explosion burst (overlay)');
   }
 
-  // ---- sequential fire ----------------------------------------------------
+  // ---- sequential fire (`wf-lib/wfws_firing` or legacy `px.fire_seq`) -----
+  const hasFiringLaunch = /\bfiring\.launch\s*\(/.test(moduleText);
+  const hasFiringActor = /\bfiring\.actor\s*\(/.test(moduleText);
+  const hasFiringSeq = /\bfiring\.sequence\s*\(/.test(moduleText);
   const actorCall = readCallTable(moduleText, 'seq.fire_sequential_actor');
   const seqCall = readCallTable(moduleText, 'seq.fire_seq_mis') ?? actorCall;
   let shotSound: { path: string; priority: number; every: number } | undefined;
-  if (seqCall) {
+
+  if (hasFiringLaunch || hasFiringActor || hasFiringSeq) {
+    const engine = hasFiringSeq ? 'timed' : 'native';
+    const cfg = (hasFiringSeq ? firstTable(scan, 'SEQ') : firstTable(scan, 'PAYLOAD')) ?? {};
+    const sourceGun = isTable(source?.gun) ? source.gun : undefined;
+    const sourceProj = isTable(source?.projectile) ? source.projectile : undefined;
+    const projDonor = str(sourceProj?.copy_from)?.replace(/^stock\./, '');
+    const spread = isTable(cfg.spread) ? cfg.spread : undefined;
+    const offsetTbl = isTable(cfg.offset) ? cfg.offset : undefined;
+    const actorTbl = isTable(cfg.actor) ? cfg.actor : undefined;
+    const homingTbl = isTable(cfg.homing) ? cfg.homing : undefined;
+    const soundTbl = isTable(cfg.sound) ? cfg.sound : undefined;
+    const intervalsTbl = isTable(cfg.intervals_ms) ? cfg.intervals_ms : undefined;
+    const customIntervals: number[] = [];
+    if (intervalsTbl) {
+      for (let k = 1; ; k += 1) {
+        const v = num(intervalsTbl[String(k)]);
+        if (v === undefined) break;
+        customIntervals.push(v);
+      }
+    }
+    const mode =
+      hasFiringActor || str(cfg.mode) === 'actors' || str(cfg.mode) === 'actor'
+        ? 'actors'
+        : 'missiles';
+    const intervalMs =
+      engine === 'native'
+        ? (num(sourceGun?.shot_interval_ms) ?? fireBase.intervalMs ?? 60)
+        : (num(cfg.interval_ms) ??
+          (num(cfg.delay) !== undefined ? num(cfg.delay)! * 20 : (fireBase.intervalMs ?? 60)));
+    const fuseVal = cfg.fuse;
+    const fuseMode =
+      fuseVal === 'aim' ? 'aim' : typeof fuseVal === 'number' ? 'fixed' : 'record';
+    const fuseFixedMs = typeof fuseVal === 'number' ? Math.max(0, Math.round(fuseVal)) : 3000;
+
+    project.fireSequence = {
+      ...fireBase,
+      enabled: true,
+      engine,
+      mode,
+      count:
+        engine === 'native'
+          ? (num(sourceGun?.bullets) ?? fireBase.count)
+          : (num(cfg.count) ?? fireBase.count),
+      intervalMs,
+      firstDelayMs: num(cfg.first_delay_ms) ?? 0,
+      customIntervalsMs: customIntervals.length > 0 ? customIntervals.join(', ') : '',
+      burstSize:
+        engine === 'native'
+          ? (num(sourceGun?.burst_size) ?? num(cfg.burst_size) ?? 1)
+          : (num(cfg.burst_size) ?? 1),
+      spreadDeg:
+        engine === 'native'
+          ? (num(sourceGun?.spread_deg) ?? num(cfg.spread_deg) ?? 0)
+          : (num(cfg.spread_deg) ?? 0),
+      payloadDonor: projDonor || fireBase.payloadDonor || 'bazooka',
+      fuseMode,
+      fuseFixedMs,
+      explodeOnSpace: bool(cfg.explode_on_space) ?? false,
+      scaleByPower: bool(cfg.scale_by_power) ?? false,
+      homing: {
+        ...DEFAULT_FIRE_SEQUENCE_HOMING,
+        enabled: !!homingTbl,
+        speed: num(homingTbl?.speed) ?? DEFAULT_FIRE_SEQUENCE_HOMING.speed,
+        turn: num(homingTbl?.turn) ?? DEFAULT_FIRE_SEQUENCE_HOMING.turn,
+        frames: num(homingTbl?.frames) ?? DEFAULT_FIRE_SEQUENCE_HOMING.frames,
+        delay: num(homingTbl?.delay) ?? DEFAULT_FIRE_SEQUENCE_HOMING.delay,
+        sound: num(homingTbl?.sound) ?? DEFAULT_FIRE_SEQUENCE_HOMING.sound,
+        perShotTarget: bool(homingTbl?.per_shot_target) ?? false,
+      },
+      delay: Math.max(1, Math.round(intervalMs / 20)),
+      speed: num(cfg.speed) ?? fireBase.speed,
+      standoff: num(cfg.standoff) ?? fireBase.standoff,
+      spreadX: num(spread?.x) ?? 0,
+      spreadY: num(spread?.y) ?? 0,
+      offsetX: num(offsetTbl?.x) ?? num(cfg.offset_x) ?? 0,
+      offsetY: num(offsetTbl?.y) ?? num(cfg.offset_y) ?? 0,
+      liveAim: bool(cfg.live_aim) ?? true,
+      cancelOnWeaponChange:
+        engine === 'timed' ? cfg.cancel_weapon !== undefined && cfg.cancel_weapon !== false : true,
+      actorSprite: str(actorTbl?.sprite) ?? str(cfg.sprite) ?? '',
+      actorGravity: bool(actorTbl?.gravity) ?? bool(cfg.gravity) ?? false,
+      actorCollide: bool(actorTbl?.collide) ?? bool(cfg.collide) ?? false,
+      actorPersist: bool(actorTbl?.persist) ?? bool(cfg.persist) ?? false,
+    } satisfies FireSequenceConfig;
+    notes.push(
+      engine === 'native' ? 'firing engine (native gun + payload)' : 'firing engine (timed sequencer)',
+    );
+
+    const soundPath = str(soundTbl?.path);
+    if (soundPath) {
+      shotSound = {
+        path: soundPath,
+        priority: Math.max(0, num(soundTbl?.priority) ?? 8),
+        every: Math.max(1, num(soundTbl?.every) ?? 1),
+      };
+    }
+  } else if (seqCall) {
     const t = seqCall.table;
     const text = seqCall.text;
     const numberAfter = (pattern: RegExp): number | undefined => {
@@ -1780,12 +1896,19 @@ export async function readBundleFeatures(args: {
     const spread = isTable(t.spread) ? t.spread : undefined;
     const shotCall = /wa\.sound\.play\([^,]+,\s*["']([^"']+)["']\s*,\s*(\d+)\)/.exec(text);
     const shotEvery = /i\s*%\s*(\d+)\s*==\s*0/.exec(text);
+    const delayFrames = num(t.delay) ?? fireBase.delay;
     project.fireSequence = {
       ...fireBase,
       enabled: true,
+      engine: 'timed',
       mode: actorCall ? 'actors' : 'missiles',
       count: num(t.count) ?? fireBase.count,
-      delay: num(t.delay) ?? fireBase.delay,
+      delay: delayFrames,
+      intervalMs: Math.max(20, Math.round(delayFrames * 20)),
+      firstDelayMs: 0,
+      customIntervalsMs: '',
+      burstSize: 1,
+      spreadDeg: 0,
       speed: numberAfter(/\bvx\s*=[^\n]*?\*\s*(-?[\d.]+)/) ?? fireBase.speed,
       standoff: num(t.standoff) ?? 0,
       spreadX: num(spread?.x) ?? 0,
@@ -1800,7 +1923,7 @@ export async function readBundleFeatures(args: {
       actorCollide: bool(t.collide) ?? false,
       actorPersist: bool(t.persist) ?? false,
     } satisfies FireSequenceConfig;
-    notes.push('sequential fire');
+    notes.push('sequential fire (migrated from px.fire_seq to wf-lib/wfws_firing)');
 
     if (shotCall) {
       shotSound = {
@@ -2130,6 +2253,7 @@ export async function readBundleFeatures(args: {
   const automatic = new Set([
     'wf.sdk',
     'wfws.sdk',
+    'wfws.firing',
     'effects.sdk',
     'px.fire_seq',
     'px.electric',
@@ -2254,12 +2378,28 @@ export async function readBundleFeatures(args: {
       if (num(planeT.bank_angle_release) !== undefined) air.plane.bankAngleRelease = num(planeT.bank_angle_release)!;
       if (num(planeT.bank_rate) !== undefined) air.plane.bankRate = num(planeT.bank_rate)!;
       if (bool(planeT.collide) !== undefined) air.plane.collide = bool(planeT.collide)!;
+      if (bool(planeT.crash_on_terrain) !== undefined) air.plane.crashOnTerrain = bool(planeT.crash_on_terrain)!;
       if (bool(planeT.as_object) !== undefined) air.plane.asObject = bool(planeT.as_object)!;
       if (num(planeT.hp) !== undefined) air.plane.hp = num(planeT.hp)!;
       if (num(planeT.dead_damage) !== undefined) air.plane.deadDamage = num(planeT.dead_damage)!;
+      const bm = str(planeT.boom_mode);
+      if (bm === 'native' || bm === 'custom') air.plane.boomMode = bm as AirstrikeBoomMode;
       if (num(planeT.boom_damage) !== undefined) air.plane.boomDamage = num(planeT.boom_damage)!;
       if (num(planeT.boom_kind) !== undefined) air.plane.boomKind = num(planeT.boom_kind)!;
+      if (bool(planeT.boom_below) !== undefined) air.plane.boomBelow = bool(planeT.boom_below)!;
+      if (num(planeT.boom_radius) !== undefined) air.plane.boomRadius = num(planeT.boom_radius)!;
+      if (num(planeT.boom_push_pct) !== undefined) air.plane.boomPushPct = num(planeT.boom_push_pct)!;
+      if (num(planeT.boom_crater_radius) !== undefined) air.plane.boomCraterRadius = num(planeT.boom_crater_radius)!;
+      const bhk = str(planeT.boom_hit_kind);
+      if (bhk === 'blast' || bhk === 'taze' || bhk === 'fire' || bhk === 'kamikaze') {
+        air.plane.boomHitKind = bhk as AirstrikeBoomHitKind;
+      }
+      const bv = str(planeT.boom_visual);
+      if (bv === 'native' || bv === 'fx' || bv === 'both' || bv === 'none') {
+        air.plane.boomVisual = bv as AirstrikeBoomVisual;
+      }
       if (num(planeT.boom_fires) !== undefined) air.plane.boomFires = num(planeT.boom_fires)!;
+      if (planeT.boom_sound !== undefined) air.plane.boomSound = await loadAirSound(planeT.boom_sound);
       if (bool(planeT.crash_on_water) !== undefined) air.plane.crashOnWater = bool(planeT.crash_on_water)!;
       if (num(planeT.exit_margin) !== undefined) air.plane.exitMargin = num(planeT.exit_margin)!;
       if (num(planeT.timeout_frames) !== undefined) air.plane.timeoutFrames = num(planeT.timeout_frames)!;
@@ -2268,6 +2408,25 @@ export async function readBundleFeatures(args: {
       if (planeT.sound_loop !== undefined) air.plane.soundLoop = await loadAirSound(planeT.sound_loop);
       if (num(planeT.sound_loop_ticks) !== undefined) air.plane.soundLoopTicks = num(planeT.sound_loop_ticks)!;
       if (planeT.sound_exit !== undefined) air.plane.soundExit = await loadAirSound(planeT.sound_exit);
+
+      const planeBoomFxMatch =
+        /on_plane_boom\s*=\s*function\s*\([^)]*\)[\s\S]*?fx\.burst\(\{([\s\S]*?)\}\)/.exec(
+          moduleText,
+        );
+      if (planeBoomFxMatch) {
+        const body = planeBoomFxMatch[1];
+        const radM = /\bradius\s*=\s*(\d+)/.exec(body);
+        const rgbM = /\br\s*=\s*(\d+)\s*,\s*g\s*=\s*(\d+)\s*,\s*b\s*=\s*(\d+)/.exec(body);
+        const smokeFalse = /\bsmoke\s*=\s*false/.test(body);
+        air.plane.boomFxBurst = {
+          enabled: true,
+          radius: radM ? Number(radM[1]) : air.plane.boomFxBurst.radius,
+          color: rgbM
+            ? hexColor(Number(rgbM[1]), Number(rgbM[2]), Number(rgbM[3]))
+            : air.plane.boomFxBurst.color,
+          smoke: !smokeFalse,
+        };
+      }
 
       if (isTable(planeT.parts)) {
         const parts: AirstrikePlanePartConfig[] = [];
@@ -2320,7 +2479,9 @@ export async function readBundleFeatures(args: {
       if (num(speedT.slow_distance) !== undefined) air.speed.slowDistance = num(speedT.slow_distance)!;
       if (num(speedT.engage_range) !== undefined) air.speed.engageRange = num(speedT.engage_range)!;
       const am = str(speedT.altitude_mode);
-      if (am === 'level' || am === 'dive' || am === 'climb') air.speed.altitudeMode = am as AirstrikeAltitudeMode;
+      if (am === 'level' || am === 'dive' || am === 'climb' || am === 'crash_dive') {
+        air.speed.altitudeMode = am as AirstrikeAltitudeMode;
+      }
       if (num(speedT.dive_vy) !== undefined) air.speed.diveVy = num(speedT.dive_vy)!;
     }
 

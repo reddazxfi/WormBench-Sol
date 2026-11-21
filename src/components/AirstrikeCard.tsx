@@ -2,8 +2,10 @@ import React, { useRef } from 'react';
 import {
   ChevronDown,
   Crosshair,
+  Flame,
   Gauge,
   ImagePlus,
+  Orbit,
   Package,
   Plane,
   Plus,
@@ -13,6 +15,9 @@ import {
 } from 'lucide-react';
 import type {
   AirstrikeAltitudeMode,
+  AirstrikeBoomHitKind,
+  AirstrikeBoomMode,
+  AirstrikeBoomVisual,
   AirstrikeCadenceUnit,
   AirstrikeConfig,
   AirstrikeDirectionMode,
@@ -32,6 +37,7 @@ import {
   STOCK_PLANE_SPRITES,
   mergeAirstrikeConfig,
 } from '../data/airstrike';
+import { DEFAULT_EMITTER } from '../data/emitter';
 import { STOCK_WEAPONS } from '../data/stockWeapons';
 import { AirstrikePreview } from './AirstrikePreview';
 import { NumberInput } from './NumberInput';
@@ -1055,30 +1061,42 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                   <select
                     id="air-spd-alt"
                     value={air.speed.altitudeMode}
-                    onChange={(e) =>
-                      updateSpeed({ altitudeMode: e.target.value as AirstrikeAltitudeMode })
-                    }
+                    onChange={(e) => {
+                      const nextMode = e.target.value as AirstrikeAltitudeMode;
+                      updateSpeed({ altitudeMode: nextMode });
+                      if (nextMode === 'crash_dive' && !air.plane.crashOnTerrain) {
+                        updatePlane({ crashOnTerrain: true });
+                      }
+                    }}
                     className={selectClass}
                   >
                     <option value="level">Level Flight</option>
                     <option value="dive">Dive During Release</option>
                     <option value="climb">Climb During Release</option>
+                    <option value="crash_dive">Crash Dive into Terrain (crash_dive)</option>
                   </select>
                 </div>
                 <div>
                   <label htmlFor="air-spd-divevy" className={labelClass}>
-                    Vertical Speed (px/f)
+                    {air.speed.altitudeMode === 'crash_dive'
+                      ? 'Dive Rate (0 = auto-aim target)'
+                      : 'Vertical Speed (px/f)'}
                   </label>
                   <NumberInput
                     id="air-spd-divevy"
                     min={0}
-                    max={15}
+                    max={25}
                     step={0.2}
                     disabled={air.speed.altitudeMode === 'level'}
                     value={air.speed.diveVy}
                     onChange={numChange((diveVy) => updateSpeed({ diveVy }), { min: 0 })}
                     className={inputClass}
                   />
+                  {air.speed.altitudeMode === 'crash_dive' && air.speed.diveVy === 0 && (
+                    <p className="mt-1 text-[10px] text-stone-400">
+                      Auto-computes vertical slope from entry height directly into clicked target.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1982,24 +2000,55 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                   </label>
                 </div>
 
-                {/* Shootable Hull / Crash */}
-                <div className="space-y-2.5 rounded-lg border border-stone-200 bg-stone-50/50 p-3 dark:border-stone-700 dark:bg-stone-950/30">
-                  <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
-                    <input
-                      type="checkbox"
-                      checked={air.plane.collide}
-                      onChange={(e) =>
-                        updatePlane({
-                          collide: e.target.checked,
-                          asObject: e.target.checked ? true : air.plane.asObject,
-                        })
-                      }
-                      className="h-3.5 w-3.5 rounded text-forge-600"
-                    />
-                    Shootable Aircraft Hull (can be shot down &amp; explode)
-                  </label>
+                {/* Hull, Terrain Crash & Explosion Parameters */}
+                <div className="space-y-3 rounded-lg border border-stone-200 bg-stone-50/50 p-3 dark:border-stone-700 dark:bg-stone-950/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-200">
+                      <Flame className="h-3.5 w-3.5 text-orange-500" aria-hidden="true" />
+                      Hull, Terrain Crash &amp; Explosion
+                    </span>
+                    <span className="font-mono text-[10px] text-stone-400">
+                      crash_on_terrain / boom_*
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
+                      <input
+                        type="checkbox"
+                        checked={air.plane.crashOnTerrain}
+                        onChange={(e) => updatePlane({ crashOnTerrain: e.target.checked })}
+                        className="h-3.5 w-3.5 rounded text-forge-600"
+                      />
+                      Crash on Terrain (explodes on solid land contact)
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
+                      <input
+                        type="checkbox"
+                        checked={air.plane.crashOnWater}
+                        onChange={(e) => updatePlane({ crashOnWater: e.target.checked })}
+                        className="h-3.5 w-3.5 rounded text-forge-600"
+                      />
+                      Crash on Water
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
+                      <input
+                        type="checkbox"
+                        checked={air.plane.collide}
+                        onChange={(e) =>
+                          updatePlane({
+                            collide: e.target.checked,
+                            asObject: e.target.checked ? true : air.plane.asObject,
+                          })
+                        }
+                        className="h-3.5 w-3.5 rounded text-forge-600"
+                      />
+                      Shootable Hull (can be shot down)
+                    </label>
+                  </div>
+
                   {air.plane.collide && (
-                    <div className="grid gap-3 sm:grid-cols-4">
+                    <div className="grid gap-3 border-t border-stone-200/80 pt-2.5 sm:grid-cols-2 dark:border-stone-800">
                       <div>
                         <label className={labelClass}>Hull HP (0 = threshold)</label>
                         <NumberInput
@@ -2011,7 +2060,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                         />
                       </div>
                       <div>
-                        <label className={labelClass}>One-Hit Threshold</label>
+                        <label className={labelClass}>One-Hit Threshold (dead_damage)</label>
                         <NumberInput
                           min={0}
                           max={300}
@@ -2023,34 +2072,327 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                           className={inputClass}
                         />
                       </div>
-                      <div>
-                        <label className={labelClass}>Crash Blast Damage</label>
-                        <NumberInput
-                          min={0}
-                          max={300}
-                          value={air.plane.boomDamage}
-                          onChange={numChange((boomDamage) => updatePlane({ boomDamage }), {
-                            min: 0,
-                            round: true,
-                          })}
-                          className={inputClass}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Crash Fires (0..3)</label>
-                        <NumberInput
-                          min={0}
-                          max={3}
-                          value={air.plane.boomFires}
-                          onChange={numChange((boomFires) => updatePlane({ boomFires }), {
-                            min: 0,
-                            max: 3,
-                            round: true,
-                          })}
-                          className={inputClass}
-                        />
-                      </div>
                     </div>
+                  )}
+
+                  {(air.plane.collide || air.plane.crashOnTerrain) && (
+                    <div className="space-y-3 border-t border-stone-200/80 pt-3 dark:border-stone-800">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label htmlFor="air-boom-mode" className={labelClass}>
+                            Crash Explosion Mode
+                          </label>
+                          <select
+                            id="air-boom-mode"
+                            value={air.plane.boomMode}
+                            onChange={(e) =>
+                              updatePlane({ boomMode: e.target.value as AirstrikeBoomMode })
+                            }
+                            className={selectClass}
+                          >
+                            <option value="native">WA Native Explosion (hull:explode)</option>
+                            <option value="custom">Custom Radial Blast (wa.world.blast)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label htmlFor="air-boom-dmg" className={labelClass}>
+                            Crash Damage
+                          </label>
+                          <NumberInput
+                            id="air-boom-dmg"
+                            min={0}
+                            max={1000}
+                            value={air.plane.boomDamage}
+                            onChange={numChange((boomDamage) => updatePlane({ boomDamage }), {
+                              min: 0,
+                              max: 1000,
+                              round: true,
+                            })}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="air-boom-fires" className={labelClass}>
+                            Crash Fires (0..3)
+                          </label>
+                          <NumberInput
+                            id="air-boom-fires"
+                            min={0}
+                            max={3}
+                            value={air.plane.boomFires}
+                            onChange={numChange((boomFires) => updatePlane({ boomFires }), {
+                              min: 0,
+                              max: 3,
+                              round: true,
+                            })}
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+
+                      {air.plane.boomMode === 'custom' && (
+                        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                          <div>
+                            <label htmlFor="air-boom-rad" className={labelClass}>
+                              Blast Radius (px)
+                            </label>
+                            <NumberInput
+                              id="air-boom-rad"
+                              min={1}
+                              max={512}
+                              value={air.plane.boomRadius}
+                              onChange={numChange((boomRadius) => updatePlane({ boomRadius }), {
+                                min: 1,
+                                max: 512,
+                                round: true,
+                              })}
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="air-boom-push" className={labelClass}>
+                              Push / Knockback (%)
+                            </label>
+                            <NumberInput
+                              id="air-boom-push"
+                              min={0}
+                              max={1000}
+                              value={air.plane.boomPushPct}
+                              onChange={numChange((boomPushPct) => updatePlane({ boomPushPct }), {
+                                min: 0,
+                                max: 1000,
+                                round: true,
+                              })}
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="air-boom-crater" className={labelClass}>
+                              Crater Radius (px)
+                            </label>
+                            <NumberInput
+                              id="air-boom-crater"
+                              min={0}
+                              max={200}
+                              value={air.plane.boomCraterRadius}
+                              onChange={numChange(
+                                (boomCraterRadius) => updatePlane({ boomCraterRadius }),
+                                { min: 0, max: 200, round: true },
+                              )}
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="air-boom-hitkind" className={labelClass}>
+                              Damage Kind
+                            </label>
+                            <select
+                              id="air-boom-hitkind"
+                              value={air.plane.boomHitKind}
+                              onChange={(e) =>
+                                updatePlane({
+                                  boomHitKind: e.target.value as AirstrikeBoomHitKind,
+                                })
+                              }
+                              className={selectClass}
+                            >
+                              <option value="blast">Standard Blast</option>
+                              <option value="taze">Electric Taze (px.electric)</option>
+                              <option value="fire">Fire Blast</option>
+                              <option value="kamikaze">Kamikaze</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor="air-boom-visual" className={labelClass}>
+                              Blast Visual
+                            </label>
+                            <select
+                              id="air-boom-visual"
+                              value={air.plane.boomVisual}
+                              onChange={(e) =>
+                                updatePlane({
+                                  boomVisual: e.target.value as AirstrikeBoomVisual,
+                                })
+                              }
+                              className={selectClass}
+                            >
+                              <option value="native">WA Native Explosion</option>
+                              <option value="fx">PX Effects Burst</option>
+                              <option value="both">Both (Native + FX)</option>
+                              <option value="none">None (Blast Only)</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+
+                      {(air.plane.boomMode === 'native' ||
+                        air.plane.boomVisual === 'native' ||
+                        air.plane.boomVisual === 'both') && (
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <label htmlFor="air-boom-kind" className={labelClass}>
+                              WA Explosion Style ID (0..5)
+                            </label>
+                            <NumberInput
+                              id="air-boom-kind"
+                              min={0}
+                              max={5}
+                              value={air.plane.boomKind}
+                              onChange={numChange((boomKind) => updatePlane({ boomKind }), {
+                                min: 0,
+                                max: 5,
+                                round: true,
+                              })}
+                              className={inputClass}
+                            />
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-2 self-end rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
+                            <input
+                              type="checkbox"
+                              checked={air.plane.boomBelow}
+                              onChange={(e) => updatePlane({ boomBelow: e.target.checked })}
+                              className="h-3.5 w-3.5 rounded text-forge-600"
+                            />
+                            Draw Behind Terrain (below)
+                          </label>
+                          {air.plane.boomMode === 'native' && (
+                            <label className="flex cursor-pointer items-center gap-2 self-end rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
+                              <input
+                                type="checkbox"
+                                checked={air.plane.boomFxBurst.enabled}
+                                onChange={(e) =>
+                                  updatePlane({
+                                    boomFxBurst: {
+                                      ...air.plane.boomFxBurst,
+                                      enabled: e.target.checked,
+                                    },
+                                  })
+                                }
+                                className="h-3.5 w-3.5 rounded text-forge-600"
+                              />
+                              Add PX Effects Burst
+                            </label>
+                          )}
+                        </div>
+                      )}
+
+                      {((air.plane.boomMode === 'custom' &&
+                        (air.plane.boomVisual === 'fx' || air.plane.boomVisual === 'both')) ||
+                        (air.plane.boomMode === 'native' && air.plane.boomFxBurst.enabled)) && (
+                        <div className="grid gap-3 rounded-lg border border-orange-200/70 bg-orange-50/40 p-2.5 sm:grid-cols-3 dark:border-orange-900/50 dark:bg-orange-950/20">
+                          <div>
+                            <label htmlFor="air-boom-fx-color" className={labelClass}>
+                              FX Burst Color
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                id="air-boom-fx-color"
+                                type="color"
+                                value={air.plane.boomFxBurst.color}
+                                onChange={(e) =>
+                                  updatePlane({
+                                    boomFxBurst: {
+                                      ...air.plane.boomFxBurst,
+                                      color: e.target.value,
+                                    },
+                                  })
+                                }
+                                className="h-7 w-10 cursor-pointer rounded border border-stone-300 bg-transparent p-0.5 dark:border-stone-600"
+                              />
+                              <span className="font-mono text-xs text-stone-600 dark:text-stone-300">
+                                {air.plane.boomFxBurst.color}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <label htmlFor="air-boom-fx-rad" className={labelClass}>
+                              FX Burst Radius (px)
+                            </label>
+                            <NumberInput
+                              id="air-boom-fx-rad"
+                              min={8}
+                              max={256}
+                              value={air.plane.boomFxBurst.radius}
+                              onChange={numChange(
+                                (radius) =>
+                                  updatePlane({
+                                    boomFxBurst: { ...air.plane.boomFxBurst, radius },
+                                  }),
+                                { min: 8, max: 256, round: true },
+                              )}
+                              className={inputClass}
+                            />
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-2 self-end rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
+                            <input
+                              type="checkbox"
+                              checked={air.plane.boomFxBurst.smoke}
+                              onChange={(e) =>
+                                updatePlane({
+                                  boomFxBurst: {
+                                    ...air.plane.boomFxBurst,
+                                    smoke: e.target.checked,
+                                  },
+                                })
+                              }
+                              className="h-3.5 w-3.5 rounded text-forge-600"
+                            />
+                            Include Smoke Plume
+                          </label>
+                        </div>
+                      )}
+
+                      <SoundRow
+                        id="air-snd-boom"
+                        label="Crash Explosion Sound"
+                        hint="Optional sound played on aircraft crash/destruction (leave None for WA default)."
+                        sound={air.plane.boomSound}
+                        onChange={(boomSound) => updatePlane({ boomSound })}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Plane Emitter (fx.emitter) quick toggle */}
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200/80 bg-sky-50/40 px-3 py-2.5 dark:border-sky-900/50 dark:bg-sky-950/20">
+                  <div className="space-y-0.5">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-800 dark:text-stone-200">
+                      <input
+                        type="checkbox"
+                        checked={!!project.emitter?.enabled && project.emitter.anchor === 'plane'}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          const prev = project.emitter ?? DEFAULT_EMITTER;
+                          onChange({
+                            emitter: {
+                              ...DEFAULT_EMITTER,
+                              ...prev,
+                              enabled: checked,
+                              anchor: checked
+                                ? 'plane'
+                                : prev.anchor === 'plane'
+                                  ? 'muzzle'
+                                  : prev.anchor,
+                            },
+                          });
+                        }}
+                        className="h-3.5 w-3.5 rounded text-forge-600"
+                      />
+                      <Orbit className="h-3.5 w-3.5 text-sky-500" aria-hidden="true" />
+                      Attach FX Emitter to Flying Aircraft (fx.emitter)
+                    </label>
+                    <p className="pl-5 text-[11px] text-stone-500 dark:text-stone-400">
+                      Rides the aircraft hull with facing-mirrored offsets and cleans up on exit or crash. Tune bolts, rings, ribbons, and offsets in{' '}
+                      <span className="font-semibold text-stone-700 dark:text-stone-300">
+                        Effects &amp; Libraries → Emitter
+                      </span>
+                      .
+                    </p>
+                  </div>
+                  {project.emitter?.enabled && project.emitter.anchor === 'plane' && (
+                    <span className="rounded bg-sky-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                      {project.emitter.planeAlsoRound ? 'Plane + Payload' : 'Plane Only'}
+                    </span>
                   )}
                 </div>
 

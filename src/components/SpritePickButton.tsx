@@ -42,7 +42,7 @@ export const SpritePickButton: React.FC<SpritePickButtonProps> = ({
         aria-label={title ?? `Pick ${accept} from .pxl library`}
         className={
           className ??
-          'rounded p-0.5 text-stone-500 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40 dark:text-stone-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300 cursor-pointer'
+          'rounded-md p-1 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100 cursor-pointer'
         }
       >
         <Library className="h-3.5 w-3.5" aria-hidden="true" />
@@ -58,10 +58,10 @@ export const SpritePickButton: React.FC<SpritePickButtonProps> = ({
       title={title ?? defaultTitle}
       className={
         className ??
-        'inline-flex items-center gap-1 rounded-md border border-amber-300/80 bg-amber-50/75 px-2 py-1 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-900/40 whitespace-nowrap shrink-0 cursor-pointer'
+        'inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 whitespace-nowrap shrink-0 cursor-pointer'
       }
     >
-      <Library className="h-3 w-3 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+      <Library className="h-3.5 w-3.5 text-stone-500 dark:text-stone-400" aria-hidden="true" />
       <span>Library</span>
     </button>
   );

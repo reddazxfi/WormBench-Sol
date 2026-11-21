@@ -44,6 +44,7 @@ import { DEFAULT_BODY, DEFAULT_DIG, DEFAULT_FIRE, DEFAULT_ROAM } from './data/de
 import { DEFAULT_CUSTOM_SOUNDS } from './data/soundPresets';
 import { DEFAULT_TERRAIN_STAMP } from './data/terrainStamp';
 import { DEFAULT_ROLE_ART } from './data/spriteBuilder';
+import { fireSequenceMissileActive } from './data/fireSequence';
 import { bitActionOf, visibleRecordTabs, type RecordTabId } from './data/recordTabs';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -241,13 +242,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const fireSeqMissile = fireSequenceMissileActive(project);
+
   useEffect(() => {
     const allowed = visibleRecordTabs(
       project.burst,
       bitActionOf(project.body.clustlet),
       project.fireType,
       project.teleport,
-      project.body.fuse
+      project.body.fuse,
+      fireSeqMissile
     );
     if (!allowed.some((tab) => tab.id === activeSubTab)) {
       setActiveSubTab(allowed[0]?.id ?? 'missile');
@@ -260,6 +264,7 @@ export default function App() {
     project.fireType,
     project.teleport,
     project.body.fuse,
+    fireSeqMissile,
     activeSubTab,
   ]);
 
@@ -624,24 +629,20 @@ export default function App() {
 
   const pageMeta = {
     editor: {
-      eyebrow: 'Weapon Record',
-      title: 'Shape the weapon',
-      description: 'Type, donor slot, flight physics, payload and collision behaviour.',
+      title: 'Weapon Record',
+      description: 'Identity, donor slot, physics, payload and collisions',
     },
     hold: {
-      eyebrow: 'Hold & Sprite Builder',
-      title: 'Aim and flight art',
-      description: 'Check the worm hold at every aim angle and the 50 Hz missile animation.',
+      title: 'Hold & Sprites',
+      description: 'Worm aiming posture and 50 Hz flight sprite animation',
     },
     effects: {
-      eyebrow: 'Effects & Libraries',
-      title: 'Advanced libraries',
-      description: 'Ribbon trail, explosion burst, emitter, custom sounds and sequential fire.',
+      title: 'Lua Libraries',
+      description: 'Ribbon trail, explosion burst, emitter, WAV audio and terrain stamp',
     },
     code: {
-      eyebrow: 'Bundle Code',
-      title: 'Review the bundle',
-      description: 'Generated Lua, mod.toml and profile, ready to drop into WormForge/Mods.',
+      title: 'Bundle & Export',
+      description: 'Generated Lua, mod.toml manifest and profile preview',
     },
   }[activeTab];
 
@@ -654,7 +655,7 @@ export default function App() {
         openLibraryModal: () => setIsPxlModalOpen(true),
       }}
     >
-    <div className="min-h-screen bg-stone-100 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
+    <div className="min-h-screen bg-stone-100/75 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-forge-600 focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-white"
@@ -710,7 +711,7 @@ export default function App() {
           {importWarnings.length > 0 && (
             <div
               role="alert"
-              className="mb-4 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-3 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-100"
+              className="mb-4 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-100"
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="font-semibold">
@@ -722,7 +723,7 @@ export default function App() {
                   type="button"
                   onClick={() => setImportWarnings([])}
                   aria-label="Dismiss import blockers"
-                  className="shrink-0 rounded-md px-1.5 text-sm leading-5 text-rose-700 hover:bg-rose-100 dark:text-rose-200 dark:hover:bg-rose-900"
+                  className="shrink-0 rounded-md px-1.5 text-sm leading-5 text-rose-700 hover:bg-rose-100 dark:text-rose-200 dark:hover:bg-rose-900 cursor-pointer"
                 >
                   ✕
                 </button>
@@ -740,28 +741,36 @@ export default function App() {
             </div>
           )}
 
-          <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-forge-600 dark:text-forge-400">
-                {pageMeta.eyebrow}
+          <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/80 pb-3.5 dark:border-stone-800">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                <h1 className="font-heading text-xl font-bold tracking-tight text-stone-900 dark:text-stone-50">
+                  {pageMeta.title}
+                </h1>
+                <span className="text-stone-300 dark:text-stone-700" aria-hidden="true">
+                  /
+                </span>
+                <span className="truncate text-sm font-medium text-stone-700 dark:text-stone-300">
+                  {project.name || project.id}
+                </span>
+                <span className="hidden font-mono text-[11px] text-stone-400 sm:inline dark:text-stone-500">
+                  {project.id}
+                </span>
               </div>
-              <h1 className="mt-0.5 font-heading text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-50">
-                {pageMeta.title}
-              </h1>
-              <p className="mt-0.5 max-w-2xl text-xs text-stone-500 dark:text-stone-400">
+              <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
                 {pageMeta.description}
               </p>
             </div>
             {pack.weapons.length > 1 && (
-              <div className="flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 shadow-2xs dark:border-stone-800 dark:bg-stone-900">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
-                  Weapon {activeIndex + 1}/{pack.weapons.length}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-stone-500 tabular-nums dark:text-stone-400">
+                  Weapon {activeIndex + 1} / {pack.weapons.length}
                 </span>
                 <select
                   aria-label="Switch active weapon in bundle"
                   value={activeIndex}
                   onChange={(event) => selectWeapon(Number(event.target.value))}
-                  className="max-w-52 truncate rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-800 focus:outline-hidden focus:ring-2 focus:ring-forge-500 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100"
+                  className="max-w-52 truncate rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-800 focus:outline-hidden focus:ring-2 focus:ring-forge-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
                 >
                   {pack.weapons.map((weapon, index) => (
                     <option key={`${weapon.id}-${index}`} value={index}>

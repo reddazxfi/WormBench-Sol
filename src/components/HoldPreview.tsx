@@ -55,6 +55,7 @@ import {
   type ClipPose,
 } from '../data/aimClip';
 import { MELEE_SLACK, meleeScan, meleeStrikes } from '../data/melee';
+import { takeoverMissileActive } from '../data/airstrike';
 import { KeyTickInput } from './KeyTickInput';
 import mapBackgroundSrc from '../../spec/pre_weapon_preview.png';
 import normalIconSrc from '../../spec/normal.png';
@@ -775,7 +776,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     });
   };
   const builderOn = primaryBuilderOn(project);
-  const isAirStrike = project.fireType === 'cursor' && !project.teleport;
+  const isTakeoverMissile = takeoverMissileActive(project);
+  const isAirStrike = project.fireType === 'cursor' && !project.teleport && !isTakeoverMissile;
   const hasPrimaryHoming = project.action === 'homing';
   const hasBitHoming = project.burst === 'clusters' && bitActionOf(project) === 'homing';
   const clustersEnabled = project.burst === 'clusters';
@@ -2258,6 +2260,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         );
       }
     }
+    if (isTakeoverMissile) modLines.push(`  is_bit = air.is_bit,`);
     if (project.missileSprite?.logIdentity) modLines.push(`  log = true,`);
     modLines.push(`})`);
     return modLines.join('\n');
@@ -2288,26 +2291,26 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               : 'Native aim.png & hand_rad Assets';
         const showWormPanel = postureTab === 'wormSprites';
         return (
-          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-xs transition-colors">
+          <div className="overflow-hidden rounded-xl border border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900 transition-colors">
             {/* Header + Independent Layer Toggles + View Tabs */}
-            <div className="pb-3 mb-4 border-b border-stone-100 dark:border-stone-800 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+            <div className="border-b border-stone-200/80 bg-stone-50/70 px-5 py-3.5 dark:border-stone-800 dark:bg-stone-950/50 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-heading text-base font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wide">
-                    Worm Aim & Hold Art Builder
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <h2 className="font-heading text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+                    Worm Aim &amp; Hold Art Builder
                   </h2>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-forge-50 dark:bg-forge-950/60 text-forge-600 dark:text-forge-400 font-semibold border border-forge-200 dark:border-forge-800/60">
-                    {activeLayerLabel}
+                  <span className="text-[11px] font-mono text-forge-600 dark:text-forge-400">
+                    · {activeLayerLabel}
                   </span>
                 </div>
-                <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
                   Combine Sprite Builder held overlays and direct <code className="font-mono">worm_sprites</code> pose sheets together or use either layer on its own.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <div
-                  className="inline-flex rounded-xl border border-stone-200 bg-stone-50 p-1 dark:border-stone-700 dark:bg-stone-800"
+                  className="inline-flex rounded-lg border border-stone-200 bg-stone-100/90 p-0.5 dark:border-stone-700 dark:bg-stone-900"
                   role="tablist"
                   aria-label="Worm posture editor tabs"
                 >
@@ -2316,16 +2319,16 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     role="tab"
                     aria-selected={!showWormPanel}
                     onClick={() => setPostureTab('hold')}
-                    className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    className={`cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                       !showWormPanel
-                        ? 'bg-white text-stone-900 shadow-2xs dark:bg-stone-900 dark:text-stone-100'
+                        ? 'bg-white text-stone-900 font-semibold shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                         : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
                     }`}
                   >
                     Sprite Builder (Overlay)
                     {hold.enabled && (
-                      <span className="ml-1.5 rounded bg-forge-100 px-1 text-[10px] font-bold text-forge-700 dark:bg-forge-950/60 dark:text-forge-300">
-                        ON
+                      <span className="ml-1 font-mono text-[10px] text-forge-600 dark:text-forge-400">
+                        · on
                       </span>
                     )}
                   </button>
@@ -2334,16 +2337,16 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     role="tab"
                     aria-selected={showWormPanel}
                     onClick={() => setPostureTab('wormSprites')}
-                    className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    className={`cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                       showWormPanel
-                        ? 'bg-white text-stone-900 shadow-2xs dark:bg-stone-900 dark:text-stone-100'
+                        ? 'bg-white text-stone-900 font-semibold shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
                         : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
                     }`}
                   >
                     Worm Pose Sheets (<span className="font-mono">worm_sprites</span>)
                     {wormEnabled && (
-                      <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                        ON
+                      <span className="ml-1 font-mono text-[10px] text-forge-600 dark:text-forge-400">
+                        · on
                       </span>
                     )}
                   </button>
@@ -2351,23 +2354,31 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
                 <label
                   htmlFor="hold-enable-custom-art"
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-2xs dark:border-stone-700 dark:bg-stone-800"
+                  className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
+                    hold.enabled
+                      ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                      : 'border-stone-200 bg-white hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:hover:bg-stone-800'
+                  }`}
                 >
                   <input
                     id="hold-enable-custom-art"
                     type="checkbox"
                     checked={hold.enabled}
                     onChange={(e) => updateHold({ enabled: e.target.checked })}
-                    className="h-4 w-4 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                    className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
                   />
-                  <span className="whitespace-nowrap text-xs font-semibold text-stone-900 dark:text-stone-100">
+                  <span className="whitespace-nowrap text-xs font-medium text-stone-800 dark:text-stone-100">
                     Enable Sprite Builder
                   </span>
                 </label>
 
                 <label
                   htmlFor="worm-sprites-enable"
-                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-2xs dark:border-stone-700 dark:bg-stone-800"
+                  className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
+                    wormEnabled
+                      ? 'border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                      : 'border-stone-200 bg-white hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:hover:bg-stone-800'
+                  }`}
                 >
                   <input
                     id="worm-sprites-enable"
@@ -2381,15 +2392,16 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                         },
                       })
                     }
-                    className="h-4 w-4 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                    className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
                   />
-                  <span className="whitespace-nowrap text-xs font-semibold text-stone-900 dark:text-stone-100">
+                  <span className="whitespace-nowrap text-xs font-medium text-stone-800 dark:text-stone-100">
                     Enable Worm Pose Sheets
                   </span>
                 </label>
               </div>
             </div>
 
+            <div className="p-5">
             {showWormPanel ? (
               <WormSpritesPanel project={project} onChange={onChange} />
             ) : (
@@ -2397,7 +2409,11 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
         {/* Aim / Firing builder tabs. The canvas below is shared: it shows the
             held art while aiming and the firing sheet on Test fire. */}
-        <div className="mb-4 flex flex-wrap items-center gap-2" role="tablist" aria-label="Held art builder">
+        <div
+          className="mb-4 inline-flex rounded-lg border border-stone-200 bg-stone-100/90 p-0.5 dark:border-stone-700 dark:bg-stone-950/60"
+          role="tablist"
+          aria-label="Held art builder"
+        >
           {(
             [
               { id: 'aim' as const, label: 'Aim & Swing', hint: 'The held weapon, its offset, the hand and the Space clip' },
@@ -2413,16 +2429,16 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               id={`hold-tab-${tab.id}-button`}
               title={tab.hint}
               onClick={() => setAimTab(tab.id)}
-              className={`cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              className={`cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 aimTab === tab.id
-                  ? 'border-forge-500 bg-forge-50/60 text-forge-700 ring-1 ring-forge-500 dark:bg-forge-950/40 dark:text-forge-300'
-                  : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-750'
+                  ? 'bg-white text-stone-900 font-semibold shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                  : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
               }`}
             >
               {tab.label}
               {tab.id === 'firing' && hold.flashFile ? (
-                <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                  1
+                <span className="ml-1 font-mono text-[10px] text-forge-600 dark:text-forge-400">
+                  · 1
                 </span>
               ) : null}
             </button>
@@ -4146,6 +4162,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         </div>
               </>
             )}
+            </div>
           </div>
         );
       })()}
@@ -4164,9 +4181,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
           desc: string;
           enabled: boolean;
           disabledHint: string;
-          activeClass: string;
-          bannerClass: string;
-          pillClass: string;
         }[] = [
           {
             id: 'primary',
@@ -4178,12 +4192,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             desc: 'Initial flight round fired from the launcher. All secondary phases (homing, cluster bits, dig state) build on top of this.',
             enabled: true,
             disabledHint: '',
-            activeClass:
-              'border-amber-500 bg-amber-500/15 ring-2 ring-amber-500/70 shadow-sm',
-            bannerClass:
-              'border-amber-200 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/25 text-amber-900 dark:text-amber-200',
-            pillClass:
-              'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800',
           },
           {
             id: 'homing',
@@ -4195,12 +4203,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             desc: 'Timed guidance art swapped into the main round between homing arm delay and expiry, zeroing WA’s missile.homing.sprite.',
             enabled: hasPrimaryHoming,
             disabledHint: 'Requires Missile Action = Homing in Record Editor',
-            activeClass:
-              'border-sky-500 bg-sky-500/15 ring-2 ring-sky-500/70 shadow-sm',
-            bannerClass:
-              'border-sky-200 dark:border-sky-800/60 bg-sky-50/70 dark:bg-sky-950/25 text-sky-900 dark:text-sky-200',
-            pillClass:
-              'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-800',
           },
           {
             id: 'clusters',
@@ -4212,12 +4214,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             desc: 'Child bomblets spawned when the primary round bursts. Can use their own sheet, inherit primary art, or stay native.',
             enabled: clustersEnabled,
             disabledHint: 'Requires Burst Payload = Clusters in Record Editor',
-            activeClass:
-              'border-purple-500 bg-purple-500/15 ring-2 ring-purple-500/70 shadow-sm',
-            bannerClass:
-              'border-purple-200 dark:border-purple-800/60 bg-purple-50/70 dark:bg-purple-950/25 text-purple-900 dark:text-purple-200',
-            pillClass:
-              'bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-800',
           },
           {
             id: 'homing_bit',
@@ -4229,12 +4225,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             desc: 'Timed guidance art for cluster bomblets after bit arming, emitted as bits.homing while Cluster Bits is in Builder mode.',
             enabled: hasBitHoming,
             disabledHint: 'Requires Burst = Clusters and Bit Action = Homing in Record Editor',
-            activeClass:
-              'border-indigo-500 bg-indigo-500/15 ring-2 ring-indigo-500/70 shadow-sm',
-            bannerClass:
-              'border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/25 text-indigo-900 dark:text-indigo-200',
-            pillClass:
-              'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800',
           },
           {
             id: 'roam',
@@ -4246,12 +4236,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             desc: 'Steerable flying animal. Own sheet makes the flown state its own role (its own animation, frames, spin, scale); the round’s sheet keeps Slot 1’s art. WA walks the animal until Space either way, and the two native rotation strips only apply with the flight builder off.',
             enabled: roamEnabled,
             disabledHint: 'Requires Missile Action = Roam in Record Editor',
-            activeClass:
-              'border-forge-500 bg-forge-500/15 ring-2 ring-forge-500/70 shadow-sm',
-            bannerClass:
-              'border-forge-200 dark:border-forge-800/60 bg-forge-50/70 dark:bg-forge-950/25 text-forge-900 dark:text-forge-200',
-            pillClass:
-              'bg-forge-100 dark:bg-forge-950/60 text-forge-800 dark:text-forge-300 border-forge-300 dark:border-forge-800',
           },
           {
             id: 'dig',
@@ -4263,12 +4247,6 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             desc: 'Sheetless state: zeroes WA dig sprites and cycles the owning flight sheet while 4 terrain probes detect solid land (dig = true).',
             enabled: digEnabled,
             disabledHint: 'Requires Missile Action = Dig or Bit Action = Dig in Record Editor',
-            activeClass:
-              'border-orange-500 bg-orange-500/15 ring-2 ring-orange-500/70 shadow-sm',
-            bannerClass:
-              'border-orange-200 dark:border-orange-800/60 bg-orange-50/70 dark:bg-orange-950/25 text-orange-900 dark:text-orange-200',
-            pillClass:
-              'bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-800',
           },
         ];
 
@@ -4426,21 +4404,17 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             : missile.sheetPreview;
 
         return (
-          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-xs transition-colors">
+          <div className="overflow-hidden rounded-xl border border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900 transition-colors">
             {/* Header + 6-Icon Hotbar */}
-            <div className="pb-4 mb-4 border-b border-stone-100 dark:border-stone-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div className="border-b border-stone-200/80 bg-stone-50/70 px-5 py-3.5 dark:border-stone-800 dark:bg-stone-950/50 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-forge-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                    <Rocket className="w-4 h-4" />
-                  </div>
-                  <h2 className="font-heading text-base font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wide">
-                    Missile & Projectile Flight Sprite Builder
+                  <Rocket className="w-4 h-4 text-forge-500 shrink-0" />
+                  <h2 className="font-heading text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+                    Missile &amp; Projectile Flight Sprite Builder
                   </h2>
-                  <span
-                    className={`text-[11px] font-mono px-2 py-0.5 rounded border font-semibold ${activeSlotMeta.pillClass}`}
-                  >
-                    {activeSlotMeta.badge}
+                  <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                    · {activeSlotMeta.badge}
                   </span>
                 </div>
                 <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
@@ -4452,7 +4426,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               <div
                 role="tablist"
                 aria-label="Projectile flight roles"
-                className="flex flex-wrap items-center gap-2 bg-stone-100 dark:bg-stone-800/80 p-1.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-inner shrink-0 self-start xl:self-auto"
+                className="flex flex-wrap items-center gap-1.5 rounded-xl border border-stone-200/90 bg-stone-100/80 p-1.5 dark:border-stone-800 dark:bg-stone-900/90 shrink-0 self-start xl:self-auto"
               >
                 {hotbarSlots.map((slot) => {
                   const isActive = activeFlightRole === slot.id;
@@ -4469,19 +4443,21 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                           ? `Slot ${slot.slotNum}: ${slot.badge}`
                           : `${slot.badge}, ${slot.disabledHint}`
                       }
-                      className={`relative w-14 h-14 rounded-xl border-2 transition-all overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forge-500 ${
+                      className={`relative w-14 h-14 rounded-lg border-2 transition-all overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forge-500 ${
                         !slot.enabled
-                          ? 'opacity-35 grayscale cursor-not-allowed border-stone-200 dark:border-stone-700 bg-stone-200/70 dark:bg-stone-900/60'
+                          ? 'opacity-35 grayscale cursor-not-allowed border-stone-200 dark:border-stone-800 bg-stone-200/60 dark:bg-stone-900/60'
                           : isActive
-                            ? `${slot.activeClass} cursor-pointer`
-                            : 'border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 hover:border-stone-400 dark:hover:border-stone-500 cursor-pointer'
+                            ? 'border-forge-500 bg-forge-50/70 ring-1 ring-forge-500/50 dark:border-forge-500 dark:bg-forge-950/40 cursor-pointer'
+                            : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 hover:border-stone-400 dark:hover:border-stone-500 cursor-pointer'
                       }`}
                     >
                       <span
-                        className={`absolute top-1 left-1 font-mono font-bold text-[9px] leading-none px-1 py-0.5 rounded border z-10 ${
+                        className={`absolute top-1 left-1 font-mono font-semibold text-[9px] tabular-nums leading-none px-1 py-0.5 rounded border z-10 ${
                           !slot.enabled
                             ? 'bg-stone-200 dark:bg-stone-800 text-stone-400 border-stone-300 dark:border-stone-700'
-                            : 'bg-white/90 dark:bg-stone-900/90 text-stone-700 dark:text-stone-200 border-stone-300 dark:border-stone-700'
+                            : isActive
+                              ? 'bg-forge-600 text-white border-forge-600'
+                              : 'bg-white/90 dark:bg-stone-900/90 text-stone-700 dark:text-stone-200 border-stone-300 dark:border-stone-700'
                         }`}
                       >
                         {slot.slotNum}
@@ -4495,7 +4471,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                         style={{ imageRendering: 'pixelated' }}
                       />
                       <span
-                        className={`absolute bottom-0.5 right-0.5 text-[9px] font-bold font-mono leading-none px-1 py-0.5 rounded shadow-2xs ${
+                        className={`absolute bottom-0.5 right-0.5 text-[9px] font-semibold font-mono leading-none px-1 py-0.5 rounded ${
                           !slot.enabled
                             ? 'bg-stone-200/90 dark:bg-stone-800/90 text-stone-500'
                             : 'bg-white/90 dark:bg-stone-900/90 text-stone-800 dark:text-stone-100'
@@ -4509,10 +4485,9 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               </div>
             </div>
 
-            {/* Active Role Banner */}
-            <div
-              className={`mb-4 px-3.5 py-2.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2 ${activeSlotMeta.bannerClass}`}
-            >
+            <div className="p-5">
+            {/* Active Role Strip */}
+            <div className="mb-4 px-3.5 py-2.5 rounded-lg border border-stone-200/80 bg-stone-50/80 dark:border-stone-800 dark:bg-stone-950/40 text-xs flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 <img
                   src={activeSlotMeta.icon}
@@ -4521,31 +4496,37 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   style={{ imageRendering: 'pixelated' }}
                 />
                 <div className="min-w-0">
-                  <div className="font-bold leading-snug">{activeSlotMeta.title}</div>
-                  <p className="text-[11px] opacity-85 leading-snug">{activeSlotMeta.desc}</p>
+                  <div className="font-semibold text-stone-900 dark:text-stone-100 leading-snug">
+                    {activeSlotMeta.title}
+                  </div>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400 leading-snug">
+                    {activeSlotMeta.desc}
+                  </p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-white/80 dark:bg-stone-900/80 border border-current/20 shrink-0">
-                Role Slot {activeSlotMeta.slotNum} / {hotbarSlots.length}
+              <span className="text-[11px] font-mono tabular-nums text-stone-500 dark:text-stone-400 shrink-0">
+                Slot {activeSlotMeta.slotNum} / {hotbarSlots.length}
               </span>
             </div>
 
             {isAirStrike && (
-              <div className="mb-4 px-3.5 py-2 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-xs flex items-center gap-2">
+              <div className="mb-4 px-3.5 py-2 rounded-lg border border-amber-300/80 dark:border-amber-800/80 bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>
-                  Air strikes spawn munitions from their own record copy and do not run{' '}
-                  <code className="font-mono">sb.flight</code>. Use the Record / Pack Art strike body sprite instead.
+                  Native WA air strikes spawn munitions from their own record copy and do not run{' '}
+                  <code className="font-mono">sb.flight</code>. Enable{' '}
+                  <strong>Airstrike Takeover</strong> with a <strong>Missile</strong> payload to use
+                  the flight sprite builder, or use the Record / Pack Art strike body sprite.
                 </span>
               </div>
             )}
 
-            {/* Row 2: Projectile Asset Bar + Enable Missile Flight Sprite Pill */}
+            {/* Row 2: Projectile Asset Bar + Enable Missile Flight Sprite Toggle */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5">
-              <div className="flex-1 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-800/40 min-w-0">
+              <div className="flex-1 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 px-3.5 py-2 rounded-lg border border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-950/40 min-w-0">
                 <div className="flex items-center gap-2.5 min-w-0 truncate">
-                  <Upload className="w-4 h-4 text-forge-600 dark:text-forge-400 shrink-0" />
-                  <span className="text-xs font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wide shrink-0">
+                  <Upload className="w-4 h-4 text-stone-500 dark:text-stone-400 shrink-0" />
+                  <span className="text-xs font-semibold text-stone-900 dark:text-stone-100 shrink-0">
                     {assetLabel}
                   </span>
                   {isDigRole ? (
@@ -4584,7 +4565,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <button
                       type="button"
                       onClick={isSecondaryRole ? removeCustomRoleSheet : removeCustomMissileSheet}
-                      className="text-xs text-rose-500 hover:text-rose-600 font-medium shrink-0 ml-1 cursor-pointer"
+                      className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-medium shrink-0 ml-1 cursor-pointer"
                     >
                       Remove
                     </button>
@@ -4596,7 +4577,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <button
                       type="button"
                       onClick={() => setActiveFlightRole(digOwningSheetIsBit ? 'clusters' : 'primary')}
-                      className="px-3 py-1.5 text-xs font-semibold text-stone-800 dark:text-stone-200 bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 shadow-2xs transition-colors cursor-pointer"
+                      className="px-3 py-1.5 text-xs font-medium text-stone-700 dark:text-stone-200 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors cursor-pointer"
                     >
                       Edit {digOwningSheetIsBit ? 'Bits' : 'Main'} Sheet
                     </button>
@@ -4616,9 +4597,9 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                           onClick={() =>
                             (isSecondaryRole ? roleFileInputRef : missileFileInputRef).current?.click()
                           }
-                          className="px-3 py-1.5 text-xs font-semibold text-stone-800 dark:text-stone-200 bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                          className="px-3 py-1.5 text-xs font-medium text-stone-700 dark:text-stone-200 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors flex items-center gap-1.5 cursor-pointer"
                         >
-                          <Upload className="w-3.5 h-3.5 text-forge-600 dark:text-forge-400" />
+                          <Upload className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
                           <span>{activeSheetFile ? 'Change PNG Sheet' : 'Upload PNG'}</span>
                         </button>
                         <SpritePickButton
@@ -4638,8 +4619,12 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
               <label
                 htmlFor="flight-enable-builder"
-                className={`flex items-center gap-2 bg-white dark:bg-stone-800 px-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 shadow-2xs shrink-0 self-start sm:self-auto ${
-                  isAirStrike ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors shrink-0 self-start sm:self-auto ${
+                  isAirStrike
+                    ? 'opacity-50 cursor-not-allowed border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900'
+                    : missile.enabled
+                      ? 'cursor-pointer border-forge-400/70 bg-forge-50/70 dark:border-forge-600/60 dark:bg-forge-950/35'
+                      : 'cursor-pointer border-stone-200 bg-white hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:hover:bg-stone-800'
                 }`}
               >
                 <input
@@ -4653,9 +4638,9 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       ...(e.target.checked ? { mode: 'custom' } : {}),
                     })
                   }
-                  className="rounded text-forge-600 focus:ring-forge-500 w-4 h-4 cursor-pointer"
+                  className="rounded text-forge-600 focus:ring-forge-500 w-3.5 h-3.5 cursor-pointer"
                 />
-                <span className="text-xs font-semibold text-stone-900 dark:text-stone-100 whitespace-nowrap">
+                <span className="text-xs font-medium text-stone-800 dark:text-stone-100 whitespace-nowrap">
                   Enable Missile Flight Sprite
                 </span>
               </label>
@@ -5709,27 +5694,28 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 {/* 4. Generated Lua Code Box + Copy Button */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
-                      Generated Lua `sb.flight` Call
+                    <span className="text-[11px] font-mono font-medium text-stone-500 dark:text-stone-400">
+                      Generated Lua <code className="text-stone-700 dark:text-stone-300">sb.flight</code> Call
                     </span>
                     <button
                       type="button"
                       onClick={handleCopySbLua}
-                      className="text-[11px] font-semibold text-forge-700 dark:text-forge-300 bg-forge-50 dark:bg-forge-950/60 hover:bg-forge-100 dark:hover:bg-forge-900/60 px-2.5 py-1 rounded-lg border border-forge-200 dark:border-forge-800 transition-colors flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] font-medium text-stone-700 dark:text-stone-200 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 px-2.5 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       {copiedSbLua ? (
-                        <Check className="w-3.5 h-3.5" />
+                        <Check className="w-3.5 h-3.5 text-forge-500" />
                       ) : (
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
                       )}
                       <span>{copiedSbLua ? 'Copied' : 'Copy Lua'}</span>
                     </button>
                   </div>
-                  <pre className="text-xs font-mono bg-stone-950 text-forge-400 p-3 rounded-xl overflow-x-auto border border-stone-800 leading-relaxed">
+                  <pre className="text-xs font-mono bg-stone-950 text-stone-100 p-3 rounded-lg overflow-x-auto border border-stone-800 leading-relaxed">
                     {sbFlightLuaPreview}
                   </pre>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         );

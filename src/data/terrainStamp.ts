@@ -1,4 +1,5 @@
 import type { StampHitKind, TerrainStampConfig, WeaponProject } from '../types/weapon';
+import { fireSequenceMissileActive } from './fireSequence';
 
 /**
  * `wa.land.stamp` writes one frame of a picture into the terrain (WA's girder
@@ -38,7 +39,8 @@ export function supportsTerrainStamp(project: WeaponProject): boolean {
     (project.fireType === 'cursor' &&
       !project.teleport &&
       !!project.airstrike?.enabled &&
-      (project.airstrike.payload?.kind ?? 'missile') === 'missile')
+      (project.airstrike.payload?.kind ?? 'missile') === 'missile') ||
+    fireSequenceMissileActive(project)
   );
 }
 

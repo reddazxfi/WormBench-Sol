@@ -1,4 +1,5 @@
 import type { EmitterConfig, EmitterRingConfig, EmitterTrailConfig, WeaponProject } from '../types/weapon';
+import { fireSequenceMissileActive } from './fireSequence';
 
 /**
  * PX's effect manager as a live emitter. The numbers below are its own:
@@ -188,6 +189,20 @@ export function supportsEmitterRound(project: WeaponProject): boolean {
     (project.fireType === 'cursor' &&
       !project.teleport &&
       !!project.airstrike?.enabled &&
-      (project.airstrike.payload?.kind ?? 'missile') === 'missile')
+      (project.airstrike.payload?.kind ?? 'missile') === 'missile') ||
+    fireSequenceMissileActive(project)
+  );
+}
+
+/**
+ * `anchor = 'plane'` follows the flying aircraft of a Lua airstrike takeover
+ * (`entry.mode !== 'payload'`) via `air.install(..., { effects = { on_start } })`.
+ */
+export function supportsEmitterPlane(project: WeaponProject): boolean {
+  return (
+    project.fireType === 'cursor' &&
+    !project.teleport &&
+    !!project.airstrike?.enabled &&
+    (project.airstrike.entry?.mode ?? 'offmap') !== 'payload'
   );
 }

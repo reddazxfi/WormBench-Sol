@@ -5,6 +5,7 @@
 import wfwsSdkToml from '../../spec/lua_sdk/wfws_sdk/mod.toml?raw';
 import wfwsSpriteBuilderLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua?raw';
 import wfwsAirstrikeLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_airstrike.lua?raw';
+import wfwsFiringLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_firing.lua?raw';
 
 /** mod.toml for the wfws.sdk library bundle. */
 export const WFWS_SDK_MOD_TOML = wfwsSdkToml;
@@ -14,3 +15,6 @@ export const WFWS_SPRITE_BUILDER_LUA = wfwsSpriteBuilderLua;
 
 /** `wf-lib/wfws_airstrike`, the lockstep airstrike takeover module. */
 export const WFWS_AIRSTRIKE_LUA = wfwsAirstrikeLua;
+
+/** `wf-lib/wfws_firing`, the lockstep firing & burst sequencer module. */
+export const WFWS_FIRING_LUA = wfwsFiringLua;

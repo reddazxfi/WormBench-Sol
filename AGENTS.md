@@ -1545,19 +1545,32 @@ component does not declare, so the first is a load failure).
 
 **The bundle id is the namespace.** `src/utils/weaponId.ts` fixes nothing: it
 answers "is this id under that bundle" (`isUnderNamespace`) and derives the
-namespace a copy takes (`copyNamespace`), and both id fields edit the **whole**
-id. A weapon in a bundle lives under the bundle's id (`lucia.arsenal.rocket`),
-which is what keeps it off an installed mod (that bundle's id is unique, so its
-namespace is taken), and `validateBundle` refuses an id outside it by name.
-Renaming the bundle id renames its weapons with it (`renamespaceWeapons`), since
-an old prefix would be refused for a reason the card cannot show. The one fixed
-value left is `DEFAULT_ID_NAMESPACE` (`wfws`): a **default** for work with no
-bundle yet (a new project, a decoded `.wep`, a weapon a module leaves unnamed),
-never a rule, and one keystroke away from whatever the author wants. The weapon
-card shows that namespace as a hint rather than a lock: an id outside the bundle's
-gets an amber note (`nothing keeps it from colliding with an installed mod`), and
-the export refuses it by name. The **bundle** id field edits the whole id, and a
-rename moves the weapons that lived under the old prefix with it.
+namespace a copy takes (`copyNamespace`). A weapon in a bundle lives under the
+bundle's id (`lucia.arsenal.rocket`), which is what keeps it off an installed mod
+(that bundle's id is unique, so its namespace is taken), and `validateBundle`
+refuses an id outside it by name (`this bundle would not load: wfws.windnade is
+not under the bundle's id (wfws.gravnade)`). That refusal is the net, not the
+usual path: the rule is enforced **on the way in**. `withWeapon`
+(`foldWeaponIntoBundle`, which every panel edit and every import goes through)
+folds a weapon written into a bundle of more than one back to
+`<bundle id>.<leaf>` and moves the art it declares to the new folder, so a
+`.wep`/`.pxl` import that carries its own id (`wfws.windnade`) cannot leave the
+bundle in a state the export refuses while the author never typed an id. A
+bundle of one **is** its weapon (`syncPackToSoleWeapon`), so there the id is kept
+and the bundle follows it, and an id **already** under the namespace is left
+untouched (an untouched weapon is byte-identical on re-export). The **Weapon ID**
+field follows the same split: while the bundle holds one weapon it edits the
+whole id (the bundle's), and from the second one on it shows the bundle id as a
+fixed prefix and edits only the leaf (`wfws.gravnade.` + `windnade`), because the
+first segments belong to the Bundle Settings card. Renaming the bundle id renames
+its weapons with it (`renamespaceWeapons`), since an old prefix would be refused
+for a reason the card cannot show; a weapon id that is neither the old id nor
+under it (a foreign import) is left alone and gets an amber note instead. The one
+fixed value left is `DEFAULT_ID_NAMESPACE` (`wfws`): a **default** for work with
+no bundle yet (a new project, a decoded `.wep`, a weapon a module leaves unnamed),
+never a rule, and one keystroke away from whatever the author wants. The **bundle**
+id field edits the whole id, and a rename moves the weapons that lived under the
+old prefix with it.
 
 ## 8b. Reading Project X `.pxl` libraries (`src/utils/pxl/`)
 

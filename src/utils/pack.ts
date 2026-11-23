@@ -16,6 +16,7 @@
 //    their ids differ (`wfws.pack.rocket` and `wfws.pack.laser` do).
 import { PackProject, WeaponProject } from '../types/weapon';
 import { sanitizeModFolder } from './luaGenerator';
+import { isUnderNamespace, slugId, weaponIdSuffix } from './weaponId';
 
 /** `Heavy Rocket!` -> `heavy_rocket`, the part an id and a folder take. */
 export function slugFromName(name: string | undefined): string {
@@ -195,19 +196,58 @@ export function syncPackToSoleWeapon(pack: PackProject): PackProject {
 }
 
 /**
+ * A weapon written into a bundle of more than one **lives under the bundle's id**.
+ *
+ * That is the namespace rule and the whole of it: `wfws.gravnade.windnade` is a
+ * weapon of `wfws.gravnade`, `wfws.windnade` is not, and `validateBundle` refuses
+ * the export for the second because the installed bundle it came from already
+ * claims that id. An import and a hand-typed field both arrive with the source's
+ * own id, so the id is folded back to `<bundle id>.<leaf>` on the way in, and the
+ * art it declares moves with the folder (`retargetWeaponArt`), exactly as an
+ * append's does.
+ *
+ * Anything **already** under the namespace is untouched, and so is a bundle of one
+ * (that bundle *is* its weapon, `syncPackToSoleWeapon`, so the weapon's id is the
+ * bundle's and the bundle follows it). The folder is chosen against the weapons
+ * that stay, so re-importing over the same slot does not bump it to `_2`.
+ */
+function foldWeaponIntoBundle(
+  pack: PackProject,
+  index: number,
+  project: WeaponProject,
+): WeaponProject {
+  if (pack.weapons.length <= 1) return project;
+  if (isUnderNamespace(project.id, pack.id)) return project;
+  const leaf = slugId(weaponIdSuffix(project.id) || project.name, 'weapon');
+  const others: PackProject = {
+    ...pack,
+    weapons: pack.weapons.filter((_, at) => at !== index),
+  };
+  const id = adoptWeaponId(others, `${pack.id}.${leaf}`);
+  return retargetWeaponArt(
+    { ...project, id },
+    sanitizeModFolder(project.id),
+    sanitizeModFolder(id),
+  );
+}
+
+/**
  * Write one weapon back, then re-apply the one-weapon rule. An index one past the
  * end **appends**, which is what an import does weapon by weapon (an `map` over the
- * existing rows would have silently dropped them).
+ * existing rows would have silently dropped them). The id is folded under the
+ * bundle's namespace on the way in (`foldWeaponIntoBundle`), so no panel and no
+ * import can put a weapon outside it.
  */
 export function withWeapon(
   pack: PackProject,
   index: number,
   project: WeaponProject,
 ): PackProject {
+  const entry = foldWeaponIntoBundle(pack, index, project);
   const weapons =
     index >= pack.weapons.length
-      ? [...pack.weapons, project]
-      : pack.weapons.map((current, at) => (at === index ? project : current));
+      ? [...pack.weapons, entry]
+      : pack.weapons.map((current, at) => (at === index ? entry : current));
   return syncPackToSoleWeapon({ ...pack, weapons });
 }
 

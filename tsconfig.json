@@ -24,5 +24,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  // `src-tauri/target/` is Cargo's build output (git-ignored, and `tauri build`
+  // leaves generated `.js` there: with `allowJs` on, `tsc` tried to read one as
+  // source and failed with "File appears to be binary", which took `bun run lint`
+  // and the Pages deploy down with it). `tmp/` and `test_pack/` are scratch and
+  // generated output, also git-ignored.
+  "exclude": ["dist", "src-tauri/target", "tmp", "test_pack"]
 }

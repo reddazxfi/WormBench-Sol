@@ -792,7 +792,12 @@ export default function App() {
                 onChange={updatePack}
                 onRemoveWeapon={pack.weapons.length > 1 ? () => removeWeapon(activeIndex) : undefined}
               />
-              <WeaponSettings project={project} bundleId={pack.id} onChange={updateProject} />
+              <WeaponSettings
+                project={project}
+                bundleId={pack.id}
+                lockIdNamespace={pack.weapons.length > 1}
+                onChange={updateProject}
+              />
               <RecordEditor
                 project={project}
                 onChange={updateProject}

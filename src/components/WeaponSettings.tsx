@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { WeaponOptionsPanel } from './WeaponOptionsPanel';
 import { WeaponProject, FireType } from '../types/weapon';
 import { STOCK_BY_ID, STOCK_WEAPONS, StockWeaponInfo } from '../data/stockWeapons';
-import { ID_MAX, isUnderNamespace, slugId } from '../utils/weaponId';
+import { ID_MAX, isUnderNamespace, slugId, weaponIdSuffix } from '../utils/weaponId';
 import { TooltipLabel, UnitNumberInput, buildTooltip } from './RecordEditor';
 import { NumberInput } from './NumberInput';
 import { recordField } from '../utils/recordField';
@@ -22,6 +22,13 @@ interface WeaponSettingsProps {
   project: WeaponProject;
   /** The bundle this weapon is in. Its id is the namespace a weapon id lives under. */
   bundleId?: string;
+  /**
+   * True when the bundle holds more than one weapon: the bundle id is then the
+   * namespace and only the weapon's own last segment is the author's to type
+   * (`wfws.gravnade.windnade`). A bundle of one **is** its weapon, so there the
+   * whole id stays editable and the bundle follows it.
+   */
+  lockIdNamespace?: boolean;
   onChange: (updated: Partial<WeaponProject>) => void;
 }
 
@@ -102,12 +109,28 @@ const FAMILY_GROUPS: { label: string; families: StockWeaponInfo['family'][] }[] 
   { label: 'Specials & Utilities', families: ['special'] },
 ];
 
-export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleId, onChange }) => {
+export const WeaponSettings: React.FC<WeaponSettingsProps> = ({
+  project,
+  bundleId,
+  lockIdNamespace = false,
+  onChange,
+}) => {
   const iconInputRef = useRef<HTMLInputElement>(null);
   const [showHandling, setShowHandling] = useState(false);
   // The id box keeps the typed text (spaces and capitals included) while it is
   // being edited, and shows the slugged id again on blur.
   const [idDraft, setIdDraft] = useState<string | null>(null);
+  // The leaf box of a bundle weapon, same rule for the part after the bundle id.
+  const [idLeafDraft, setIdLeafDraft] = useState<string | null>(null);
+  // A weapon of a bundle of more than one can only name its own last segment:
+  // the bundle id (`wfws.gravnade`) is the namespace every component id has to
+  // live under, and `validateBundle` refuses the whole export for a weapon
+  // outside it, so the first segments are the Bundle Settings card's to edit.
+  const idPrefix = bundleId ? `${bundleId}.` : '';
+  const idLocked = lockIdNamespace && !!bundleId;
+  // A weapon whose id is the bundle id itself (a bundle of one grown by adding
+  // weapons) has no leaf yet: the box asks for one instead of repeating the id.
+  const idLeaf = project.id.trim() === (bundleId ?? '').trim() ? '' : weaponIdSuffix(project.id);
 
   const selectedSlot = STOCK_BY_ID.get(project.slot);
   const selectedDonor = STOCK_BY_ID.get(project.based_on);
@@ -319,26 +342,59 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({ project, bundleI
               <TooltipLabel
                 label="Weapon ID"
                 code="id"
-                desc="The component id this weapon ships under. The bundle id is its namespace, so a weapon in a bundle is <bundle id>.<weapon>; the engine refuses two bundles that claim the same id."
+                desc={
+                  idLocked
+                    ? `The part of this weapon's component id after \`${idPrefix}\`. The bundle id is the namespace every weapon of a bundle lives under, so it is edited in Bundle Settings and this box only names the weapon.`
+                    : 'The component id this weapon ships under. The bundle id is its namespace, so a weapon in a bundle is <bundle id>.<weapon>; the engine refuses two bundles that claim the same id.'
+                }
                 htmlFor="ws-component-id"
               />
-              <input
-                id="ws-component-id"
-                type="text"
-                value={idDraft ?? project.id}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  setIdDraft(raw);
-                  // Clearing the box keeps the last id: an empty id is not one,
-                  // and a silent fallback would rename the weapon mid-typing.
-                  if (!raw.replace(/[^a-zA-Z0-9_.-]/g, '').replace(/[._-]/g, '')) return;
-                  onChange({ id: slugId(raw) });
-                }}
-                onBlur={() => setIdDraft(null)}
-                placeholder="my_mod.moon_grenade"
-                maxLength={ID_MAX}
-                className={fieldInput}
-              />
+              {idLocked ? (
+                <div
+                  className="flex items-stretch overflow-hidden rounded-lg border border-stone-200 bg-white focus-within:ring-2 focus-within:ring-forge-500 dark:border-stone-700 dark:bg-stone-900"
+                  title={`Every weapon of this bundle lives under its id, so ${idPrefix} is fixed and set in Bundle Settings.`}
+                >
+                  <span className="flex max-w-[62%] items-center truncate border-r border-stone-200 bg-stone-50 px-2 font-mono text-xs text-stone-500 dark:border-stone-700 dark:bg-stone-950/50 dark:text-stone-400">
+                    {idPrefix}
+                  </span>
+                  <input
+                    id="ws-component-id"
+                    type="text"
+                    aria-label="Weapon id, the part after the bundle id"
+                    value={idLeafDraft ?? idLeaf}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setIdLeafDraft(raw);
+                      // An empty leaf is not an id: the box falls back to the
+                      // current one rather than renaming mid-typing.
+                      if (!raw.replace(/[^a-zA-Z0-9_.-]/g, '').replace(/[._-]/g, '')) return;
+                      onChange({ id: `${idPrefix}${slugId(raw)}` });
+                    }}
+                    onBlur={() => setIdLeafDraft(null)}
+                    placeholder={weaponIdSuffix(bundleId) || 'weapon'}
+                    maxLength={Math.max(8, ID_MAX - idPrefix.length)}
+                    className="w-full min-w-0 bg-transparent px-2 py-1.5 font-mono text-xs text-stone-900 focus:outline-hidden dark:text-white"
+                  />
+                </div>
+              ) : (
+                <input
+                  id="ws-component-id"
+                  type="text"
+                  value={idDraft ?? project.id}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setIdDraft(raw);
+                    // Clearing the box keeps the last id: an empty id is not one,
+                    // and a silent fallback would rename the weapon mid-typing.
+                    if (!raw.replace(/[^a-zA-Z0-9_.-]/g, '').replace(/[._-]/g, '')) return;
+                    onChange({ id: slugId(raw) });
+                  }}
+                  onBlur={() => setIdDraft(null)}
+                  placeholder="my_mod.moon_grenade"
+                  maxLength={ID_MAX}
+                  className={fieldInput}
+                />
+              )}
               {bundleId && !isUnderNamespace(project.id, bundleId) && (
                 <p className="mt-1 flex items-start gap-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />

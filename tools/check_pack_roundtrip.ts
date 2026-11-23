@@ -846,6 +846,50 @@ const DECLARED_HOLD = /\[sprites\."[^"]*\/hold\.png"\]/g;
     editedPack.name === 'Grenade' && editedPack.weapons[1].name === 'Edited',
     `${editedPack.name}/${editedPack.weapons[1].name}`,
   );
+
+  // A weapon written into a bundle of more than one lives under the bundle's id.
+  // An import and a typed id both arrive with the source's own id
+  // (`wfws.windnade`, from a `.wep` or a `.pxl`), which is exactly the id
+  // `validateBundle` refuses ("wfws.windnade is not under the bundle's id
+  // (wfws.gravnade)"), so the write folds it back and moves its art with it.
+  const gravNade = bareProject({
+    id: 'wfws.gravnade',
+    name: 'GravNade',
+    hold: {
+      enabled: true,
+      sheet: 'sprites/windnade/hold.png',
+    } as WeaponProject['hold'],
+  });
+  const gravPack: PackProject = {
+    ...pack([gravNade, bareProject({ id: 'wfws.gravnade.hand_grenade', name: 'Hand Grenade' })]),
+    id: 'wfws.gravnade',
+  };
+  const importedOverSlot = withWeapon(gravPack, 0, { ...gravNade, id: 'wfws.windnade' });
+  ok(
+    'a weapon written into a bundle is folded under its id',
+    importedOverSlot.weapons[0].id === 'wfws.gravnade.windnade',
+    importedOverSlot.weapons.map((weapon) => weapon.id).join(', '),
+  );
+  ok(
+    'and the art it declares moves to the new folder',
+    importedOverSlot.weapons[0].hold?.sheet === 'sprites/windnade/hold.png',
+    importedOverSlot.weapons[0].hold?.sheet,
+  );
+  ok(
+    'an id already under the namespace is left alone',
+    withWeapon(gravPack, 1, { ...gravPack.weapons[1], id: 'wfws.gravnade.frag_grenade' }).weapons[1]
+      .id === 'wfws.gravnade.frag_grenade',
+  );
+  ok(
+    'and a weapon whose id is the bundle id is not renamed by an unrelated edit',
+    withWeapon(gravPack, 0, { ...gravNade, name: 'GravNade 2' }).weapons[0].id === 'wfws.gravnade',
+  );
+  // A bundle of one is that weapon, so the bundle follows the id instead.
+  ok(
+    'a bundle of one keeps the imported id and takes it as its own',
+    withWeapon(singleWeaponPack(bareProject()), 0, { ...bareProject(), id: 'wfws.windnade' }).id ===
+      'wfws.windnade',
+  );
 }
 
 // ---- a broken pack is refused by name -------------------------------------

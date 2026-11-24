@@ -2,7 +2,7 @@
 
 0.4.0 adds the effect emitter (`fx.emitter`), the trail's `noise` and the
 `rainbow` mode on a burst, an arc, a ring, a trail and an emitter. 0.4.1 fixes
-`fx.emitter{ spark = true }` (a flag is not an override table, and indexing one
+`fx.emitter{ spark = true }` (a flag isn't an override table, and indexing one
 threw, taking the caller's `on_fire` down) and adds `ring.track`. 0.4.2 makes
 each installing mod draw only the effects it created, so a shared library loaded
 once no longer draws another mod's spark under a claim that has no spark sheet,
@@ -48,7 +48,7 @@ caller created, which is why a bundle must call it from every component that
 makes effects (`wa._mod` is the component's id). A bundle that installs once
 from its first weapon is still fine: an effect made by another component of the
 same bundle is assigned to that installer and logged once. Without that, an
-effect with no callback is not an error, it is simply invisible.
+effect with no callback isn't an error, it is invisible.
 
 `trail.BEAM` and `trail.GLOW` are qualified `wf-lib/effects/...` asset paths.
 Put both in the component's `sprites` table; the engine resolves them from this
@@ -123,7 +123,7 @@ module itself take `rainbow = true` or `rainbow = { speed, offset }`, PX's
 (centred at 180, so the colour never goes black) and the clock is the
 simulation's own frame counter, never a draw callback's: two peers tint the
 same frame the same way. `fx.emitter` propagates its own `rainbow` to whichever
-parts do not set one, which is what PX's single manager switch does.
+parts don't set one, which is what PX's single manager switch does.
 
 ## Emitter
 
@@ -156,7 +156,7 @@ local e = fx.emitter{
 - `ring.track = true` points the bend along the owner's heading
   (`wa.math.atan(vy, vx)`), so a lens ring faces where the round is going: the
   long axis is `x` of the ellipse. `ring.angle` then becomes an offset from that
-  heading, and `ring.speed` is not applied, because the heading is written every
+  heading, and `ring.speed` isn't applied, because the heading is written every
   frame and a spin could not accumulate. A ring whose owner has no velocity (a
   muzzle emitter moved by `move_to`) keeps its own angle and spins.
 - `rainbow`, `ring.rainbow`, `trail.rainbow` as above. `trail = false` keeps the

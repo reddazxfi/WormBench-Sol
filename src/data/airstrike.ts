@@ -464,7 +464,7 @@ export const AIRSTRIKE_PRESETS: AirstrikePreset[] = [
   {
     id: 'direct_sky',
     label: 'Direct Sky Barrage',
-    summary: 'No plane — spawns ripple salvo directly from the sky on click',
+    summary: 'No plane: spawns a ripple salvo from the sky on click',
     apply: (cur) => {
       const base = cloneAirstrikeConfig(DEFAULT_AIRSTRIKE);
       return {

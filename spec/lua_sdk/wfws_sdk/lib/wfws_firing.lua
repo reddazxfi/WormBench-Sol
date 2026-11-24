@@ -619,10 +619,10 @@ end
 --
 -- Absorbs and upgrades `px.fire_seq`:
 --   * `first_delay_ms` : optional pre-shot buffer before shot 1 fires
---                        (e.g. 300 ms = 15 frames while holding firing pose)
---   * `interval_ms`    : default gap between subsequent shots (e.g. 20 ms = 1 f)
+--                        (300 ms is 15 frames while holding firing pose)
+--   * `interval_ms`    : default gap between subsequent shots (20 ms is 1 f)
 --   * `intervals_ms`   : optional array of manual per-shot delays in ms:
---                        e.g. { 300, 20, 20, 20 } or { 200, 120, 60, 20 }.
+--                        { 300, 20, 20, 20 } or { 200, 120, 60, 20 }.
 --                        Entry [i] is the wait before shot i; the last entry
 --                        repeats for any remaining shots.
 --   * `count`          : total shots to fire
@@ -1161,7 +1161,7 @@ local function beam_point_at(b, idx, t, head_len)
     return base_x + anx * bow, base_y + any * bow
   end
   local nx, ny = -b.dy, b.dx
-  -- jagged, as a fraction of the whole bolt so the shape does not stretch
+  -- jagged, as a fraction of the whole bolt so the shape doesn't stretch
   -- while the head grows
   local ta = (b.len > 0) and (t * head_len / b.len) or t
   local j = beam_jag(b, ta)
@@ -1757,7 +1757,7 @@ local function ensure_beam_renderer()
 
   -- `pool[from..to]` as one ribbon, with `u` spread over `u0..u1` across that
   -- span. The band's own sheets are uniform along x, so rewriting a point's
-  -- `u` here cannot change a pass drawn before it.
+  -- `u` here can't change a pass drawn before it.
   local function emit_ribbon_range(pool, from, to, sprite, depth, visibility, u0, u1)
     local count = to - from + 1
     if count < 2 then return end
@@ -2029,7 +2029,7 @@ local function ensure_beam_renderer()
             end
 
             -- Branches to struck bodies (`hit_branches`, off by default: the
-            -- preview has no such pass, so a beam that damages a worm does not
+            -- preview has no such pass, so a beam that damages a worm doesn't
             -- grow a limb the author never asked for)
             if b.hit_branches then
               for hi = 1, #b.hits_list do
@@ -2105,7 +2105,7 @@ function M.beam(ev, spec)
   if look == "trail" then
     -- `wa.draw.trail` is a projectile trail: its width ramps with a point's
     -- age along the trail and its tail sheds points, so a ray fed into it can
-    -- only look like a round dragging a smear, and it cannot grow or retract
+    -- only look like a round dragging a smear, and it can't grow or retract
     -- the way `BeamPreview` (and the author's card) shows. A beam is a ribbon;
     -- the key stays accepted so an older bundle keeps loading.
     if not BEAM_TRAIL_LOGGED[weapon_id] then

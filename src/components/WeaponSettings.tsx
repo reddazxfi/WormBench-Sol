@@ -339,7 +339,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({
                 type="text"
                 value={project.name}
                 onChange={(e) => onChange({ name: e.target.value })}
-                placeholder="e.g. Moon Grenade"
+                placeholder="Moon Grenade"
                 maxLength={40}
                 className={fieldInput}
               />
@@ -437,7 +437,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({
         <div>
           <TooltipLabel
             label="Description"
-            desc="Short weapon summary shown in the WormForge mod loader."
+            desc="One plain sentence on what the weapon does for the player, shown in the mod loader. No credits, version requirements or implementation details."
             htmlFor="ws-description"
           />
           <input
@@ -546,7 +546,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({
             <TooltipLabel
               label="Inventory Slot"
               code="slot"
-              desc="Stock weapon slot replaced in the game's weapon panel (does not copy physics)."
+              desc="Stock weapon slot replaced in the game's weapon panel (doesn't copy physics)."
               htmlFor="ws-slot"
             />
             <select
@@ -825,7 +825,7 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({
                 <TooltipLabel
                   label="Shots per Turn"
                   code="handling.shots"
-                  desc="How many times the weapon fires before ending use (e.g. Shotgun = 2)."
+                  desc="How many times the weapon fires before ending use (like Shotgun = 2)."
                 />
                 <NumberInput
                   min={1}

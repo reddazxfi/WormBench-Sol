@@ -51,7 +51,7 @@ local function rainbow_of(v)
 end
 
 -- PX's HueToRGBLocal, centred at 180 so the colour never goes black. `wa.math`
--- is WA's own sine table, so two peers agree on the last bit (lockstep).
+-- is the WA sine table, so two peers agree on the last bit (lockstep).
 local function hue_hex(hue, f)
   hue = hue - math.floor(hue)
   local rad = hue * 6.2831853

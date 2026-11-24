@@ -194,7 +194,7 @@ end
 -- the engine rotates and places. Nothing is pre-composited: `(32*3 + 10*3)`
 -- frames per weapon would be the alternative.
 --
--- One hold field is PX's own rule: `keep_while_firing` is false for all five
+-- One hold field is PX's rule: `keep_while_firing` is false for all five
 -- weapons here, because PX draws no weapon in `WS_FIRED` unless the weapon names
 -- a firing sprite (`spriteFiring = Params->FSprite`, `worms_anims_script.txt:101`,
 -- :121, :263) -- none of these five does, so his own `else` sets `sprite = 0`

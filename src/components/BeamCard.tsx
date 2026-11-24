@@ -898,12 +898,12 @@ export const BeamCard: React.FC<BeamCardProps> = ({
                       <TooltipLabel
                         label="Custom Wind-Up Ramp (ms)"
                         code="intervals_ms"
-                        desc="Optional comma-separated delays per shot (e.g. 300, 180, 100, 40). Last value repeats."
+                        desc="Optional comma-separated delays per shot (like 300, 180, 100, 40). Last value repeats."
                       />
                       <input
                         type="text"
                         value={seq.customIntervalsMs}
-                        placeholder="e.g. 300, 180, 100, 40"
+                        placeholder="300, 180, 100, 40"
                         onChange={(e) => updateSeq({ customIntervalsMs: e.target.value })}
                         className={fieldInput}
                       />
@@ -1114,7 +1114,7 @@ export const BeamCard: React.FC<BeamCardProps> = ({
                     <TooltipLabel
                       label="Draw Style"
                       code="look"
-                      desc="Both are the additive ribbon painter, the one the preview draws. A beam is a ray: the engine's projectile trail ramps its width with a point's age and sheds its tail, which cannot grow or retract, so 'trail' is kept only so an older bundle still loads."
+                      desc="Both are the additive ribbon painter, the one the preview draws. A beam is a ray: the projectile trail widens as a point ages and sheds its tail, so it can't grow or retract. 'trail' is kept only so an older bundle still loads."
                     />
                     <select
                       value={beam.look}
@@ -1590,7 +1590,7 @@ export const BeamCard: React.FC<BeamCardProps> = ({
                 )}
                 {FIRE_SUBTYPES.map((s) => (
                   <option key={s.value} value={s.value}>
-                    {s.value === 8 ? '8 — Silent Pose (Recommended)' : `${s.value} — ${s.label}`}
+                    {s.value === 8 ? '8: Silent Pose (Recommended)' : `${s.value}: ${s.label}`}
                   </option>
                 ))}
               </select>

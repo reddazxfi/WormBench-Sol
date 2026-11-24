@@ -50,14 +50,14 @@ bits, each role and the `dig` overrides.
 
 `size` and `angle` are the weapon-level knobs the editor's Hold page shows
 under **Builder Parameters**: one multiplier for every sheet so one number
-resizes the whole weapon, and a rotation offset for art that does not point up
+resizes the whole weapon, and a rotation offset for art that doesn't point up
 (a sheet drawn pointing right needs `-90`). The offset is applied in the drawn
 frame and negated on a mirrored sheet, so the art points the same way on both
-sides; tracked art stays tracked and simply gains the offset.
+sides; tracked art stays tracked and gains the offset.
 
 `offset = { x, y }` is the third knob: the art nudged inside its own cell, in
 **sheet pixels**, scaled with the art (`size` times the role's `scale`). It turns
-with the drawn angle and mirrors with the side, so a sheet whose pivot is not
+with the drawn angle and mirrors with the side, so a sheet whose pivot isn't
 its centre (a hammer head above the handle, a muzzle 4 px off) stays correct at
 every heading. A role's own `offset` replaces the weapon-wide one. Being an art
 fix, it never reaches the record.
@@ -72,7 +72,7 @@ cycling or digging round leaves its picture in the land at the angle it was
 drawn at; a round this builder never drew (a native sheet, or an id it has
 forgotten) returns `nil` and the caller falls back to the velocity heading. The
 angle is the world rotation, without the weapon-wide `angle` offset: that offset
-corrects art that does not point up, and a stamp's own art does.
+corrects art that doesn't point up, and a stamp's own art does.
 
 `sb.role(missile_id)` is the other half: `"main"`, `"bit"` or a `roles` entry's
 name, the identity the classifier decided on that missile's first frame. It is
@@ -128,10 +128,10 @@ sb.flight(ctx, {
 
 ### Identity
 
-The classifier does not use `m.sprite` for identity. That field is WA's render
+The classifier doesn't use `m.sprite` for identity. That field is WA's render
 slot, not the cluster pellet index: a round that hides its own art can carry the
 cluster sprite there (a cluster grenade's main missile came out with
-`clustlet`), and the pellet flag (`MissileEntity+0x150`) is not exposed to Lua.
+`clustlet`), and the pellet flag (`MissileEntity+0x150`) isn't exposed to Lua.
 The reliable signal is timing:
 
 - the **first** missile of the weapon is the round;
@@ -170,7 +170,7 @@ sprite fields:
 | dig | `dig.dive_sprite`, `dig.sprite_1..3` |
 
 Each active state needs a **distinct** nonzero id. The editor assigns one when
-the record field is empty and warns about duplicates. Roaming is not here: its
+the record field is empty and warns about duplicates. Roaming isn't here: its
 walk/flight/gas art are separate record fields, not `m.sprite`.
 
 ### Digging (no state, no sheet)
@@ -186,7 +186,7 @@ underground animation and transform (`anim`, `spin`, `anim_speed`, `cyclical`,
 `pingpong`, `scale`, `mirror`, `z`) while digging, reverting cleanly in open air:
 `dig = { anim = "fast", spin = 2.5, anim_speed = 1.8, probe = 6, spread = 3, hold = 3, need = 2 }`.
 
-A weapon cannot start digging later in its life: the action is fixed when the
+A weapon can't start digging later in its life: the action is fixed when the
 record is installed, so "is this missile digging" is purely terrain contact.
 
 ### Homing (timed)
@@ -208,7 +208,7 @@ sb.flight(ctx, {
 The game is a 50 Hz lockstep, so one frame is exactly 20 ms on every machine
 no guessing and no desync. The generator zeroes `missile.homing.sprite` /
 `clusters.bit.homing.sprite` while the builder owns the art, so WA's own homing
-sprite cannot draw underneath.
+sprite can't draw underneath.
 
 ### `anim = "roam"`: the walking preset
 
@@ -240,7 +240,7 @@ roles keep their own `anim`.
 A roaming animal walks until the turn's player presses Space, and only then
 flies. The walk pose is the record `sprite` (normal-flight art only) and the
 flown art is `sheep.flight_1/2`, which the generator zeroes (to the unassigned
-sentinel 699, a zero would disable the takeoff) so WA's flown sprites do not
+sentinel 699, a zero would disable the takeoff) so WA's flown sprites don't
 draw underneath.
 
 The walk has two routes:
@@ -251,7 +251,7 @@ The walk has two routes:
   needs no exception for it; the builder leaves the animal to WA until the
   takeoff: the turn player's synchronized Space edge, or WA moving the flown
   sentinel into the render slot.
-- **`roam = true`**, the pose cannot draw (unset, a bundle path, or an imported
+- **`roam = true`**, the pose can't draw (unset, a bundle path, or an imported
   Project X number such as `34464`, which WA reads as an unassigned pack slot).
   The generator zeroes the record `sprite` and the builder draws the animal from
   the first frame with the role's own animation.
@@ -288,7 +288,7 @@ Exactly two are required. The walking and gas poses stay record fields.
 ### Native hand-back
 
 A state with `native = true` drops the follower and re-applies the last signal
-id to `m.sprite`. For a *primary* that id is not the record's own art (the
+id to `m.sprite`. For a *primary* that id isn't the record's own art (the
 generator zeroed it to classify), so native is only safe while the record still
 names a real sprite; it is being replaced by per-feature native routes (dig:
 leave the record's indexes alone; roam: `sheep_sprites`; homing: the homing
@@ -298,7 +298,7 @@ sprite field).
 
 WA draws the gun on its aiming frames itself (`crates/engine/src/worm_hold.rs`),
 from the claim's `hold =` table. That table has no field for an offset, so
-`sb.hold` builds it and, only when a feature needs something the engine cannot
+`sb.hold` builds it and, only when a feature needs something the engine can't
 express, takes the aiming poses over with quads of the same sheet:
 
 ```lua
@@ -380,7 +380,7 @@ engine's copy, which is the one visible limit of taking the aim pose over.
 WA's sweep is 180 degrees: 0 is straight down, 0.5 level, 1 straight up, and both
 ends are where a held weapon looks worst, because the art leaves its cell and a
 cut aimed vertically reads as noise. WA's own bat pipes its aim for that reason,
-and a pack cannot, so the layer clamps what it draws instead:
+and a pack can't, so the layer clamps what it draws instead:
 
 ```lua
 aim_clamp = { up = 60, down = 60 },  -- degrees either side of level, 0 to 90
@@ -437,7 +437,7 @@ extra_hand = {
 - `offset` is multiplied by `scale` alone, exactly like the first hand's
   `hand_offset`, so changing the cell never moves the grip off the weapon. The
   editor writes `size = 60` because its two hands are always 60 px cells.
-- It carries a swing's `dx`/`dy` with the weapon, so a two-handed swing does not
+- It carries a swing's `dx`/`dy` with the weapon, so a two-handed swing doesn't
   slide apart, and it is skipped on the echo ghosts and on the firing pass (the
   firing role has its own hand).
 - It forces the layer (`hold_needs_lua`), and its sheet has to be in the claim
@@ -510,7 +510,7 @@ arithmetic the editor's preview runs.
   custom animation, so nothing the engine does may end it: WA's own worm states
   are not the clock. A taken worm stays where it is, WA's fire is eaten, and the
   turn timer stops for the clip, so a swing of any length plays in full and a
-  worm cannot walk away mid-cut. The aim and facing at the press are latched for
+  worm can't walk away mid-cut. The aim and facing at the press are latched for
   the whole clip (a swing is one committed motion). When it ends the worm is
   given back with `worm:release(0, 0)`; `finish = "end_turn"` then ends the turn.
 - **The art is drawn while the swing runs, not while the worm aims.** The draw
@@ -518,7 +518,7 @@ arithmetic the editor's preview runs.
   worm out of its aim pose (which is what stopped a firing animation after a
   single frame), at full size (there is no 20-frame draw-out to replay), with the
   engine's own sheet muted underneath.
-- **A worm handle is not comparable.** `wa.worms.all()` builds a new
+- **A worm handle isn't comparable.** `wa.worms.all()` builds a new
   `WormHandle` userdata on every call and the engine defines no `__eq`, so
   `st.worm == w` is false in the next frame even for the same worm. The swing
   keeps the handle for the calls it has to make (`take`, `release`, the strike)
@@ -533,7 +533,7 @@ arithmetic the editor's preview runs.
   premultiplies it, so fading needs no blend mode). The hand carries `dx`/`dy`
   so it stays with the weapon. `fade = false` on a key makes the opacity step
   like a frame does: it holds the previous key's alpha for the segment and lands
-  on this key's value, so a pose that returns the weapon to the worm does not
+  on this key's value, so a pose that returns the weapon to the worm doesn't
   fade out on the way home.
 - **Easing is the editor's own set:** `linear`, `in_quad`, `out_quad`,
   `inout_quad`, `in_cubic`, `out_cubic`, `inout_cubic`, `out_back`,
@@ -638,14 +638,14 @@ worms.
   `victim:hurt{ amount = 24, vx = vx, vy = vy }` or, for an electrical strike,
   `zap.hurt_electric(victim, 24, { push_x = vx, push_y = vy, retain = true })`.
   Damage, kind, sound and any extra effect stay in the weapon, so the SDK needs no
-  new hit kinds. A callback that raises is `pcall`ed, so one broken weapon cannot
+  new hit kinds. A callback that raises is `pcall`ed, so one broken weapon can't
   take the 50 Hz message down.
 - `push = "aim"` throws along the scan vector scaled by `power`; a `{ x, y }`
   table is a fixed throw. `lift` is added to either (positive is up).
 - **It needs the swing**, and it forces the layer: `hold_needs_lua` is true for
   `melee`, so `M.hold` registers the entry (and the swing clock) even for a hold
   whose art is centred. Nothing else about the hold changes.
-- **The record's own fire type does not matter.** The claim eats WA's fire and
+- **The record's own fire type doesn't matter.** The claim eats WA's fire and
   the swing takes the worm, so a melee weapon is never played by WA's own
   handler. The editor still bases it on the Sheep Launcher rather than WA's
   Baseball Bat: a special melee subtype resolves its whole hit inside one native
@@ -658,7 +658,7 @@ worms.
 These are engine behaviours, not static checks:
 
 - `m.sprite` is writable in `pre`, and WA draws it again after `native = true`.
-- `m.sprite` is the *flight* sprite only: WA does not write homing/dig/gas
+- `m.sprite` is the *flight* sprite only: WA doesn't write homing/dig/gas
   sprites into it, so `sig` matching is a legacy path. Time the state or probe
   for it instead.
 - Dig: the probes find the crater walls; watch that the animation starts at the
@@ -686,6 +686,6 @@ Unified lockstep firing engine (API 5) replacing `px.fire_seq`, adding a native 
   - **Phases**: Optional pre-fire charge `buffer` frames (tracks live aim and plays optional `charge_sound`), `reach = "instant" | "progressive"` (`grow` + `grow_ease`), `hold`, and `fade` (`dissipate = "fade" | "retract" | "dissolve" | "none"`).
   - **Hurt shapes & throttling**: `hits = "corridor"` (parallel band of half-width `width`), `"cone"` (expanding cone starting at `width0` opening at `cone_deg`), `"first"` (swept circle stopping at nearest wall or body), or `"none"` (visual only). Progressive beams gate damage strictly to the advancing `head`. `hit_cooldown = 0` latches once per beam per body; `hit_cooldown > 0` throttles repeated ticks to every N frames during `grow`/`hold`.
   - **Damage & burn split**: `interact = "hit"` calls API 5 `worm:hit{ amount, vx, vy, kind }`, `mine:arm(400)`, and `obj:hit(amount, vx, vy, kind)`. `interact = "burn"` calls `worm:hit{ amount, react = false }` on worms only (refuses `kind` and nonzero `push`). Optional `on_hit(body, amount, dx, dy, beam)` lets weapon files attach `px.electric` taze holds or `effects.sdk` sparks without adding library dependencies.
-  - **Rendering**: one painter, the additive ribbon (core + glow passes scaling RGB for fades, forks, the softened ends, the tip flare, the eight impact rays, `straight`/`arc`/`jagged`, flicker). `look = "trail"` is accepted and drawn as a ribbon as well: `wa.draw.trail` is a *projectile* trail whose width ramps with a point's age and whose tail sheds points, so a ray fed into it looks like a round dragging a smear and cannot grow or retract, which is not the look the card previews. The painter is the editor's `BeamPreview` maths, so the two agree frame for frame: the glow pass runs at 0.55 alpha under the full-strength core, there is no third white filament pass, the tip flare is `max(8, tipW * 0.9)` of the radial orb, and the tip throws the same eight back-scattered ticks the preview draws. The ribbon is drawn at **3x `points`** (`points` is the bolt's kink count) and the end taper never goes below **45% of the band's width**, because WormForge samples point-wise: a quad under one pixel wide is a dotted line of bright pixels at the muzzle and the tip, which reads in game as a lumpy start on a straight beam.
+  - **Rendering**: one painter, the additive ribbon (core + glow passes scaling RGB for fades, forks, the softened ends, the tip flare, the eight impact rays, `straight`/`arc`/`jagged`, flicker). `look = "trail"` is accepted and drawn as a ribbon as well: `wa.draw.trail` is a *projectile* trail whose width ramps with a point's age and whose tail sheds points, so a ray fed into it looks like a round dragging a smear and can't grow or retract, which isn't the look the card previews. The painter is the editor's `BeamPreview` maths, so the two agree frame for frame: the glow pass runs at 0.55 alpha under the full-strength core, there is no third white filament pass, the tip flare is `max(8, tipW * 0.9)` of the radial orb, and the tip throws the same eight back-scattered ticks the preview draws. The ribbon is drawn at **3x `points`** (`points` is the bolt's kink count) and the end taper never goes below **45% of the band's width**, because WormForge samples point-wise: a quad under one pixel wide is a dotted line of bright pixels at the muzzle and the tip, which reads in game as a lumpy start on a straight beam.
   - **Softened ends**: `end_sprite` (the editor ships `beam_end.png`, the glow sheet with one faded side) is the band's *own* first and last piece: the glow body is shifted inward by `cap_len` at each end and the two pieces read the sheet with the fade outward and the bright side facing the body, so nothing is drawn outside the beam. Appending the sheet outside the band hung over the worm at the muzzle and smeared past the impact. The core fades and narrows into the same span, and the ribbon is drawn at three times its `points` so an end fade has geometry to resolve (16 points on a long beam are ~29 px apart, which left a one-quad notch at the muzzle).
-  - **Jagged is a shape with corners, not noise and not a wave**: `path = "jagged"` bends along one table of kinks (`JAG_N` entries, seeded once at spawn through `beam_hash01`, one smoothing pass, ends pinned to 0) read by linear interpolation at the point's place on the whole bolt, so the corners stay put for the beam's life and a growing bolt reveals more of the same shape. Two seeded sines were smooth by construction (a sine has no corner), which is why a bolt bent that way stops reading as an electric arc. Forks carry their own seven-point table seeded from their phase and reach `(1 - t) * head * 0.3`, so a close-range shot has short side bolts. Re-rolling per point per frame turns a bolt into a sawtooth that shimmers. A cap drawn *over* the band cannot work: additive blending cannot subtract, so it steps up at both of its own edges. The core converges into the ends over the same span the endpoint sheet covers, since the pieces hide the band's edge but not a bright filament ending square. `hit_branches = true` adds a branch to each struck body, which the preview does not show and which therefore defaults off. Strict spec validation rejects unknown keys and unsupported combinations.
+  - **Jagged is a shape with corners, not noise and not a wave**: `path = "jagged"` bends along one table of kinks (`JAG_N` entries, seeded once at spawn through `beam_hash01`, one smoothing pass, ends pinned to 0) read by linear interpolation at the point's place on the whole bolt, so the corners stay put for the beam's life and a growing bolt reveals more of the same shape. Two seeded sines were smooth by construction (a sine has no corner), which is why a bolt bent that way stops reading as an electric arc. Forks carry their own seven-point table seeded from their phase and reach `(1 - t) * head * 0.3`, so a close-range shot has short side bolts. Re-rolling per point per frame turns a bolt into a sawtooth that shimmers. A cap drawn *over* the band can't work: additive blending can't subtract, so it steps up at both of its own edges. The core converges into the ends over the same span the endpoint sheet covers, since the pieces hide the band's edge but not a bright filament ending square. `hit_branches = true` adds a branch to each struck body, which the preview doesn't show and which therefore defaults off. Strict spec validation rejects unknown keys and unsupported combinations.

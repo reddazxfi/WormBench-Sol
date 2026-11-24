@@ -315,8 +315,8 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
           <p className="mt-1 max-w-2xl text-xs text-stone-500 dark:text-stone-400">
             Hands cursor clicks to <span className="font-mono">wf-lib/wfws_airstrike</span> so you
             control aircraft speed curves, ease-in/slow/recover, multi-part vehicles, strafing runs,
-            direct sky or cursor spawns, and arbitrary payloads — while unlocking custom flight art,
-            ribbon trails, explosion bursts, emitters, and terrain stamps for missile payloads.
+            direct sky or cursor spawns, and arbitrary payloads. Missile payloads also unlock
+            custom flight art, ribbon trails, explosion bursts, emitters, and terrain stamps.
           </p>
         </div>
 
@@ -367,7 +367,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                 Quick Presets
               </span>
               <span className="text-[10px] text-stone-400 dark:text-stone-500">
-                Starting points — tweak any parameter below
+                Starting points. Tweak any parameter below.
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -410,7 +410,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                 >
                   <option value="offmap">Fly In From Map Side (offmap)</option>
                   <option value="above">Spawn Above Drop Window (above)</option>
-                  <option value="payload">Direct Payload — No Plane (payload)</option>
+                  <option value="payload">Direct Payload: No Plane (payload)</option>
                 </select>
               </div>
 
@@ -1363,7 +1363,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                   <input
                     type="text"
                     value={air.payload.crate.contents}
-                    placeholder="e.g. stock.banana"
+                    placeholder="stock.banana"
                     onChange={(e) =>
                       updatePayload({ crate: { ...air.payload.crate, contents: e.target.value } })
                     }
@@ -1915,7 +1915,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <label className={labelClass}>Bank Angle — Approach (°)</label>
+                    <label className={labelClass}>Approach Bank Angle (°)</label>
                     <NumberInput
                       min={-45}
                       max={45}
@@ -1927,7 +1927,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                     />
                   </div>
                   <div>
-                    <label className={labelClass}>Bank Angle — Release (°)</label>
+                    <label className={labelClass}>Release Bank Angle (°)</label>
                     <NumberInput
                       min={-45}
                       max={45}

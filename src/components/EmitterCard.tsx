@@ -281,8 +281,8 @@ export function EmitterCard({ project, onChange }: CardProps) {
                 <p className="text-[11px] leading-snug text-stone-700 dark:text-stone-300">
                   Spawns when the aircraft enters (<code className="font-mono">effects.on_start</code>)
                   and tracks the plane&apos;s hull and velocity until it exits, crashes, or finishes.
-                  Use negative X offset (e.g. <code className="font-mono">-24</code>) for tail exhaust
-                  or positive X for the nose — it mirrors automatically with flight direction.
+                  Use a negative X offset (like <code className="font-mono">-24</code>) for tail exhaust,
+                  or a positive X for the nose. It mirrors automatically with the flight direction.
                 </p>
                 {roundOk && (
                   <label className="flex cursor-pointer items-start gap-2">
@@ -297,7 +297,7 @@ export function EmitterCard({ project, onChange }: CardProps) {
                       <strong className="font-semibold text-stone-900 dark:text-white">
                         Also attach to dropped missile rounds
                       </strong>{' '}
-                      — each dropped bomb carries its own emitter too.
+                      Each dropped bomb carries its own emitter too.
                     </span>
                   </label>
                 )}
@@ -910,7 +910,7 @@ export function EmitterCard({ project, onChange }: CardProps) {
                   <Toggle
                     id="emitter-ring-track"
                     label="Track Heading"
-                    hint="Point the bend along the owner's direction of travel (the atan2 of its velocity) instead of a fixed angle, so a lens ring faces where the round is going. Spin is not used while it tracks, and a muzzle emitter has no velocity, so it keeps its own angle while aiming."
+                    hint="Point the bend along the owner's direction of travel (the atan2 of its velocity) instead of a fixed angle, so a lens ring faces where the round is going. Spin isn't used while it tracks, and a muzzle emitter has no velocity, so it keeps its own angle while aiming."
                     checked={em.ring.track}
                     onChange={(track) => updateRing({ track })}
                   />

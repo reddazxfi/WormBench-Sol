@@ -63,8 +63,8 @@ export function BundleDependencies({ project, onChange }: BundleDependenciesProp
       <div className="p-4 space-y-4">
         <p className="text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
           Libraries are resolved by id from <code className="font-mono">WormForge/Mods/</code> when the match loads; the export only
-          declares them, it does not copy their files. The features above add their own entries
-          automatically, so this list is for a bundle the custom Lua uses or one this editor does not
+          declares them, it doesn't copy their files. The features above add their own entries
+          automatically, so this list is for a bundle the custom Lua uses, or one this editor doesn't
           model.
         </p>
 
@@ -134,7 +134,7 @@ export function BundleDependencies({ project, onChange }: BundleDependenciesProp
                 type="text"
                 value={draft}
                 spellCheck={false}
-                placeholder="e.g. effects.sdk"
+                placeholder="effects.sdk"
                 onChange={(e) => {
                   setDraft(e.target.value);
                   setError(null);

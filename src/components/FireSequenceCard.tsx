@@ -261,7 +261,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                 'seq-burst-size',
                 'Beams / Shot',
                 'burst_size',
-                'Simultaneous rays per discharge (e.g. 5 for a prism fan).',
+                'Simultaneous rays per discharge (like 5 for a prism fan).',
                 'burstSize',
                 { min: 1, max: 16 },
               )}
@@ -324,14 +324,14 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                   <TooltipLabel
                     label="Manual Per-Shot Cooldowns (Wind-Up Ramp)"
                     code="intervals_ms"
-                    desc="Comma-separated millisecond delays before each shot (e.g. 300, 200, 120, 60, 40 for a spin-up laser gatling). Entry 1 is the opening buffer; the last value repeats for remaining shots."
+                    desc="Comma-separated millisecond delays before each shot (like 300, 200, 120, 60, 40 for a spin-up laser gatling). Entry 1 is the opening buffer; the last value repeats for remaining shots."
                     htmlFor="seq-custom-intervals"
                   />
                   <input
                     id="seq-custom-intervals"
                     type="text"
                     value={seq.customIntervalsMs}
-                    placeholder="e.g. 300, 180, 100, 60, 40"
+                    placeholder="300, 180, 100, 60, 40"
                     onChange={(e) => update({ customIntervalsMs: e.target.value })}
                     className={inputClass}
                   />
@@ -581,7 +581,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                 'seq-burst-size',
                 'Pellets / Shot',
                 seq.engine === 'native' ? 'gun.burst_size' : 'burst_size',
-                'Rounds launched simultaneously on each shot (e.g. 5 for a shotgun spread).',
+                'Rounds launched simultaneously on each shot (like 5 for a shotgun spread).',
                 'burstSize',
                 { min: 1, max: 32 },
               )}
@@ -600,7 +600,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                   'seq-first-delay',
                   'Initial Buffer',
                   'first_delay_ms',
-                  'Animation / charge windup delay before shot 1 fires (e.g. 300 ms = 15 frames at 50 Hz). Plays While Buffering sprite.',
+                  'Animation / charge windup delay before shot 1 fires (300 ms is 15 frames at 50 Hz). Plays While Buffering sprite.',
                   'firstDelayMs',
                   { min: 0, max: 5000, step: 20, unit: 'ms' },
                 )}
@@ -629,7 +629,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                 'seq-standoff',
                 'Muzzle Standoff',
                 'standoff',
-                'Forward spawn push in pixels so rounds do not clip the firing worm.',
+                "Forward spawn push in pixels so rounds don't clip the firing worm.",
                 'standoff',
                 { min: 0, max: 200, unit: 'px' },
               )}
@@ -689,7 +689,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                       id="seq-custom-intervals"
                       type="text"
                       value={seq.customIntervalsMs}
-                      placeholder="e.g. 300, 20, 20, 20  or  240, 160, 100, 60, 20"
+                      placeholder="300, 20, 20, 20  or  240, 160, 100, 60, 20"
                       onChange={(e) => update({ customIntervalsMs: e.target.value })}
                       className={inputClass}
                     />
@@ -829,7 +829,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                   <span className="font-semibold">Auto Aim-Key Fuse</span>: this record&apos;s fuse
                   is 0 ms (grenade-style), so <code className="font-mono">wfws_firing</code>{' '}
                   automatically passes the player&apos;s 1–5 key timer (default 3000 ms) so rounds
-                  do not detonate on frame 1.
+                  don't detonate on frame 1.
                 </p>
               )}
 
@@ -989,7 +989,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                   <TooltipLabel
                     label="Actor Sprite Path (Optional)"
                     code="actor.sprite"
-                    desc="Pack sprite path (e.g. sprites/my_mod/bolt.png). Leave blank for an invisible driver actor."
+                    desc="Pack sprite path, like sprites/my_mod/bolt.png. Leave blank for an invisible driver actor."
                     htmlFor="seq-actor-sprite"
                   />
                   <input

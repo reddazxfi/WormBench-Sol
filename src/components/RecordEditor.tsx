@@ -507,7 +507,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
       <TooltipLabel
         label="Firing Animation"
         code="fires.subtype"
-        desc="Selects the stock worm firing animation and sound (e.g. Minigun firing loop or Shotgun pump). Does not change projectile physics or custom held art."
+        desc="Selects the stock worm firing animation and sound (like a Minigun firing loop or Shotgun pump). Doesn't change projectile physics or custom held art."
         htmlFor={`${idPrefix}-subtype`}
       />
       <select
@@ -515,7 +515,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
         value={String(project.specialSubtype ?? 0)}
         onChange={(e) => onChange({ specialSubtype: Number(e.target.value) })}
         title={buildTooltip(
-          'Selects the stock worm firing animation and sound. Does not change projectile physics or custom held art.',
+          'Selects the stock worm firing animation and sound. It never changes projectile physics or custom held art.',
           'fires.subtype'
         )}
         className={selectClass}
@@ -2260,7 +2260,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                       />
                       <input
                         type="text"
-                        placeholder="e.g. 0 or bazooka"
+                        placeholder="0 or bazooka"
                         value={
                           project.recordOverrides['missile.sprite'] !== undefined
                             ? String(project.recordOverrides['missile.sprite'])
@@ -2510,12 +2510,12 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 <TooltipLabel
                   label="In-Flight Loop Sound"
                   code="missile.flight_sound"
-                  desc="Continuous sound ID looped during flight (e.g. 95 for rocket hum, 0 = silent)."
+                  desc="Continuous sound ID looped during flight (95 for a rocket hum, 0 = silent)."
                 />
                 <input
                   type="number"
                   min={0}
-                  placeholder="e.g. 95 (0 = silent)"
+                  placeholder="95 (0 = silent)"
                   value={field('missile.flight_sound', '')}
                   onChange={(e) => {
                     const val = e.target.value.trim();
@@ -2534,7 +2534,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 <input
                   type="number"
                   min={0}
-                  placeholder="e.g. 42 (0 = none)"
+                  placeholder="42 (0 = none)"
                   value={field('missile.launch_sound', '')}
                   onChange={(e) => {
                     const val = e.target.value.trim();
@@ -2553,7 +2553,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                 <input
                   type="number"
                   min={0}
-                  placeholder="e.g. 110"
+                  placeholder="110"
                   value={field('missile.bounce.sound', '')}
                   onChange={(e) => {
                     const val = e.target.value.trim();
@@ -2636,7 +2636,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
             {numField('gun.bullets', 'Bullets per Trigger', 1, 'Number of sequential shots fired per trigger pull.', { min: 0, max: 50 })}
             {numField('gun.spread_deg', 'Aim Spread Cone', 0, 'Total angular spread cone centered on the aim line.', { min: 0, max: 45, unit: 'deg' })}
             {numField('gun.shot_interval_ms', 'Shot Interval', 0, 'Delay in milliseconds between consecutive shots.', { min: 0, step: 20, unit: 'ms' })}
-            {numField('gun.burst_size', 'Pellets per Shot', 0, 'Number of pellets fired at once per shot (e.g. Shotgun).', { min: 0, max: 50 })}
+            {numField('gun.burst_size', 'Pellets per Shot', 0, 'Number of pellets fired at once per shot (like the Shotgun).', { min: 0, max: 50 })}
             {numField('gun.burst_spread_deg', 'Pellet Spread Cone', 0, 'Angular spread cone within a single multi-pellet shot.', { min: 0, max: 90, unit: 'deg' })}
             {numField('gun.impact_effect', 'Impact Effect ID', 0, 'Native visual effect spawned where bullets hit.')}
             {numField('gun.explosion.bias', 'Impact Blast Bias', 0, 'Vertical elevation bias at bullet impact points.')}
@@ -2849,7 +2849,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
           <SectionHeader
             title="Custom Lua Script"
             code="on_explode, simulation hooks"
-            desc="Run custom Lua logic during game events inside wa.weapons.replace{ ... } (e.g. cutting craters or spawning extra missiles)."
+            desc="Run custom Lua logic during game events inside wa.weapons.replace{ ... } (like cutting craters or spawning extra missiles)."
             right={
               <label
                 className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${

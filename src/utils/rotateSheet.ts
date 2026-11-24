@@ -86,7 +86,7 @@ export async function buildRotationSheet(
     canvas.width = cell;
     canvas.height = cell * count;
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('This browser cannot build the sheet (no 2D canvas).');
+    if (!ctx) throw new Error("This browser can't build the sheet (no 2D canvas).");
 
     // Smoothing keeps thin diagonal edges of pixel art readable after WA's
     // palette mapping; the sheet is quantized at load either way. A terrain

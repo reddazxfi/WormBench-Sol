@@ -174,7 +174,7 @@ export const CarriedLuaPanel: React.FC<CarriedLuaPanelProps> = ({ project, onCha
 
       <div className="p-4 space-y-3.5">
         <p className="text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
-          This weapon came from a bundle with code the editor does not model, so it was carried and
+          This weapon came from a bundle with code the editor doesn't model, so it was carried and
           its own declarations came with it. Switch a block off to drop it from the export; the text
           stays here, so switching it back on restores it. Sheets and WAVs the code names travel with
           the bundle either way, because a declared path has to exist at load.
@@ -192,7 +192,7 @@ export const CarriedLuaPanel: React.FC<CarriedLuaPanelProps> = ({ project, onCha
 
         {carried.unresolved.length > 0 && (
           <p className="text-[11px] leading-snug text-rose-700 dark:text-rose-300">
-            The bundle does not declare {carried.unresolved.map((name) => (
+            The bundle doesn't declare {carried.unresolved.map((name) => (
               <span key={name} className="font-mono">{name} </span>
             ))}
             so it is nil when the hook runs. Supply it in the custom Lua, or switch the block that

@@ -154,7 +154,7 @@ export function checkLua(code: string, options: LuaCheckOptions = {}): LuaFindin
       rule: 'lua-size',
       severity: 'error',
       line: 1,
-      message: `${code.length} characters: the editor carries at most ${MAX_BYTES}, so a body this large cannot be read or written reliably.`,
+      message: `${code.length} characters: the editor carries at most ${MAX_BYTES}, so a body this large can't be read or written reliably.`,
     });
   }
   const nul = code.indexOf('\u0000');
@@ -200,7 +200,7 @@ export function checkLua(code: string, options: LuaCheckOptions = {}): LuaFindin
           name === 'random'
             ? floatForm
               ? '`math.random()` returns a float from the machine\'s own generator: it differs per peer and the match desyncs, and the engine nils the call. `wa.random()` is the raw 32-bit draw, `wa.random(a, b)` a range.'
-              : '`math.random` is not lockstep safe and the engine nils it: each peer draws a different number from its own generator, so a match desyncs and a call from the simulation raises. Use `wa.random(a, b)` for the shared draw.'
+              : '`math.random` isn\'t lockstep safe and the engine nils it: each peer draws a different number from its own generator, so a match desyncs and a call from the simulation raises. Use `wa.random(a, b)` for the shared draw.'
             : '`math.randomseed` is nil in the engine: the per-client generator is stripped, so this call raises. There is no seed to set, every draw comes from `wa.random`.',
         ...(name === 'random' && !floatForm
           ? { fix: { from: 'math.random', to: 'wa.random' } }
@@ -215,7 +215,7 @@ export function checkLua(code: string, options: LuaCheckOptions = {}): LuaFindin
       rule: 'lockstep-rng',
       severity: 'warning',
       line: lineOf(code, at),
-      message: `\`math.${name}\` is not lockstep safe: the C library result can differ between machines and desync the match. Use \`${fixTo}\`. It is silent inside \`wa.on.draw\`/\`wa.on.hud\`, where per-client drawing cannot desync anything.`,
+      message: `\`math.${name}\` isn't lockstep safe: the C library result can differ between machines and desync the match. Use \`${fixTo}\`. It's silent inside \`wa.on.draw\`/\`wa.on.hud\`, where per-client drawing can't desync anything.`,
       fix: { from: `math.${name}`, to: fixTo },
     });
   }
@@ -253,7 +253,7 @@ export function checkLua(code: string, options: LuaCheckOptions = {}): LuaFindin
         rule: 'undeclared-require',
         severity: 'error',
         line: lineOf(code, at),
-        message: `\`require("${id}")\` is not in the bundle's dependencies: the module would not resolve at load.`,
+        message: `\`require("${id}")\` isn't declared as a dependency, so the module wouldn't resolve at load.`,
       });
     }
   }
@@ -317,7 +317,7 @@ function checkBrackets(code: string, masked: string): LuaFinding[] {
             rule: 'lua-ast',
             severity: 'error',
             line: lineOf(code, i),
-            message: `Unbalanced \`${ch}\`: it does not close the \`${top?.ch ?? 'nothing'}\`${
+            message: `Unbalanced \`${ch}\`: it doesn't close the \`${top?.ch ?? 'nothing'}\`${
               top ? ` on line ${lineOf(code, top.at)}` : ''
             }.`,
           },
@@ -390,7 +390,7 @@ function checkBlocks(code: string, masked: string): LuaFinding[] {
             rule: 'lua-ast',
             severity: 'error',
             line: lineOf(code, m.index),
-            message: `\`${name}\` does not close the \`${top.kind}\` opened on line ${lineOf(code, top.at)}.`,
+            message: `\`${name}\` doesn't close the \`${top.kind}\` opened on line ${lineOf(code, top.at)}.`,
           },
         ];
       }

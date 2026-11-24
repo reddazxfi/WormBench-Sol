@@ -550,7 +550,7 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                 <div className="space-y-1">
                   <label
                     title={buildTooltip(
-                      'The worm that fired is not hit. PX’s javelin does this, so a spear that bursts in your hands stabs nothing.',
+                      "The worm that fired isn't hit. PX's javelin does this, so a spear that bursts in your hands stabs nothing.",
                       'STAMP_HIT.spare_shooter',
                     )}
                     className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"

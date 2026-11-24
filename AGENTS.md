@@ -1673,7 +1673,11 @@ The editor can open Project X `.pxl` libraries from `Libs/` (Sidebar -> **Sprite
   control `accent-color`, reduced-motion handling and thin scrollbars.
 - **No em dashes.** The copy uses commas instead (an earlier pass rewrote every
   one in `src/`, `spec/`, `tools/` and the docs). Keep new text that way; an
-  em dash also mangles easily in JSX and differs between editors.
+  em dash also mangles easily in JSX and differs between editors. The full copy
+  rules live in `WormForgeNew/docs/wording.md`: stock/WA/PX naming, contractions
+  everywhere, compound nouns over "`'s`" on things and "X of Y" chains, say what
+  happens rather than what is avoided, no history in descriptions, no "e.g.",
+  and no `---` rule between every section.
 - **Credits and disclaimer live in the page footer** (`App.tsx`, a `<details>`
   under the mod path) and in `README.md`: Worms Armageddon and the stock art the
   page shows (sprite-builder tab icons, frozen worm preview, terrain preview
@@ -1948,7 +1952,7 @@ The pack ships the editor's own `wf-lib/wfws_sdk/` (copied from `spec/`, like an
 export does), so its weapons run against the version they were generated for
 instead of an older installed copy of the library.
 
-It writes one bundle with 60 components, one profile ("WF Test Pack") and art
+It writes one bundle with 72 components, one profile ("WF Test Pack") and art
 derived from `spec/` sheets, one per role (the sprite builder, cluster bits, the
 homing window, the homing bit, the roaming animal, native trails, the emitter,
 the aim layer, the swing, the melee strike, the aim clamp on a swing and on a
@@ -2023,7 +2027,7 @@ bun run tools/check_pack_fixture.ts
 
 26 cases that take **art and code off disk** and assert the strongest property
 available: import, export, re-import, export writes **the same bytes**, file by
-file, digest against digest. The fixture is the 60 test-pack components (80 files,
+file, digest against digest. The fixture is the 72 test-pack components (80 files,
 one instance of every shape the editor emits) plus five installed bundles:
 `wf-lib/utilities` round-trips, `px_pyroman_grenades` and
 `wf-lib/marked_for_death` need a module only their own bundle ships, and
@@ -2092,7 +2096,7 @@ in both `weapon.definition` and `weapon.setup` is carried once; two *different*
 locals of one name are one carried and one reported. On the real bundles it asserts
 the exported file has no dangling name, one `on_explode` key, each registration
 written once, and that export then re-import returns the carried code identical;
-on the 60 generated weapons it carries exactly what it started with and nothing of
+on the 72 generated weapons it carries exactly what it started with and nothing of
 ours. Run it for the case list.
 
 Carried-code rules (no server, exits 1 on a failure):

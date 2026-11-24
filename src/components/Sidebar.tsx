@@ -9,8 +9,9 @@ import {
   Sparkles,
   Wand2,
   FolderSearch,
-  ChevronRight,
   Library,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { WeaponProject } from '../types/weapon';
 import { hasProjectileBody, type RecordTabId } from '../data/recordTabs';
@@ -29,6 +30,8 @@ interface SidebarProps {
   onBrowsePxl: () => void;
   pxlLibraryCount: number;
   onExportZip: () => void;
+  isExporting?: boolean;
+  justExported?: boolean;
   isDark: boolean;
   setIsDark: (dark: boolean) => void;
   onCopyId: () => void;
@@ -129,6 +132,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onBrowsePxl,
   pxlLibraryCount,
   onExportZip,
+  isExporting = false,
+  justExported = false,
   isDark,
   setIsDark,
   onCopyId,
@@ -211,22 +216,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3.5">
       <ProjectCard project={project} onCopyId={onCopyId} />
       {rail}
-      <div className="border-t border-stone-200/80 pt-3 dark:border-stone-800">
-        <button
-          type="button"
-          onClick={onBrowsePxl}
-          className="flex w-full items-center gap-2 rounded-lg border border-stone-200 bg-white px-2.5 py-2 text-xs font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 dark:border-stone-700/80 dark:bg-stone-800/50 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 cursor-pointer"
-        >
-          <Library className="h-3.5 w-3.5 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-          <span className="flex-1 text-left">Sprite libraries</span>
-          {pxlLibraryCount > 0 && (
-            <span className="font-mono text-[11px] font-semibold tabular-nums text-forge-600 dark:text-forge-400">
-              {pxlLibraryCount}
-            </span>
-          )}
-          <ChevronRight className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
-        </button>
-      </div>
     </div>
 
     <div className="shrink-0 space-y-2 border-t border-stone-200/90 p-3 dark:border-stone-800">
@@ -235,28 +224,63 @@ export const Sidebar: React.FC<SidebarProps> = ({
           type="button"
           onClick={onImportWep}
           className="flex items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-800/70 dark:text-stone-200 dark:hover:bg-stone-800 cursor-pointer whitespace-nowrap"
-          title="Import a Project X .wep weapon file"
+          title="Read a Project X .wep weapon file"
         >
           <Upload className="h-3.5 w-3.5 shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-          <span className="truncate">Import .wep</span>
+          <span className="truncate">Read .wep</span>
         </button>
         <button
           type="button"
-          onClick={onBrowseMods}
+          onClick={onBrowsePxl}
           className="flex items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-800/70 dark:text-stone-200 dark:hover:bg-stone-800 cursor-pointer whitespace-nowrap"
-          title="Read installed WormForge mods"
+          title="Read Project X .pxl sprite libraries"
         >
-          <FolderSearch className="h-3.5 w-3.5 shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-          <span className="truncate">Read mods</span>
+          <Library className="h-3.5 w-3.5 shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
+          <span className="truncate">Read .pxl</span>
+          {pxlLibraryCount > 0 && (
+            <span className="rounded bg-forge-500/15 px-1 font-mono text-[10px] font-semibold tabular-nums text-forge-600 dark:text-forge-400">
+              {pxlLibraryCount}
+            </span>
+          )}
         </button>
       </div>
       <button
         type="button"
-        onClick={onExportZip}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-forge-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-forge-700 dark:bg-forge-500 dark:hover:bg-forge-400 cursor-pointer whitespace-nowrap"
+        onClick={onBrowseMods}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-sky-300/90 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-500/25 dark:border-sky-400/40 dark:bg-sky-500/20 dark:text-sky-200 dark:hover:bg-sky-500/30 cursor-pointer whitespace-nowrap"
+        title="Read installed WormForge mods"
       >
-        <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span>Export Mod (.zip)</span>
+        <FolderSearch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>Read mods</span>
+      </button>
+      <button
+        type="button"
+        onClick={onExportZip}
+        disabled={isExporting}
+        className={`flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap ${
+          isExporting
+            ? 'cursor-wait bg-forge-600/80 dark:bg-forge-500/80'
+            : justExported
+              ? 'cursor-pointer bg-emerald-600 hover:bg-emerald-600 dark:bg-emerald-500 dark:hover:bg-emerald-400'
+              : 'cursor-pointer bg-forge-600 hover:bg-forge-700 dark:bg-forge-500 dark:hover:bg-forge-400'
+        }`}
+      >
+        {isExporting ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+            <span>Exporting...</span>
+          </>
+        ) : justExported ? (
+          <>
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Exported!</span>
+          </>
+        ) : (
+          <>
+            <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Export Mod (.zip)</span>
+          </>
+        )}
       </button>
     </div>
   </aside>
@@ -273,6 +297,8 @@ interface MobileBarProps {
   onBrowsePxl: () => void;
   pxlLibraryCount: number;
   onExportZip: () => void;
+  isExporting?: boolean;
+  justExported?: boolean;
   isDark: boolean;
   setIsDark: (dark: boolean) => void;
   /** Only rendered when the bundle holds more than one weapon. */
@@ -288,6 +314,8 @@ export const MobileBar: React.FC<MobileBarProps> = ({
   onBrowsePxl,
   pxlLibraryCount,
   onExportZip,
+  isExporting = false,
+  justExported = false,
   isDark,
   setIsDark,
   weaponSwitcher,
@@ -303,8 +331,8 @@ export const MobileBar: React.FC<MobileBarProps> = ({
         type="button"
         onClick={onImportWep}
         className="rounded-lg border border-stone-200 bg-white p-1.5 text-stone-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
-        aria-label="Import .wep"
-        title="Import .wep"
+        aria-label="Read .wep"
+        title="Read .wep"
       >
         <Upload className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -312,8 +340,8 @@ export const MobileBar: React.FC<MobileBarProps> = ({
         type="button"
         onClick={onBrowsePxl}
         className="relative rounded-lg border border-stone-200 bg-white p-1.5 text-stone-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
-        aria-label="Sprite libraries"
-        title="Sprite libraries (.pxl)"
+        aria-label="Read .pxl"
+        title="Read .pxl sprite libraries"
       >
         <Library className="h-4 w-4" aria-hidden="true" />
         {pxlLibraryCount > 0 && (
@@ -325,20 +353,33 @@ export const MobileBar: React.FC<MobileBarProps> = ({
       <button
         type="button"
         onClick={onBrowseMods}
-        className="rounded-lg border border-stone-200 bg-white p-1.5 text-stone-600 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
-        aria-label="Read installed mods"
-        title="Read installed mods"
+        className="rounded-lg border border-sky-300/90 bg-sky-500/15 p-1.5 text-sky-700 hover:bg-sky-500/25 dark:border-sky-400/40 dark:bg-sky-500/20 dark:text-sky-300 dark:hover:bg-sky-500/30"
+        aria-label="Read mods"
+        title="Read installed WormForge mods"
       >
         <FolderSearch className="h-4 w-4" aria-hidden="true" />
       </button>
       <button
         type="button"
         onClick={onExportZip}
-        className="rounded-lg bg-forge-600 p-1.5 text-white dark:bg-forge-500"
+        disabled={isExporting}
+        className={`rounded-lg p-1.5 text-white transition-colors ${
+          isExporting
+            ? 'cursor-wait bg-forge-600/80 dark:bg-forge-500/80'
+            : justExported
+              ? 'bg-emerald-600 dark:bg-emerald-500'
+              : 'bg-forge-600 dark:bg-forge-500'
+        }`}
         aria-label="Export mod zip"
         title="Export mod zip"
       >
-        <Download className="h-4 w-4" aria-hidden="true" />
+        {isExporting ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : justExported ? (
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <Download className="h-4 w-4" aria-hidden="true" />
+        )}
       </button>
       <button
         type="button"

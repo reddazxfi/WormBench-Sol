@@ -793,7 +793,7 @@ export const MeleeCard: React.FC<MeleeCardProps> = ({ project, onChange }) => {
             </label>
             <label
               htmlFor="melee-spare-shooter"
-              title="Leave the worm holding the weapon out of its own strike, so a long reach cannot hit the swinger."
+              title="Leave the worm holding the weapon out of its own strike, so a long reach can't hit the swinger."
               className="flex cursor-pointer items-start gap-2 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-800"
             >
               <input

@@ -577,28 +577,28 @@ export function validateBundle(
     // a bundle called `lucia.arsenal`.
     if (!isUnderNamespace(project.id, pack.id)) {
       problems.push(
-        `${project.id || '(no id)'} is not under the bundle's id (${pack.id}), so an installed bundle could already claim it`,
+        `${project.id || '(no id)'} isn't under the bundle id (${pack.id}), so an installed bundle could already claim it`,
       );
     }
   }
   for (const match of modToml.matchAll(/entry = "([^"]+)"/g)) {
     const path = match[1];
-    if (!present(path)) problems.push(`\`${path}\` is not in the bundle`);
+    if (!present(path)) problems.push(`\`${path}\` isn't in the bundle`);
   }
   const modIconMatch = /^mod_icon = "([^"]+)"/m.exec(modToml);
   if (modIconMatch && !present(modIconMatch[1])) {
-    problems.push(`declared mod_icon \`${modIconMatch[1]}\` is not in the bundle`);
+    problems.push(`declared mod_icon \`${modIconMatch[1]}\` isn't in the bundle`);
   }
   for (const match of modToml.matchAll(/^icon = "([^"]+)"/gm)) {
     const path = match[1];
     if (path.includes('/') && !present(path)) {
-      problems.push(`declared icon \`${path}\` is not in the bundle`);
+      problems.push(`declared icon \`${path}\` isn't in the bundle`);
     }
   }
   const declared = new Map<string, number>();
   for (const match of modToml.matchAll(/\[sprites\."([^"]+)"\]/g)) {
     const path = match[1];
-    if (!present(path)) problems.push(`declared sheet \`${path}\` is not in the bundle`);
+    if (!present(path)) problems.push(`declared sheet \`${path}\` isn't in the bundle`);
     declared.set(path, (declared.get(path) ?? 0) + 1);
   }
   for (const [path, count] of declared) {
@@ -628,7 +628,7 @@ export function validateBundle(
     }
     const wepMatch = /\bwep\s*=\s*"([^"]+\.wep)"/i.exec(source);
     if (wepMatch && !present(wepMatch[1])) {
-      problems.push(`${project.name || project.id}: \`${wepMatch[1]}\` is not in the bundle`);
+      problems.push(`${project.name || project.id}: \`${wepMatch[1]}\` isn't in the bundle`);
     }
     const soundsMatch = /\bsounds\s*=\s*\{([^}]*)\}/.exec(source);
     if (soundsMatch) {
@@ -636,7 +636,7 @@ export function validateBundle(
         const wav = s[1];
         if (wav.startsWith('soundbank/')) continue;
         if (!present(wav)) {
-          problems.push(`${project.name || project.id}: declared sound \`${wav}\` is not in the bundle`);
+          problems.push(`${project.name || project.id}: declared sound \`${wav}\` isn't in the bundle`);
         }
       }
     }
@@ -646,7 +646,7 @@ export function validateBundle(
         const spritePath = s[2];
         if (!spritePath.includes('/') || spritePath.startsWith('wf-lib/')) continue;
         if (!present(spritePath)) {
-          problems.push(`${project.name || project.id}: declared sprite \`${spritePath}\` is not in the bundle`);
+          problems.push(`${project.name || project.id}: declared sprite \`${spritePath}\` isn't in the bundle`);
         }
       }
     }

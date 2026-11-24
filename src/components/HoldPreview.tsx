@@ -2739,7 +2739,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
             {/* The aim clamp. WA's own bat pipes its aim for the same reason:
                 straight up and straight down are where a held weapon looks
-                worst, and a pack cannot pipe WA's sweep, only its own draw. */}
+                worst, and a pack can't pipe the WA sweep, only its own draw. */}
             <div className="space-y-1.5 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-800">
               <div className="flex items-center justify-between gap-2">
                 <span
@@ -3833,10 +3833,10 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             )}
 
             {/* 4. Its offset: the same channel in all roles, so art whose
-                centre is not its grip lines up at every aim. */}
+                centre isn't its grip lines up at every aim. */}
             <div
               className="space-y-1.5 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-800"
-              title="Moves the art inside its own cell, in sheet pixels: positive Y is down the sheet, positive X to the sheet's right. Scaled with the role's own scale and mirrored with the side, so art whose grip is not its centre lines up with the hand at every aim."
+              title="Moves the art inside its own cell, in sheet pixels: positive Y is down the sheet, positive X to the sheet's right. Scaled with the role's own scale and mirrored with the side, so art whose grip isn't its centre lines up with the hand at every aim."
             >
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-stone-700 dark:text-stone-300">Offset</span>
@@ -4187,7 +4187,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
                   <label
                     htmlFor="hold-keep-firing"
-                    title="The held art stays on WA's firing poses 0x6A & 0x6B (e.g. Crossbows, Miniguns) (keep_while_firing = true). A burst keeps it there anyway because the engine drops it from the second shot, and a firing sheet replaces the art it would show while it plays."
+                    title="The held art stays on WA's firing poses 0x6A & 0x6B (like Crossbows and Miniguns) (keep_while_firing = true). A burst keeps it there anyway because the engine drops it from the second shot, and a firing sheet replaces the art it would show while it plays."
                     className="h-10 flex items-center justify-between px-3 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 cursor-pointer shadow-2xs hover:bg-stone-50 dark:hover:bg-stone-750 transition-colors"
                   >
                     <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 select-none">
@@ -4259,7 +4259,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   </>
                 ) : (
                   <>
-                    Space plays this clip and <span className="font-semibold">does not fire</span>:
+                    Space plays this clip and <span className="font-semibold">doesn't fire</span>:
                     the claim carries <span className="font-mono">eat_fire = true</span>, so nothing
                     leaves the worm while the game scheme owns turn ending.
                   </>
@@ -4293,7 +4293,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       <th className="px-1 text-left font-semibold">Alpha</th>
                       <th
                         className="px-1 text-left font-semibold"
-                        title="Whether the opacity eases into this key. Off holds the previous key's alpha and steps at the key, so a pose that returns the weapon to the worm does not fade out on its way."
+                        title="Whether the opacity eases into this key. Off holds the previous key's alpha and steps at the key, so a pose that returns the weapon to the worm doesn't fade out on its way."
                       >
                         Fade
                       </th>
@@ -4974,7 +4974,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               <div className="mb-4 px-3.5 py-2 rounded-lg border border-amber-300/80 dark:border-amber-800/80 bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>
-                  Native WA air strikes spawn munitions from their own record copy and do not run{' '}
+                  Native WA air strikes spawn munitions from their own record copy and don't run{' '}
                   <code className="font-mono">sb.flight</code>. Enable{' '}
                   <strong>Airstrike Takeover</strong> with a <strong>Missile</strong> payload to use
                   the flight sprite builder, or use the Record / Pack Art strike body sprite.
@@ -5248,7 +5248,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     so an off-centre pivot stays put at every heading. */}
                 <div
                   className="space-y-1.5 p-3 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-800/40"
-                  title="Moves the art inside its own cell, in sheet pixels: positive Y is down the sheet, positive X to the sheet's right. Scaled with the art, turned with the drawn angle and mirrored with the side, so art whose pivot is not its centre lines up with the flight path both ways round."
+                  title="Moves the art inside its own cell, in sheet pixels: positive Y is down the sheet, positive X to the sheet's right. Scaled with the art, turned with the drawn angle and mirrored with the side, so art whose pivot isn't its centre lines up with the flight path both ways round."
                 >
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-stone-700 dark:text-stone-300">
@@ -6123,7 +6123,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   {/* PingPong: one checkbox, the explanation lives in the tooltip
                       so the card stays a compact row. */}
                   <label
-                    title="Plays the strip forwards and then back (0, 1, 2, 1, 0, ...) instead of snapping to frame 0, so art authored to reverse itself animates smoothly. One pass forwards and back takes the same time one loop used to, so Anim Speed keeps its meaning. Needs more than one frame; emitted as pingpong = true."
+                    title="Plays the strip forwards and then back (0, 1, 2, 1, 0, ...) instead of snapping to frame 0, so art authored to reverse itself animates smoothly. One pass forwards and back takes the same time as one loop, so Anim Speed keeps its meaning. Needs more than one frame; emitted as pingpong = true."
                     className={`flex items-center gap-2 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-2.5 py-1.5 ${
                       activeSheetLocked
                         ? 'opacity-50 pointer-events-none'

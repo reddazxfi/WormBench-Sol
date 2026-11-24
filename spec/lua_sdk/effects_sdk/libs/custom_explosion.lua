@@ -1,6 +1,6 @@
 -- PX's do_custom_explosion, without the electric taze: falloff damage, push,
 -- a crater and one px_effects burst. PX originals:
--- wklua_and_px/utils/custom_explosion.c:17-295. The caller silences WA's own
+-- wklua_and_px/utils/custom_explosion.c:17-295. The caller silences the stock
 -- blast (explosion.power = 0) and calls this from on_explode.
 --
 -- PX walks Env->Objs and sends M_GUNEXP to every object in range (:46-125).

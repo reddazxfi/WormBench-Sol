@@ -114,7 +114,7 @@ export async function importBundlePack(
     ...(bundle.replaces && bundle.replaces.length > 0 ? { replaces: bundle.replaces } : {}),
   };
   if (packId !== bundle.id) {
-    notes.push(`${bundle.id}: imported as ${packId}, so the export does not claim the installed bundle's id`);
+    notes.push(`${bundle.id}: imported as ${packId}, so the export doesn't claim the installed bundle's id`);
   }
   if (bundle.replaces && bundle.replaces.length > 0) {
     notes.push(`replaces ${bundle.replaces.join(', ')}: installing this bundle retires them`);

@@ -164,7 +164,7 @@ generators changed.
   single red CTA, updated `MobileBar` to underline active tabs, and collapsed
   the main `<header>` into a single-row workspace breadcrumb with an unboxed
   multi-weapon switcher.
-- **Main page — Weapon Record (`PackSettingsCard.tsx`, `WeaponSettings.tsx`,
+- **Main page: Weapon Record (`PackSettingsCard.tsx`, `WeaponSettings.tsx`,
   `RecordEditor.tsx`):** Unified Bundle Settings, Weapon Loadout, and the record
   workbench onto the same flat card + header-band chrome. Aligned the 3-column
   Firing Core (`Weapon Type` / `Base Template` / `Inventory Slot`) on one row
@@ -173,7 +173,7 @@ generators changed.
   record tabs with a `2px` Forge underline tab strip (`· {whisper}` inline),
   unified the Mine/Dynamite switcher, `Explodes Into` inner tabs, and trail
   presets, and fixed Custom Lua `<textarea>` contrast.
-- **Lua Libraries — Effects (`EffectsWorkspace.tsx`, `EffectsCards.tsx`,
+- **Lua Libraries: Effects (`EffectsWorkspace.tsx`, `EffectsCards.tsx`,
   `EmitterCard.tsx`, `TerrainStampCard.tsx`, `FireSequenceCard.tsx`):** Matched
   `RecordEditor`'s underline tab strip, updated the Air Strike empty state to
   note that enabling Airstrike Takeover with a Missile payload unlocks library

@@ -149,7 +149,7 @@ export function ModBrowserModal({
       await navigator.clipboard.writeText(text);
       showToast(`${what} copied`);
     } catch {
-      showToast('Clipboard is not available here');
+      showToast("Clipboard isn't available here");
     }
   };
 
@@ -177,7 +177,7 @@ export function ModBrowserModal({
                 registrations and the sheets and WAVs they name are carried, but <strong
                 className="font-semibold">nothing guarantees the custom code stays put</strong>:
                 it is rebuilt from the editor's own Lua, so formatting, the placement of
-                helpers and anything the reader cannot model can change or be left out. Read
+                helpers and anything the reader can't model can change or be left out. Read
                 the Carried Lua panel and the exported file before shipping the weapon.
               </span>
             </p>
@@ -431,7 +431,7 @@ export function ModBrowserModal({
                       {!selectedWeapon.record && (
                         <p className="text-[11px] text-amber-700 dark:text-amber-300">
                           {selectedWeapon.error}. A record kept in a `.wep` file, or built at
-                          runtime from a helper’s arguments, cannot be read as tables.
+                          runtime from a helper’s arguments, can't be read as tables.
                         </p>
                       )}
 

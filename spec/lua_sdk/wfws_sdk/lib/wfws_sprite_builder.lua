@@ -14,13 +14,13 @@
 --     normal-flight art only; the generator zeroes `sheep.flight_1/2` (the
 --     flown art) and leaves the walk pose alone when WA can draw it, passing its
 --     id as `walk` so the builder knows WA is drawing the ground pose. When that
---     pose cannot draw (an imported Project X sprite number, or none), the
+--     pose can't draw (an imported Project X sprite number, or none), the
 --     record `sprite` is zeroed too and the builder draws the walk itself:
 --     upright, with the owning role's frames.
 --
---   DIG is not a state: a digging round has no art of its own. The record's
+--   DIG isn't a state: a digging round has no art of its own. The record's
 --     dig sprite indexes are zeroed (a mole or the wsv* frames would draw
---     underneath), and the builder simply cycles the flight sheet while the
+--     underneath), and the builder cycles the flight sheet while the
 --     nose is in the land. See `dig =` below.
 --
 -- API:
@@ -62,7 +62,7 @@
 --     the angle the round lay at (see `remember_drawn`).
 --
 -- STATE SIGNAL (legacy, `sig`): an old assumption that WA writes the
--- behaviour's own sprite id into m.sprite. It does not -- `m.sprite` is the
+-- behaviour's own sprite id into m.sprite. It doesn't -- `m.sprite` is the
 -- flight sprite and nothing else -- so new work should time the state (homing
 -- arm/time in ms) or probe for it (dig) instead of matching ids. `sig` stays
 -- only for bundles that still pass one.
@@ -75,7 +75,7 @@
 -- `m.sprite` is WA's render slot and not the pellet index (a round that hides
 -- its own art can carry the cluster sprite there, which made a cluster
 -- grenade's main missile classify as a frag), and the pellet flag
--- (MissileEntity+0x150) is not exposed to Lua. A missile fired while another
+-- (MissileEntity+0x150) isn't exposed to Lua. A missile fired while another
 -- round is still in the air is another round, not a frag.
 --
 -- A roaming animal's walk pose needs no exception any more either: the first
@@ -217,7 +217,7 @@ end
 -- ground. On the ground (`grounded`) this holds `rest` and lets the art lean at
 -- most `up` degrees above it or `down` below it while the animal steps. In the
 -- air it tracks the velocity exactly like `track`: a flying animal points where
--- it flies, which is what PX's own sheep art does. Angles are radians; the
+-- it flies, which is what PX's sheep art does. Angles are radians; the
 -- caller keeps the three limits.
 function M.roam_angle(vx, vy, rest, up, down, speed, grounded, prev)
   if not grounded then
@@ -289,7 +289,7 @@ end
 --   size  = 1.25   what the panel's Size field multiplies each role's `scale`
 --                  by, so one number resizes the whole weapon.
 --   angle = 90     degrees added to whatever rotation the role's `anim` asked
---                  for, for art that does not point up. Tracked art stays
+--                  for, for art that doesn't point up. Tracked art stays
 --                  tracked; it just gains the offset.
 --   offset = { x = 0, y = -3 }
 --                  the art nudged inside its own cell, in sheet pixels, scaled
@@ -308,7 +308,7 @@ local function heading_of(m, last)
   return { vx / len, vy / len }
 end
 
--- Four probes across the nose. `wa.land.solid` is WA's own terrain test.
+-- Four probes across the nose. `wa.land.solid` is WA's terrain test.
 local function in_land(m, dir, d)
   local x, y = m.x, m.y
   if not x or not y then return false end
@@ -436,7 +436,7 @@ function M.flight(ctx, opts)
   elseif opts.bits == "inherit" then
     -- The same art, but a bit is still a bit: `sb.role` has to answer "bit"
     -- for a frag, or an effect with `target = "bit"` never attaches to one and
-    -- `"main"` attaches to both. Identity is not the sheet.
+    -- `"main"` attaches to both. Identity isn't the sheet.
     bit_cfg = main
     bit_art = true
   end
@@ -463,10 +463,10 @@ function M.flight(ctx, opts)
   local owner = opts.owner
 
   -- Bit identity is decided by when a missile first appears, not by its
-  -- sprite. `m.sprite` is WA's render slot and it is not the pellet index: a
+  -- sprite. `m.sprite` is WA's render slot and it isn't the pellet index: a
   -- round whose record hides its own art can carry the cluster sprite there
   -- (a cluster grenade's main missile came out with `clustlet`), and the bit
-  -- index lives in MissileEntity+0x150, which Lua does not expose. What is
+  -- index lives in MissileEntity+0x150, which Lua doesn't expose. What is
   -- reliable is the burst: a round exists first, and its bits are built by the
   -- round's own explosion, so they first appear in the frames right after the
   -- round stopped being seen. A missile fired while another round is still in
@@ -495,7 +495,7 @@ function M.flight(ctx, opts)
       if main_count >= 64 then
         -- Bound the round history (a match can fire a weapon forever). The
         -- burst window only ever looks at the newest few, so forgetting the
-        -- oldest cannot change a classification.
+        -- oldest can't change a classification.
         for i = 1, main_count do
           local old = main_ids[i]
           main_last[old], main_x[old], main_y[old] = nil, nil, nil
@@ -628,7 +628,7 @@ function M.flight(ctx, opts)
       seen_head = seen_head + 1
     end
     -- Compact once the dropped prefix is worth the copy, so the queue is a list
-    -- of live ids and cannot grow with the match either.
+    -- of live ids and can't grow with the match either.
     if seen_head > 32 then
       local n = 0
       for i = seen_head, #seen_ids do
@@ -673,7 +673,7 @@ function M.flight(ctx, opts)
     end
     if is_bit then return { ident = "bit", base = bit_cfg } end
     -- Note it now, so another missile first seen in this same frame (a fire
-    -- sequence) is measured from this position and is not a frag by accident.
+    -- sequence) is measured from this position and isn't a frag by accident.
     note_main(m.id, now, m.x, m.y)
     return { ident = "main", base = main }
   end
@@ -787,7 +787,7 @@ function M.flight(ctx, opts)
       if roam and ent.ident == "main" and not flying[id] then
         -- The Space press that takes off is the turn player's, so the turn's
         -- worm has to exist. `armed` needs to have seen Space released since
-        -- the animal appeared, so a key already held at launch cannot skip the
+        -- the animal appeared, so a key already held at launch can't skip the
         -- ground phase.
         local keys = wa.world.keys and wa.world.keys() or nil
         local held = keys and keys.space and true or false
@@ -800,7 +800,7 @@ function M.flight(ctx, opts)
         -- render slot, it is an exact signal that beats the key.
         if fly_pose and m.sprite == fly_pose then flying[id] = true end
       end
-      -- A stock walk pose is WA's own art: leave the ground to WA until the
+      -- A stock walk pose is WA art: leave the ground to WA until the
       -- animal is airborne. Without one nothing draws the walk, so the builder
       -- keeps drawing it (`anim = roam` rests it on the ground).
       if roam and ent.ident == "main" and walk_pose and not flying[id] then
@@ -965,7 +965,7 @@ function M.flight(ctx, opts)
     end
 
     -- Walking pose (`anim = roam`): a real mirror about the sprite's vertical
-    -- axis, side kept in `roam_side` so a straight drop does not snap to the
+    -- axis, side kept in `roam_side` so a straight drop doesn't snap to the
     -- right. Every other anim keeps the old rule: mirror by the sign of `vx`.
     local roam_anim = active_anim_type == 4
     if roam_anim then
@@ -1015,7 +1015,7 @@ M.PX_HANDS = shared.PX_HANDS
 
 -- ---------------------------------------------------------------------------
 -- Worm hold: WA draws the gun on the aiming poses itself (`worm_hold.rs`), and
--- authors cannot reach it. `sb.hold` builds the engine's `hold =` table and, when
+-- authors can't reach it. `sb.hold` builds the engine's `hold =` table and, when
 -- a feature the engine has no field for is on, takes the aiming poses over with
 -- quads of the same sheet (`wa.on.draw`), mirroring the engine's own maths so
 -- nothing moves but the feature. The engine keeps everything else: walking, the
@@ -1055,7 +1055,7 @@ local HOLD_KEYS = {
   "hand_radial_rotation", "hand_scale", "weap_radius", "weap_scale",
   "weap_rotation", "weap_radial_rotation", "anim_speed", "frames",
   "keep_while_firing", "thrown", "put_away", "flash", "static",
-  -- Lua-only keys the engine ignores but `px_hold_art` and PX's own library
+  -- Lua-only keys the engine ignores but `px_hold_art` and PX's library
   -- read off the same table, kept so a `sb.hold` table is the inline one.
   "hand_type", "size",
 }
@@ -1134,7 +1134,7 @@ local function hold_quad(sheet, cx, cy, angle, half_w, half_h, facing, frame, wo
 end
 
 -- True when the quads need to own the aiming poses: any feature the engine's
--- `HoldSpec` cannot express. Everything else stays the engine's fast path, with
+-- `HoldSpec` can't express. Everything else stays the engine's fast path, with
 -- no extra atlas slot and no draw hook.
 function M.hold_needs_lua(spec)
   if type(spec) ~= "table" then return false end
@@ -1281,7 +1281,7 @@ local function hold_mute(entry, on)
   if entry.muted == want then return end
   local swap = wa.weapons and wa.weapons.hold_sheet
   if not swap then return end
-  -- A refused swap (the weapon is not placed yet) must not take the whole
+  -- A refused swap (the weapon isn't placed yet) must not take the whole
   -- draw callback with it: quads are dropped for the frame when it errors.
   local ok = pcall(swap, entry.weapon, want and entry.silent or 0)
   if ok then entry.muted = want end
@@ -1294,8 +1294,8 @@ end
 -- (`rot - PI*radial_rotation` for the position, `rot + PI*rotation` for the
 -- drawn angle), its own radius, scale and cell, and the first hand's sheet
 -- unless it names one. It carries the swing's nudge with the weapon, so a
--- two-handed swing does not slide apart, and it is drawn on the firing frames
--- too (`hold_draw_fire`), so a support hand does not vanish when the firing
+-- two-handed swing doesn't slide apart, and it is drawn on the firing frames
+-- too (`hold_draw_fire`), so a support hand doesn't vanish when the firing
 -- sheet replaces the gun.
 local function hold_draw_extra_hand(entry, w, rot, base, facing, pose, fire_pass, alpha)
   local x = entry.extra_hand
@@ -1412,7 +1412,7 @@ end
 
 -- One frame of a role sheet (`fire` or `buffer` in the spec): the same aim pose
 -- the held art takes, the same cell and hand rules, but its own sheet, size,
--- strip and numbers. No draw-out and no clip: a shot/charge is not an aim.
+-- strip and numbers. No draw-out and no clip: a shot/charge isn't an aim.
 local function hold_draw_role(entry, role, phase, w)
   local pi = math.pi
   local facing = w.facing < 0 and -1 or 1
@@ -1464,7 +1464,7 @@ end
 -- The firing window, one step per 50 Hz frame. WA's two firing states are the
 -- whole of a shot for WA, which is why a firing sheet used to flash for a
 -- single frame; `fire.ticks` keeps it up for that many frames from the first
--- firing frame, and 0 means "WA's own frames only". A gap of more than a frame
+-- firing frame, and 0 means "the stock frames only". A gap of more than a frame
 -- between two firing states is a new shot, and restarts the strip.
 -- Also honours deterministic `sb.hold_trigger(worm, "fire", ticks)` calls from
 -- `firing.beam` / `firing.sequence` so shots after a buffer or in a multi-shot
@@ -1598,7 +1598,7 @@ end
 -- wrote before combos existed. Sorted by frame, because the swing lands them in
 -- tick order however the author typed them, and a strike with no numbers of its
 -- own inherits the weapon's.
---- One strike sound: a pack WAV if the weapon uploaded one, else WA's own id.
+--- One strike sound: a pack WAV if the weapon uploaded one, else the WA id.
 -- The file wins, so a strip that keeps both keys played while it had a WAV does
 -- not start playing its old id when the WAV is removed (`priority` is the third
 -- argument `wa.sound.play` takes for either kind).
@@ -1662,7 +1662,7 @@ end
 -- The melee strike (`melee` in the spec). The box is the worm's own aim and
 -- direction, nothing about the art: `hold_melee_scan` below reads `worm.aim`
 -- and `worm.facing` and turns the swing's angle into it, so turning the sheet
--- or moving its pivot cannot move the strike. (Two earlier versions read the
+-- or moving its pivot can't move the strike. (Two earlier versions read the
 -- art instead, once through its offset and once through its drawn angle, and
 -- both pointed the box at the striker's back.)
 local MELEE_SLACK = 3
@@ -1675,7 +1675,7 @@ local function hold_melee_scan(entry, w, pose, aim_ov, facing_ov)
   -- down, 0.5 level, 1 straight up) and `facing` is the side, so the direction is
   -- `(facing * sin(a*PI), cos(a*PI))`, world y down. The art's `weap_rotation`
   -- and `weap_radius` are drawing controls: turning a sheet or moving its pivot
-  -- does not change where the worm points, and using either here is what put the
+  -- doesn't change where the worm points, and using either here is what put the
   -- box behind the striker.
   local phi = a * pi
   local swing = 0
@@ -1792,7 +1792,7 @@ local function hold_melee_strike(entry, w, st, index)
 end
 
 -- Every strike whose frame has been reached and has not landed yet. `>=` with a
--- per-strike latch, not `==`: a frame whose message never arrives cannot cost a
+-- per-strike latch, not `==`: a frame whose message never arrives can't cost a
 -- strike its hit, and it still lands only once. Returns whether anything landed.
 local function hold_melee_step(entry, w, st, tick)
   local m = entry.melee
@@ -1811,11 +1811,11 @@ end
 -- An aim clamp (`aim_clamp = { up = 60, down = 60 }` in the spec, degrees either
 -- side of level). WA's sweep is 180 degrees: 0 is straight down, 0.5 level, 1
 -- straight up, and both ends are where a held weapon looks worst, because the art
--- leaves its cell and a cut aimed vertically reads as noise. WA's own bat pipes
+-- leaves its cell and a cut aimed vertically reads as noise. WA's bat pipes
 -- its aim for the same reason.
 --
 -- `worm.aim` and `worm.aim_target` are read-only, but `worm:input{ aim = deg }`
--- writes the same target WA's own `control_aim` writes (+0x24C, Project X's
+-- writes the same target WA's `control_aim` writes (+0x24C, Project X's
 -- FireAngle), so the clamp is applied to WA's aim as well as to the layer's draw
 -- (`hold_install_aim_clamp`) and the shot itself stays inside the limit.
 local function hold_aim_range(spec)
@@ -1830,13 +1830,13 @@ local function hold_aim_range(spec)
   return { lo = 0.5 - degrees(c.down), hi = 0.5 + degrees(c.up) }
 end
 
--- The native half of the clamp: WA's own aim target, written every frame the
+-- The native half of the clamp: WA's aim target, written every frame the
 -- turn's worm holds this weapon. `wa.on.body_move` is the per-frame simulation
 -- hook for worms and it runs before WA's body step, so WA adds at most one of its
 -- own aim steps (180/128 of a degree while an aim key is held) after the write:
 -- the target can sit that one step past the limit, never further, and the drawn
 -- aim eases to it. One Lua call per worm per frame, bailing on the first read
--- for every worm that is not this turn's, and one native write only while the
+-- for every worm that isn't this turn's, and one native write only while the
 -- aim is actually outside the range.
 local function hold_install_aim_clamp(entry)
   local range = entry.aim_range
@@ -1858,8 +1858,8 @@ local function hold_install_aim_clamp(entry)
     local ok, err = pcall(w.input, w, spec)
     if not ok and not warned then
       warned = true
-      wa.log(("[wfws] aim_clamp cannot write WA's aim (%s): the draw stays clamped, "
-        .. "the shot does not"):format(tostring(err)))
+      wa.log(("[wfws] aim_clamp can't write the aim target (%s): the draw stays clamped, "
+        .. "and the shot can leave at the raw aim"):format(tostring(err)))
     end
   end, { kinds = { "worm" } })
 end
@@ -1937,7 +1937,7 @@ local function hold_ensure_hook()
           local firing = (not buffering) and hold_fire_step(entry, w, ws, now) or false
           if aiming or swinging then
             -- Advance once per 50 Hz frame, never once per rendered frame: the
-            -- render rate is not the game's and differs between machines.
+            -- render rate isn't the game's and differs between machines.
             if ws.frame ~= now then
               ws.frame = now
               ws.counter = math.min(20, ws.counter + 1)
@@ -1946,7 +1946,7 @@ local function hold_ensure_hook()
               end
             end
             -- `hide_main`: the active role replaces the held weapon while its
-            -- window is open, so the gun is not drawn underneath it.
+            -- window is open, so the gun isn't drawn underneath it.
             local hidden_by_role =
               (firing and entry.fire and entry.fire.hide_main)
               or (buffering and entry.buffer and entry.buffer.hide_main)
@@ -2001,7 +2001,7 @@ local function hold_ensure_hook()
             end
           elseif entry.keep_firing and owns and w.state ~= nil and HOLD_FIRE_STATES[w.state] then
             -- Between explicit flash windows while WA stays in a firing state
-            -- (e.g. gaps in a multi-shot sequence), keep drawing full-scale held
+            -- (gaps in a multi-shot sequence), keep drawing full-scale held
             -- art so WA never unmutes to a tiny/put-away frame mid-burst.
             hold_draw_aim(entry, w, ws, nil, true)
             mute = true
@@ -2079,7 +2079,7 @@ local function swing_ensure()
           st.taken, st.worm, st.worm_id, st.start = nil, nil, nil, nil
         end
         if st.start then
-          -- The clip is its own clock: WA's worm states cannot end it, so a
+          -- The clip is its own clock: WA's worm states can't end it, so a
           -- swing of any length plays in full.
           local tick = now - st.start
           if entry.melee then hold_melee_step(entry, sw, st, tick) end
@@ -2145,7 +2145,7 @@ local function swing_ensure()
       end
     end
     -- A Space press on our own weapon that swung nothing is the one case a
-    -- swing cannot log for itself, and it is the case that looks like "Space
+    -- swing can't log for itself, and it is the case that looks like "Space
     -- does nothing" (a layer with no `swing`/`clip`, or an older installed copy
     -- of this library that has no clip support).
     if pressed and not started and ours then
@@ -2157,7 +2157,7 @@ local function swing_ensure()
 end
 
 -- Build a worm hold. Returns the `hold =` table the claim wants; registers the
--- quad layer only when `M.hold_needs_lua` says the engine cannot do it.
+-- quad layer only when `M.hold_needs_lua` says the engine can't do it.
 function M.hold(ctx, spec)
   if type(spec) ~= "table" or type(spec.sheet) ~= "string" then
     wa.log("wfws_sprite_builder.hold: sheet is required")
@@ -2244,7 +2244,7 @@ function M.hold(ctx, spec)
   local buffer_role = normalize_role(spec.buffer)
   -- The melee strike. It needs the clip: the hit frame is a tick of the swing.
   local melee_spec = type(spec.melee) == "table" and spec.melee or nil
-  -- A `melee` table without a clip cannot land anything: the strike's frames are
+  -- A `melee` table without a clip can't land anything: the strike's frames are
   -- ticks of the swing, and `swing_ensure` (which owns the Space edge) only runs
   -- when there is one. The editor writes the single key such a strike needs; a
   -- hand-written bundle gets told instead of shipping a dead weapon silently.
@@ -2265,8 +2265,8 @@ function M.hold(ctx, spec)
       push_aim = push == nil or push == "aim",
       fvx = type(push) == "table" and (push.x or 0) or 0,
       fvy = type(push) == "table" and (push.y or 0) or 0,
-      -- The strike's sounds: where it lands, and where it does not. Either
-      -- half is one of WA's own ids (`hit_sound`) or a pack WAV played by path
+      -- The strike's sounds: where it lands, and where it doesn't. Either
+      -- half is one of the stock ids (`hit_sound`) or a pack WAV played by path
       -- (`hit_wav`), and the file wins, like the firing art's fire_draw. 0 and
       -- no path is silent; the editor's default whiff is 96, WA's grenade throw
       -- and bat miss. A strike row can name its own sample instead, which the

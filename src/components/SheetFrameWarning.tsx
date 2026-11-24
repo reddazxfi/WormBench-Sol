@@ -67,10 +67,10 @@ export const SheetFrameWarning: React.FC<SheetFrameWarningProps> = ({
       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <div className="space-y-0.5">
         <p className="font-semibold">
-          {frames} frames do not divide this sheet&rsquo;s height
+          {frames} frames don't divide the sheet height
         </p>
         <p>
-          {w}×{h} px across {frames} frames leaves {fit.remainder} px over, so the engine cannot
+          {w}×{h} px across {frames} frames leaves {fit.remainder} px over, so the engine can't
           slice it ({h} ÷ {frames} = {fit.cell} px per frame with the remainder dropped) and fails
           to load the image at all, which leaves the sprite invisible in game.
         </p>

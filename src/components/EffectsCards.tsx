@@ -443,7 +443,7 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
                   </>
                 ) : (
                   <>
-                    This weapon does not burst into cluster bits, so there are no bits to trail and
+                    This weapon doesn't burst into clusters, so there is nothing to trail and
                     this choice draws no ribbon. Choose Main Round or Every Part.
                   </>
                 )}

@@ -821,7 +821,7 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
         }
       }
 
-      // Target worms face LEFT natively (toward the shooter — no horizontal flip needed)
+      // Target worms face LEFT natively, toward the shooter, so no horizontal flip is needed
       const activeSheet =
         hurting && wormHurtImg && wormHurtImg.complete && wormHurtImg.naturalWidth > 0
           ? wormHurtImg
@@ -1804,7 +1804,7 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
                 )}
               </>
             ) : (
-              <span>No custom hold art yet — using worm aim pose.</span>
+              <span>No custom hold art yet, using the worm aim pose.</span>
             )}
           </div>
         </div>

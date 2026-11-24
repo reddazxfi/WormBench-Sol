@@ -2,6 +2,8 @@
 // download. The emitter itself lives in `packExporter.ts`, which takes the
 // libraries as arguments and so can be exercised without Vite's `?raw` imports.
 import JSZip from 'jszip';
+import { isTauri } from '@tauri-apps/api/core';
+import { downloadDir, join } from '@tauri-apps/api/path';
 import { PackProject, WeaponProject } from '../types/weapon';
 import {
   WFWS_AIRSTRIKE_LUA,
@@ -85,5 +87,17 @@ export function downloadBlob(blob: Blob, fileName: string) {
   a.download = fileName;
   document.body.appendChild(a);
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Resolve the user's Downloads target path when running in the Tauri desktop EXE build. */
+export async function resolveDesktopDownloadPath(fileName: string): Promise<string | null> {
+  if (typeof window === 'undefined' || !isTauri()) return null;
+  try {
+    const dir = await downloadDir();
+    return await join(dir, fileName);
+  } catch {
+    return `Downloads\\${fileName}`;
+  }
 }

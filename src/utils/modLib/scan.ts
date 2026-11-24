@@ -888,7 +888,7 @@ export function readWeapons(bundles: ModBundle[], files: ModFile[]): ModWeapon[]
           recordPath || wepPath
             ? undefined
             : wepNames.length > 0
-              ? 'the record is in a .wep file that is not in this bundle'
+              ? "the record is in a .wep file that isn't in this bundle"
               : `no record table in ${modulePath} (looked in ${candidates
                   .map((candidate) => candidate.name)
                   .join(', ')})`,

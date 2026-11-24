@@ -226,7 +226,7 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
   );
   check(
     'and the Lua says why',
-    unknown.includes("not one of WA's own weapons"),
+    unknown.includes("isn't a stock weapon"),
     'the fallback is silent',
   );
 }

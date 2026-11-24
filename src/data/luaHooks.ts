@@ -157,7 +157,7 @@ export const WA_ON_EVENTS: readonly WaOnEvent[] = [
     options: {
       key: 'kinds',
       shape: '{ kinds = { "worm", "missile" } }',
-      note: 'every kind when omitted: correctness is the same, the cost is not',
+      note: "every kind when omitted: correctness is the same, the cost isn't",
     },
     count: 2,
   },

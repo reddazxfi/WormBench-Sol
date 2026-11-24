@@ -854,7 +854,7 @@ const DECLARED_HOLD = /\[sprites\."[^"]*\/hold\.png"\]/g;
   // A weapon written into a bundle of more than one lives under the bundle's id.
   // An import and a typed id both arrive with the source's own id
   // (`wfws.windnade`, from a `.wep` or a `.pxl`), which is exactly the id
-  // `validateBundle` refuses ("wfws.windnade is not under the bundle's id
+  // `validateBundle` refuses ("wfws.windnade isn't under the bundle id
   // (wfws.gravnade)"), so the write folds it back and moves its art with it.
   const gravNade = bareProject({
     id: 'wfws.gravnade',
@@ -932,8 +932,8 @@ const DECLARED_HOLD = /\[sprites\."[^"]*\/hold\.png"\]/g;
   }
   ok(
     'and a declared path with no file is refused, naming the path',
-    message.includes('`weapons/alpha.lua` is not in the bundle') &&
-      message.includes('`sprites/pack/hold.png` is not in the bundle'),
+    message.includes('`weapons/alpha.lua` isn\'t in the bundle') &&
+      message.includes('`sprites/pack/hold.png` isn\'t in the bundle'),
     message || 'no error',
   );
 
@@ -973,7 +973,7 @@ const DECLARED_HOLD = /\[sprites\."[^"]*\/hold\.png"\]/g;
   }
   ok(
     'an id outside the bundle id is refused',
-    message.includes("px.something is not under the bundle's id (wfws.pack)"),
+    message.includes("px.something isn't under the bundle id (wfws.pack)"),
     message || 'no error',
   );
 
@@ -1157,7 +1157,7 @@ const DECLARED_HOLD = /\[sprites\."[^"]*\/hold\.png"\]/g;
   }
   ok(
     'validateBundle refuses missing 1-frame claim sprite while allowing soundbank/ entries',
-    spriteErr.includes('declared sprite `sprites/pack/missing.png` is not in the bundle') &&
+    spriteErr.includes('declared sprite `sprites/pack/missing.png` isn\'t in the bundle') &&
       !spriteErr.includes('soundbank/Kamikaze/Collect'),
     spriteErr || 'no error',
   );

@@ -1,4 +1,4 @@
-# `wf-lib/fire_seq` — a burst of shots from one `on_fire`
+# `wf-lib/fire_seq`: a burst of shots from one `on_fire`
 
 `lib/fire_seq.lua` fires a weapon's burst: the first shot immediately, the rest
 from a hidden timer actor `delay` frames apart, while the timer's brain holds
@@ -76,7 +76,7 @@ counters held.
 
 ## Behaviour to rely on
 
-- A burst ends early — counters ended, guard released — if the worm dies, loses
+- A burst ends early (counters ended, guard released) if the worm dies, loses
   the turn, drops `cancel_weapon`, or leaves the firing states (a blast, a push,
   a teleport). It is never left holding the counters.
 - The counters are written only by the timer's brain, never from `on_fire`:
@@ -100,7 +100,7 @@ none of this: keep the record a gun and let WA fire it.
 - Every spawn still passes `CreateWeaponProjectile` and reaches the pack's
   `on_fire`, so Lua answers only "what does one shot fly like".
 
-Reference: `Mods/wf-lib/mole_shopper/weapons/precipitator.lua` — a Minigun copy
+Reference: `Mods/wf-lib/mole_shopper/weapons/precipitator.lua`, a Minigun copy
 with `gun = { bullets = 25 }` and an `on_fire` that launches one payload.
 
 Keep this base when the shots are not the record's projectile (Lua actors), the
@@ -108,10 +108,10 @@ cadence is not uniform, or the burst must stop on a button release or an impact.
 
 ## This bundle's weapons
 
-- `px.ripper_star` — fifteen missiles, `fire_seq_mis`, four frames apart.
-- `px.megashark`, `px.megashark_hold` — twelve missiles, four frames apart; the
+- `px.ripper_star`: fifteen missiles, `fire_seq_mis`, four frames apart.
+- `px.megashark`, `px.megashark_hold`: twelve missiles, four frames apart; the
   hold version fires while Space is held and ends on release.
-- `px.famas` — missiles in 3/3/3/2 groups.
+- `px.famas`: missiles in 3/3/3/2 groups.
 
 `lib/targetting_missiles.lua` is their shared homing pass (one target scan per
 frame). It is not exported.

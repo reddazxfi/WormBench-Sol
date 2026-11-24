@@ -452,7 +452,7 @@ export function carryClosure(
         continue;
       }
       notes.push(
-        `carried \`require("${module}")\` is not shipped by the export: add the bundle that provides it to Dependencies, or the export fails at load`,
+        `carried \`require("${module}")\` isn't shipped by the export: add the bundle that provides it to Dependencies, or the export fails at load`,
       );
       if (!missingModules.includes(module)) missingModules.push(module);
     }

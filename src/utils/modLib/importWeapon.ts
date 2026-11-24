@@ -474,17 +474,17 @@ export async function importBundleWeapon(
       );
     }
   }
-  // `ctx.option("k")` on a key the component does not declare raises
+  // `ctx.option("k")` on a key the component doesn't declare raises
   // `"<id> has no option <k>"` and the whole bundle fails to load, so it is worth
   // naming at import rather than discovering in game.
   const declaredOptions = new Set((weapon.options ?? []).map((option) => option.key));
   const undeclaredReads = (weapon.optionReads ?? []).filter((key) => !declaredOptions.has(key));
   if (undeclaredReads.length > 0) {
     notes.push(
-      `ctx.option reads ${undeclaredReads.join(', ')}, which ${weapon.componentId} does not declare: the engine raises "has no option" and the weapon fails to load`,
+      `ctx.option reads ${undeclaredReads.join(', ')}, which ${weapon.componentId} doesn't declare: the engine raises "has no option" and the weapon fails to load`,
     );
     blocking.push(
-      `ctx.option reads ${undeclaredReads.join(', ')}, which ${weapon.componentId} does not declare`,
+      `ctx.option reads ${undeclaredReads.join(', ')}, which ${weapon.componentId} doesn't declare`,
     );
   }
   if (weapon.weaponOptions && weapon.weaponOptions.length > 0) {
@@ -601,7 +601,7 @@ export async function importBundleWeapon(
       wepBaseline: baseline,
       donorBaseline,
       // The component's `ctx.option` settings. `ctx.option` is an error for a
-      // key the manifest does not declare, so the declarations are kept in
+      // key the manifest doesn't declare, so the declarations are kept in
       // declaration order and written back unchanged; the values themselves
       // belong to the player's profile, so an import starts from the defaults.
       options: (weapon.options ?? []).map((option) => ({
@@ -782,7 +782,7 @@ export async function importBundleWeapon(
     }
     if (carried.unresolved.length > 0) {
       notes.push(
-        `carried code reads ${carried.unresolved.join(', ')}, which the bundle does not declare: those are nils when the hook runs`,
+        `carried code reads ${carried.unresolved.join(', ')}, which the bundle doesn't declare: those are nils when the hook runs`,
       );
     }
     for (const refused of carried.refused) notes.push(`not carried: ${refused}`);
@@ -850,7 +850,7 @@ export async function importBundleWeapon(
       if (isSprite) {
         art.sprites.push(target);
         if (!asset) {
-          notes.push(`carried code names ${target}, which is not in the bundle: the sprite will not load`);
+          notes.push(`carried code names ${target}, which isn't in the bundle: the sprite won't load`);
           continue;
         }
         if (nextProject.customSprites![target]) continue;
@@ -885,7 +885,7 @@ export async function importBundleWeapon(
         .filter((path): path is string => !!path);
       if (rolePaths.includes(target)) continue;
       if (asset) soundFiles.push({ path: target, file: asset.file });
-      else notes.push(`carried code plays ${target}, which is not in the bundle: the sample will not load`);
+      else notes.push(`carried code plays ${target}, which isn't in the bundle: the sample won't load`);
     }
     if (soundFiles.length > 0) art.soundFiles = soundFiles;
     nextProject.carriedLua = { ...nextProject.carriedLua!, art };

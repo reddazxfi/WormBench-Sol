@@ -556,7 +556,7 @@ function emitEmitterBlock(
       lines.push('        if not w then return end');
     } else {
       lines.push('        -- Only a shot from the worm holding this weapon starts a round;');
-      lines.push('        -- a cluster bit still alive after the turn is not it.');
+      lines.push('        -- a cluster bit still alive after the turn isn\'t the round.');
       lines.push('        local w = emitter_worm()');
       lines.push('        if not (w and w.weapon == ctx.id) then return end');
     }
@@ -2105,7 +2105,7 @@ export function generateLuaCode(project: WeaponProject): string {
   // `wf-lib/wfws_firing` (`wfws.sdk`): unified sequential firing engine.
   // Supports both native WA gun timing (`gun.bullets` + nested `projectile` +
   // `firing.launch`) and our absorbed custom-cadence sequencer (`firing.sequence`)
-  // with pre-shot buffers and per-shot cooldown schedules — zero `px.fire_seq`.
+  // with pre-shot buffers and per-shot cooldown schedules, so no `px.fire_seq` here.
   const fireSeqCfg = project.fireSequence ? mergeFireSequenceConfig(project.fireSequence) : null;
   const usesFireSequence =
     !!fireSeqCfg?.enabled &&
@@ -2674,7 +2674,7 @@ export function generateLuaCode(project: WeaponProject): string {
           holdRows.push(
             '-- no aim clip keys to swing with: one pose at the strike frame, so a',
           );
-          holdRows.push('-- melee weapon cannot ship a Space press that does nothing.');
+          holdRows.push('-- melee weapon can\'t ship a Space press that does nothing.');
         }
         holdRows.push('swing = {');
         holdRows.push(
@@ -3431,8 +3431,8 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push(`      copy_from = ${luaQuote(donor)},`);
   } else {
     lines.push(
-      `      -- no copy_from: ${luaQuote(donorName)} is not one of WA's own weapons, ` +
-        'and the engine refuses a bundle that names one it does not know',
+      `      -- no copy_from: ${luaQuote(donorName)} isn't a stock weapon, ` +
+        'and the engine refuses a bundle that names one it doesn\'t know',
     );
   }
   if (usesFireSeqHoming && !carriedHooks.has('on_click')) {
@@ -5903,8 +5903,8 @@ export function generateLuaCode(project: WeaponProject): string {
 
 
   if (usesStandaloneLaunchSound) {
-    lines.push('    -- Launch sound: played on WA release message so we do not claim `on_fire`');
-    lines.push('    -- (claiming `on_fire` replaces WA\'s own shot).');
+    lines.push('    -- Launch sound: played on WA release message so the claim doesn\'t take `on_fire`');
+    lines.push('    -- (taking `on_fire` replaces the stock shot).');
     lines.push('    local LAUNCH_SOUND = {');
     lines.push(`      path = ${luaQuote(launchSoundPath!)},`);
     lines.push(`      priority = ${launchSoundPriority},`);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PackProject, WeaponProject } from './types/weapon';
 import { Sidebar, MobileBar } from './components/Sidebar';
 import { TooltipTap } from './components/TooltipTap';
@@ -20,7 +20,7 @@ import {
 } from './context/PxlLibraryContext';
 import type { PxlLibrary } from './types/pxl';
 import { parsePxlLibrary } from './utils/pxl/loadPxl';
-import { exportPackZip, downloadBlob } from './utils/modExporter';
+import { exportPackZip, downloadBlob, resolveDesktopDownloadPath } from './utils/modExporter';
 import { DEFAULT_ID_NAMESPACE } from './utils/weaponId';
 import { generateLuaCode, sanitizeModFolder } from './utils/luaGenerator';
 import {
@@ -47,7 +47,7 @@ import { DEFAULT_TERRAIN_STAMP } from './data/terrainStamp';
 import { DEFAULT_ROLE_ART } from './data/spriteBuilder';
 import { fireSequenceMissileActive } from './data/fireSequence';
 import { bitActionOf, visibleRecordTabs, type RecordTabId } from './data/recordTabs';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Copy, FolderDown, X } from 'lucide-react';
 
 /**
  * A fresh project is WA's own Grenade.
@@ -75,7 +75,7 @@ const INITIAL_PROJECT: WeaponProject = {
   // The default value, not a rule: both id fields edit the whole id.
   id: `${DEFAULT_ID_NAMESPACE}.grenade`,
   name: 'Grenade',
-  description: "WormForge's stock Grenade record, ready to be changed.",
+  description: "The stock Grenade record, ready to be changed.",
   version: '0.1.0',
   author: 'WormForge Author',
   slot: 'grenade',
@@ -200,6 +200,17 @@ export default function App() {
    */
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
+  const [justExported, setJustExported] = useState(false);
+  const [exportNotice, setExportNotice] = useState<{
+    fileName: string;
+    path: string | null;
+    contents: string;
+    warning?: string;
+  } | null>(null);
+  const [copiedExportPath, setCopiedExportPath] = useState(false);
+  const toastTimerRef = useRef<number | null>(null);
+  const exportBadgeTimerRef = useRef<number | null>(null);
+  const exportNoticeTimerRef = useRef<number | null>(null);
 
   // Light is the default: it reads like the game's own 1998 UI and keeps the
   // pixel-art previews on a neutral, uncoloured backdrop.
@@ -272,7 +283,8 @@ export default function App() {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToastMessage(null), 3500);
   };
 
   const updateProject = (patch: Partial<WeaponProject>) => {
@@ -604,16 +616,24 @@ export default function App() {
         unresolved.length > 3 ? ` and ${unresolved.length - 3} more weapon(s)` : '';
       const blob = await exportPackZip(pack);
       const modFolder = sanitizeModFolder(pack.id);
-      downloadBlob(blob, `${modFolder}.zip`);
+      const fileName = `${modFolder}.zip`;
+      downloadBlob(blob, fileName);
+      const savedPath = await resolveDesktopDownloadPath(fileName);
       const contents =
         pack.weapons.length > 1
           ? `${pack.weapons.length} weapons, one mod.toml & profile`
           : 'mod.toml & profile';
-      showToast(
+      const warning =
         unresolved.length > 0
-          ? `Exported ${modFolder}.zip, but carried code in ${named}${namedMore} reads names nothing declares: those hooks fail at load (Bundle & Export).`
-          : `Exported ${modFolder}.zip with ${contents}.`,
-      );
+          ? `Carried code in ${named}${namedMore} reads names nothing declares: those hooks fail at load (Bundle & Export).`
+          : undefined;
+      setCopiedExportPath(false);
+      setJustExported(true);
+      if (exportBadgeTimerRef.current !== null) window.clearTimeout(exportBadgeTimerRef.current);
+      exportBadgeTimerRef.current = window.setTimeout(() => setJustExported(false), 2500);
+      setExportNotice({ fileName, path: savedPath, contents, warning });
+      if (exportNoticeTimerRef.current !== null) window.clearTimeout(exportNoticeTimerRef.current);
+      exportNoticeTimerRef.current = window.setTimeout(() => setExportNotice(null), 10000);
     } catch (err: any) {
       const message = err?.message || String(err);
       // A `validateBundle` refusal already reads as a sentence and names the
@@ -676,6 +696,8 @@ export default function App() {
         onBrowsePxl={() => setIsPxlModalOpen(true)}
         pxlLibraryCount={pxlLibraries.length}
         onExportZip={handleExportZip}
+        isExporting={isExporting}
+        justExported={justExported}
         isDark={isDark}
         setIsDark={setIsDark}
         onCopyId={copyId}
@@ -694,6 +716,8 @@ export default function App() {
           onBrowsePxl={() => setIsPxlModalOpen(true)}
           pxlLibraryCount={pxlLibraries.length}
           onExportZip={handleExportZip}
+          isExporting={isExporting}
+          justExported={justExported}
           isDark={isDark}
           setIsDark={setIsDark}
           weaponSwitcher={
@@ -865,9 +889,9 @@ export default function App() {
                 </p>
                 <p>
                   This is unofficial and unaffiliated: not made by, endorsed by, sponsored by or
-                  supported by Team17. A bundle carries the art you upload, and this project's own
-                  hand-drawn fallback sprite when you leave it as it is; no game art is copied into
-                  your mod, and nothing is uploaded anywhere.
+                  supported by Team17. A bundle carries the art you upload, plus this project's
+                  hand-drawn fallback sprite when you leave it as it is. The editor never copies
+                  game art into your mod, and nothing is uploaded anywhere.
                 </p>
                 <p>
                   Weapons, bundles and any other content you build here are yours, and you are
@@ -929,7 +953,69 @@ export default function App() {
           any of them into the same bubble. */}
       <TooltipTap />
 
-      {toastMessage && (
+      {exportNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 right-5 z-50 w-full max-w-md rounded-xl border border-stone-700/80 bg-stone-900 p-3.5 text-xs text-white shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200 dark:border-stone-300/80 dark:bg-stone-100 dark:text-stone-900"
+        >
+          <div className="flex items-start gap-2.5">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400 dark:text-emerald-600" aria-hidden="true" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="font-semibold">
+                Exported <span className="font-mono">{exportNotice.fileName}</span>
+              </div>
+              <div className="text-[11px] text-stone-300 dark:text-stone-600">
+                Includes {exportNotice.contents}.
+              </div>
+              {exportNotice.path ? (
+                <div className="rounded-lg border border-stone-700/80 bg-stone-950/80 p-2 dark:border-stone-300 dark:bg-white">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-stone-400 dark:text-stone-500">
+                    <span className="inline-flex items-center gap-1">
+                      <FolderDown className="h-3 w-3" aria-hidden="true" />
+                      <span>Downloaded to</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(exportNotice.path!);
+                        setCopiedExportPath(true);
+                        window.setTimeout(() => setCopiedExportPath(false), 1500);
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-sky-300 hover:bg-stone-800 dark:text-sky-700 dark:hover:bg-stone-100 cursor-pointer"
+                    >
+                      <Copy className="h-3 w-3" aria-hidden="true" />
+                      <span>{copiedExportPath ? 'Copied' : 'Copy path'}</span>
+                    </button>
+                  </div>
+                  <code className="block break-all select-all font-mono text-[11px] text-stone-100 dark:text-stone-900">
+                    {exportNotice.path}
+                  </code>
+                </div>
+              ) : (
+                <div className="text-[11px] text-stone-300 dark:text-stone-600">
+                  Saved to your browser&apos;s Downloads folder.
+                </div>
+              )}
+              {exportNotice.warning && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200 dark:text-amber-800">
+                  {exportNotice.warning}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setExportNotice(null)}
+              aria-label="Dismiss export notice"
+              className="rounded p-1 text-stone-400 hover:bg-stone-800 hover:text-white dark:text-stone-500 dark:hover:bg-stone-200 dark:hover:text-stone-900 cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toastMessage && !exportNotice && (
         <div
           role="status"
           aria-live="polite"

@@ -10,7 +10,7 @@
 # this bundle only replaces the flight builder.
 id = "wfws.sdk"
 name = "WFWS Engine SDK"
-version = "1.1.2"
+version = "1.1.3"
 author = "red / WFWS-E"
 api_version = 5
 format_version = 2
@@ -32,5 +32,6 @@ asset_namespace = "wf-lib/wfws"
 
 [exports]
 "wf-lib/wfws_sprite_builder" = "lib/wfws_sprite_builder.lua"
+"wf-lib/wfws_swing" = "lib/wfws_swing.lua"
 "wf-lib/wfws_airstrike" = "lib/wfws_airstrike.lua"
 "wf-lib/wfws_firing" = "lib/wfws_firing.lua"

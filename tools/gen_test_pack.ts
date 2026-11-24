@@ -3574,6 +3574,7 @@ writeFileSync(join(BUNDLE, 'mod.toml'), toml.join('\n'));
 for (const rel of [
   'mod.toml',
   'lib/wfws_sprite_builder.lua',
+  'lib/wfws_swing.lua',
   'lib/wfws_airstrike.lua',
   'lib/wfws_firing.lua',
   'sprites/beam.png',

@@ -18,6 +18,7 @@ from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "spec" / "lua_sdk" / "wfws_sdk" / "lib" / "wfws_sprite_builder.lua"
+SWING = ROOT / "spec" / "lua_sdk" / "wfws_sdk" / "lib" / "wfws_swing.lua"
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -44,7 +45,8 @@ wa = {
   actors = { spawn = function() error("no actor expected in a pre frame") end },
 }
 package.preload["wf-lib/holds"] = function() return { PX_POSTURE = {}, PX_HANDS = {} } end
-"""
+package.preload["wf-lib/wfws_swing"] = function() return assert(loadfile(%r))() end
+""" % str(SWING).replace("\\", "/")
 )
 
 sb = lua.execute(

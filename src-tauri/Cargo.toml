@@ -1,7 +1,7 @@
 [package]
 name = "wormforge-weapon-studio"
 version = "1.0.0"
-description = "WormForge Weapon Studio (API 4.0)"
+description = "WormForge Weapon Studio"
 authors = ["LucianoWorms"]
 edition = "2021"
 default-run = "wormforge-weapon-studio"

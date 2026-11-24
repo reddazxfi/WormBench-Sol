@@ -18,7 +18,9 @@ import sys
 
 from lupa import LuaRuntime
 
-SDK = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'spec', 'lua_sdk', 'wfws_sdk', 'lib', 'wfws_sprite_builder.lua')
+SDK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'spec', 'lua_sdk', 'wfws_sdk', 'lib')
+SDK = os.path.join(SDK_DIR, 'wfws_sprite_builder.lua')
+SWING = os.path.join(SDK_DIR, 'wfws_swing.lua')
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -182,7 +184,10 @@ lua.execute("""
 package.preload["wf-lib/holds"] = function()
   return { PX_HANDS = { [1] = "hand_rad.png", [2] = "hand_rad.png", [3] = "hand_rad_lower.png" } }
 end
-""")
+package.preload["wf-lib/wfws_swing"] = function()
+  return assert(loadfile(%r))()
+end
+""" % SWING.replace("\\", "/"))
 
 sb = lua.execute('return assert(loadfile(%r))()' % SDK.replace("\\", "/"))
 

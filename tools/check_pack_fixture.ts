@@ -38,6 +38,7 @@ const LIBRARIES: PackLibraries = {
   wfws: {
     modToml: readFileSync('spec/lua_sdk/wfws_sdk/mod.toml', 'utf8'),
     spriteBuilderLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua', 'utf8'),
+    swingLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_swing.lua', 'utf8'),
     airstrikeLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_airstrike.lua', 'utf8'),
     firingLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_firing.lua', 'utf8'),
     sheets: [

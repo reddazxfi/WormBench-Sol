@@ -2,7 +2,7 @@
 // download. The emitter itself lives in `packExporter.ts`, which takes the
 // libraries as arguments and so can be exercised without Vite's `?raw` imports.
 import JSZip from 'jszip';
-import { isTauri } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import { PackProject, WeaponProject } from '../types/weapon';
 import {
@@ -11,6 +11,7 @@ import {
   WFWS_SDK_MOD_TOML,
   WFWS_SDK_SHEETS,
   WFWS_SPRITE_BUILDER_LUA,
+  WFWS_SWING_LUA,
 } from '../data/wfwsSdk';
 import {
   EFFECTS_SDK_FILES,
@@ -36,6 +37,7 @@ const LIBRARIES: PackLibraries = {
   wfws: {
     modToml: WFWS_SDK_MOD_TOML,
     spriteBuilderLua: WFWS_SPRITE_BUILDER_LUA,
+    swingLua: WFWS_SWING_LUA,
     airstrikeLua: WFWS_AIRSTRIKE_LUA,
     firingLua: WFWS_FIRING_LUA,
     sheets: WFWS_SDK_SHEETS,
@@ -100,4 +102,23 @@ export async function resolveDesktopDownloadPath(fileName: string): Promise<stri
   } catch {
     return `Downloads\\${fileName}`;
   }
+}
+
+/**
+ * Save an exported ZIP: in the desktop EXE build, write directly via Tauri to the
+ * Downloads folder (overwriting or returning the exact numbered fallback path);
+ * in browsers, trigger a standard download and return null.
+ */
+export async function saveExportBlob(blob: Blob, fileName: string): Promise<string | null> {
+  if (typeof window !== 'undefined' && isTauri()) {
+    try {
+      const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+      return await invoke<string>('save_export_zip', { fileName, bytes });
+    } catch {
+      downloadBlob(blob, fileName);
+      return await resolveDesktopDownloadPath(fileName);
+    }
+  }
+  downloadBlob(blob, fileName);
+  return null;
 }

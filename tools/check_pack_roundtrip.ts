@@ -69,6 +69,7 @@ const LIBRARIES: PackLibraries = {
   wfws: {
     modToml: readFileSync('spec/lua_sdk/wfws_sdk/mod.toml', 'utf8'),
     spriteBuilderLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua', 'utf8'),
+    swingLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_swing.lua', 'utf8'),
     sheets: [{ path: 'wf-lib/wfws_sdk/sprites/beam_orb.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_orb.png' }],
   },
 };

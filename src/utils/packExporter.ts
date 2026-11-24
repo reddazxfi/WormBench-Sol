@@ -355,6 +355,7 @@ async function fileBytes(content: BundleFileContent): Promise<string | Uint8Arra
 export interface WfwsLibraries {
   modToml: string;
   spriteBuilderLua: string;
+  swingLua?: string;
   airstrikeLua?: string;
   firingLua?: string;
   sheets?: { path: string; url: string }[];
@@ -374,11 +375,6 @@ export interface PackLibraries {
   effects?: PackLibrary;
   /** Self-contained beam textures shipped inside beam weapon folders (`beam.png`, `beam_glow.png`, `beam_end.png`, `beam_orb.png`). */
   beamSheets?: { coreUrl: string; glowUrl: string; endUrl?: string; orbUrl?: string };
-}
-
-/** Does the generated weapon require a module from the effects library? */
-function needsEffectsSdk(luaCode: string): boolean {
-  return luaCode.includes('wf-lib/effects/');
 }
 
 /**
@@ -483,6 +479,9 @@ export async function emitPackFiles(
   // so the folder goes there and the ZIP unpacks straight into `Mods/`.
   await put('wf-lib/wfws_sdk/mod.toml', libraries.wfws.modToml);
   await put('wf-lib/wfws_sdk/lib/wfws_sprite_builder.lua', libraries.wfws.spriteBuilderLua);
+  if (libraries.wfws.swingLua) {
+    await put('wf-lib/wfws_sdk/lib/wfws_swing.lua', libraries.wfws.swingLua);
+  }
   if (libraries.wfws.airstrikeLua) {
     await put('wf-lib/wfws_sdk/lib/wfws_airstrike.lua', libraries.wfws.airstrikeLua);
   }
@@ -496,17 +495,10 @@ export async function emitPackFiles(
     }
   }
 
-  // The effects SDK travels the same way when **any** weapon of the pack requires
-  // it. A weapon whose ribbon trail, burst or emitter needs
-  // `wf-lib/effects/...` used to depend on whatever copy the player happened to
-  // have: the emitter needs 0.4.3, and an older library either threw on a boolean
-  // override, silently dropped the ring, the reach direction and the shared
-  // colour, or painted nothing at all for a bundle's second weapon (an effect's
-  // draw callback is keyed by the component that installed the library). The
-  // folder is the catalogue's own, so unpacking updates an installed
-  // copy in place instead of leaving a second bundle with the same id.
+  // The effects SDK always travels with every export alongside `wfws.sdk`, so
+  // unpackers receive both `wf-lib/wfws_sdk/` and `wf-lib/effects_sdk/`.
   const effects = libraries.effects;
-  if (effects && parts.some((part) => needsEffectsSdk(withAliases(part.lua)))) {
+  if (effects) {
     await put('wf-lib/effects_sdk/mod.toml', effects.modToml);
     for (const file of effects.files) await put(file.path, file.text);
     for (const sheet of effects.sheets) {

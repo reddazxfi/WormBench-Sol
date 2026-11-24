@@ -20,7 +20,7 @@ import {
 } from './context/PxlLibraryContext';
 import type { PxlLibrary } from './types/pxl';
 import { parsePxlLibrary } from './utils/pxl/loadPxl';
-import { exportPackZip, downloadBlob, resolveDesktopDownloadPath } from './utils/modExporter';
+import { exportPackZip, saveExportBlob } from './utils/modExporter';
 import { DEFAULT_ID_NAMESPACE } from './utils/weaponId';
 import { generateLuaCode, sanitizeModFolder } from './utils/luaGenerator';
 import {
@@ -617,8 +617,7 @@ export default function App() {
       const blob = await exportPackZip(pack);
       const modFolder = sanitizeModFolder(pack.id);
       const fileName = `${modFolder}.zip`;
-      downloadBlob(blob, fileName);
-      const savedPath = await resolveDesktopDownloadPath(fileName);
+      const savedPath = await saveExportBlob(blob, fileName);
       const contents =
         pack.weapons.length > 1
           ? `${pack.weapons.length} weapons, one mod.toml & profile`

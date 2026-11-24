@@ -454,6 +454,11 @@ export interface MeleeConfig {
   hitSound: MeleeSound;
   /** WA's whiff is 96, the grenade throw and the bat's miss. */
   missSound: MeleeSound;
+  /**
+   * `worm:poison(n)` dose applied after each landed strike. `0` is off. The
+   * strike still does its normal hit; poison is the status dose on top of it.
+   */
+  poisonPower: number;
   /** Hit each worm once per swing, not once per frame the box is live. */
   oncePerTarget: boolean;
   /** Leave the firing worm out of its own strike. */
@@ -655,7 +660,7 @@ export interface RibbonTrailConfig {
  * The effects SDK's `px_effects` burst: PX's electric-explosion ring plus its
  * squashed lens, drawn for a fixed number of game frames.
  */
-export type ExplosionPreset = 'electric' | 'pyro' | 'ember';
+export type ExplosionPreset = 'electric' | 'pyro' | 'ember' | 'poison';
 
 /**
  * `effect` keeps WA's own blast and draws the burst on top of it (an `on_explode`
@@ -830,6 +835,16 @@ export interface ExplosionEffectConfig {
   sound: 'default' | 'none' | number;
   /** Hit kind the custom blast sends: `blast` (plain) or `electric` (taze). */
   damageType: ExplosionDamageType;
+  /**
+   * `worm:poison(n)` dose applied by the custom blast to every live worm in its
+   * radius. `0` is off. Poison is a status, not a hit kind: the blast still
+   * sends `damageType`, and the dose is a second call.
+   *
+   * It only runs in `blast` mode. `effect` mode leaves WA's own blast to fire
+   * after the hook, and the editor cannot know which worms that blast took; the
+   * card says so and the Poison preset switches to `blast`.
+   */
+  poisonPower: number;
   /** Shape/colour preset the numbers below started from. */
   preset: ExplosionPreset | 'custom';
   /** Ring radius in game pixels. */
@@ -1039,6 +1054,8 @@ export interface TerrainStampImpactConfig {
   kind: StampHitKind;
   /** Spare the worm that fired: PX's javelin does, so a spear in your hands stabs nothing. */
   spareShooter: boolean;
+  /** `worm:poison(n)` dose given to a worm the pierce damages. `0` is off. */
+  poisonPower: number;
 }
 
 export interface TerrainStampConfig {
@@ -1563,6 +1580,12 @@ export interface BeamConfig {
   targets: BeamTargetsConfig;
   /** Arm `px.electric` hold/spark reaction on worm hits (adds `px.electric` dep). */
   electricTaze: boolean;
+  /**
+   * `worm:poison(n)` dose given to each worm the beam damages. `0` is off.
+   * Applied only to a worm the hurt pass actually took (`wfws_firing`'s
+   * `beam_damage_body`), never to a mine, crate or barrel.
+   */
+  poisonPower: number;
   /** Carve terrain crater where the ray hits solid land (`wa.land.cut`). */
   terrainCut: boolean;
   /** Terrain cut crater radius in px. */

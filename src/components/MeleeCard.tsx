@@ -5,6 +5,7 @@ import { DEFAULT_MELEE, meleeStrikes, meleeTotalDamage } from '../data/melee';
 import { SOUND_PRIORITIES } from '../data/soundPresets';
 import { KeyTickInput } from './KeyTickInput';
 import { NumberInput } from './NumberInput';
+import { PoisonDoseField } from './PoisonDoseField';
 import { SoundUpload } from './EffectsCards';
 import { SpritePickButton } from './SpritePickButton';
 
@@ -656,6 +657,15 @@ export const MeleeCard: React.FC<MeleeCardProps> = ({ project, onChange }) => {
                   <option value="taze">Electrical (taze)</option>
                 </select>
               </div>
+            </div>
+
+            <div className="max-w-[230px]">
+              <PoisonDoseField
+                id="melee-poison"
+                value={melee.poisonPower}
+                onChange={(poisonPower) => update({ poisonPower })}
+                hint="Each strike that lands also gives its worm `worm:poison(n)`, after the normal or taze hit. The dose is paid out as nonlethal health at turn boundaries."
+              />
             </div>
 
             {melee.kind === 'taze' && (

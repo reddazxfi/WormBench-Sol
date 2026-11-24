@@ -331,6 +331,7 @@ const NO_PIERCE = {
   impulse: 0.5,
   kind: 'bullet' as const,
   spareShooter: true,
+  poisonPower: 0,
 };
 
 const STAMP_BMP = upArrowBitmap();
@@ -1563,6 +1564,7 @@ const TESTS: TestCase[] = [
           impulse: 0.25,
           kind: 'fire',
           spareShooter: false,
+          poisonPower: 0,
         },
       },
     }),
@@ -1671,6 +1673,7 @@ const TESTS: TestCase[] = [
           impulse: 0.4,
           kind: 'taze',
           spareShooter: true,
+          poisonPower: 0,
         },
       },
     }),
@@ -3193,6 +3196,37 @@ const TESTS: TestCase[] = [
       'Placed mine orbits a spinning star emitter ring while armed, leaves a rainbow ribbon as it settles, detonates with a spinning rainbow center glow and fire particles (without ribbon arcs), and electrifies nearby mines instead of detonating them.',
     watch:
       'Missing mine tracker (`wa.on.mine_frame` error), texbeam ring still drawn under `shape = "none"`, rainbow stuck on white, or nearby mines blowing up instead of electrifying.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.73_poison_cloud',
+      name: 'WF 73 Poison Cloud',
+      slot: 'grenade',
+      fireType: 'power',
+      body: { fuse: true, fuse_time_ms: 3000 },
+      explosion: {
+        ...DEFAULT_EXPLOSION_EFFECT,
+        ...EXPLOSION_PRESETS.poison.patch,
+        enabled: true,
+        damage: 0,
+        push: 0,
+        hole: 0,
+        damageType: 'blast',
+        poisonPower: 5,
+        radius: 96,
+        color: '#7ed957',
+        thickness: 16,
+        duration: 30,
+        live: 35,
+        smoke: true,
+      },
+    }),
+    intent:
+      'Poison preset on a damage-0 replacement blast: the cloud should dose every live worm inside its radius, including one the zero damage left untouched.',
+    expect:
+      'The grenade bursts into a green cloud and every worm in it starts losing health at the next turn boundaries, with no blast damage or knockback.',
+    watch:
+      'No poison at all (preset left in overlay mode), only the directly hit worm dosed, or the cloud doing ordinary blast damage.',
   },
 ];
 

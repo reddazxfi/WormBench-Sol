@@ -71,7 +71,7 @@ check(
   bundles.some((bundle) => bundle.id === 'wfws.sdk'),
   bundles.map((bundle) => bundle.id).join(', '),
 );
-check('test pack has 72 weapons', weapons.length === 72, String(weapons.length));
+check('test pack has 73 weapons', weapons.length === 73, String(weapons.length));
 
 const byName = new Map(weapons.map((weapon) => [weapon.name, weapon]));
 const projects = new Map<string, WeaponProject>();
@@ -2410,6 +2410,10 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
   near('WF 72: mine fireSpawn recovered', `${wf72?.explosionEffect.fireSpawn?.enabled}/${wf72?.explosionEffect.fireSpawn?.count}`, 'true/4');
   near('WF 72: placed-mine emitter anchor recovered', `${wf72?.emitter?.enabled}/${wf72?.emitter?.anchor}/${wf72?.emitter?.ring?.shape}`, 'true/round/star');
   near('WF 72: placed-mine ribbonTrail recovered', `${wf72?.ribbonTrail?.enabled}/${wf72?.ribbonTrail?.max}/${wf72?.ribbonTrail?.rainbow}`, 'true/10/true');
+
+  const wf73 = project('WF 73 Poison Cloud');
+  near('WF 73: poison cloud recovered', `${wf73?.explosionEffect.mode}/${wf73?.explosionEffect.poisonPower}/${wf73?.explosionEffect.damage}`, 'blast/5/0');
+  near('WF 73: poison cloud radius and colour', `${wf73?.explosionEffect.radius}/${wf73?.explosionEffect.color}`, '96/#7ed957');
 }
 
 if (failures.length > 0) {

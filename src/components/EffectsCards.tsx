@@ -17,6 +17,7 @@ import { bitBuilderMode } from '../data/spriteBuilder';
 import { DEFAULT_CUSTOM_SOUNDS, INTERVAL_PRESETS, SOUND_PRIORITIES } from '../data/soundPresets';
 import { ExplosionPreview } from './ExplosionPreview';
 import { NumberInput } from './NumberInput';
+import { PoisonDoseField } from './PoisonDoseField';
 import { RibbonTrailPreview } from './RibbonTrailPreview';
 import { SpritePickButton } from './SpritePickButton';
 import {
@@ -622,7 +623,18 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                 key={preset}
                 type="button"
                 title={EXPLOSION_PRESETS[preset].hint}
-                onClick={() => update({ ...EXPLOSION_PRESETS[preset].patch, preset })}
+                onClick={() =>
+                  update({
+                    centerGlow: undefined,
+                    rebufferAt: undefined,
+                    rebufferMode: undefined,
+                    shape: undefined,
+                    style: undefined,
+                    poisonPower: 0,
+                    ...EXPLOSION_PRESETS[preset].patch,
+                    preset,
+                  })
+                }
                 className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   fx.preset === preset
                     ? 'border-forge-500/70 bg-forge-50 text-forge-800 dark:border-forge-500/50 dark:bg-forge-950/40 dark:text-forge-200'
@@ -1098,12 +1110,17 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Right column: Live 50 Hz Preview + Hit, Poison & Fire controls directly beneath */}
+        <div className="space-y-4">
+          <ExplosionPreview config={fx} />
 
           {/* Damage and crater are the replacement blast's own numbers, so they
               only apply when it owns the blast. The damage type is a property of
               the blast either way: it arms the hurt, so an overlay burst tazes
               through WA's own blast and a replacement tazes through its own. */}
-          <div className="space-y-3 border-t border-stone-200/80 pt-3.5 dark:border-stone-800">
+          <div className="space-y-3.5 rounded-xl border border-stone-200/90 bg-stone-50/50 p-4 dark:border-stone-800 dark:bg-stone-950/35">
             {fx.mode === 'blast' && (
               <>
                 <SubSectionTitle
@@ -1111,77 +1128,96 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                   code="custom_explosion"
                   desc="Applied directly when Replace Game Blast mode is active."
                 />
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <BurstNumField
-                  id="explosion-damage"
-                  label="Blast Damage"
-                  code="damage"
-                  hint="Maximum damage dealt by custom_explosion."
-                  value={fx.damage}
-                  min={0}
-                  max={200}
-                  step={1}
-                  unit="dmg"
-                  onChange={(damage) => update({ damage })}
-                />
-                <BurstNumField
-                  id="explosion-push"
-                  label="Knockback"
-                  code="push"
-                  hint="Push force percentage applied to nearby worms."
-                  value={fx.push}
-                  min={0}
-                  max={400}
-                  step={1}
-                  unit="%"
-                  onChange={(push) => update({ push })}
-                />
-                <BurstNumField
-                  id="explosion-hole"
-                  label="Crater Radius"
-                  code="hole"
-                  hint="Terrain crater cut radius in pixels (0 leaves terrain intact)."
-                  value={fx.hole}
-                  min={0}
-                  max={200}
-                  step={1}
-                  unit="px"
-                  onChange={(hole) => update({ hole })}
-                />
-                <div className="space-y-1">
-                  <TooltipLabel
-                    label="Blast Sound"
-                    code="sound"
-                    desc="Native sound played by custom_explosion unless overridden by a custom WAV."
-                    htmlFor="explosion-sound"
+                <div className="grid grid-cols-2 gap-3">
+                  <BurstNumField
+                    id="explosion-damage"
+                    label="Blast Damage"
+                    code="damage"
+                    hint="Maximum damage dealt by custom_explosion."
+                    value={fx.damage}
+                    min={0}
+                    max={200}
+                    step={1}
+                    unit="dmg"
+                    onChange={(damage) => update({ damage })}
                   />
-                  <select
-                    id="explosion-sound"
-                    value={soundMode}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === 'default' || value === 'none') update({ sound: value });
-                      else update({ sound: typeof fx.sound === 'number' ? fx.sound : 69 });
-                    }}
-                    className={selectClass}
-                  >
-                    <option value="default">PX Random 69–71</option>
-                    <option value="none">Silent</option>
-                    <option value="id">Sound ID…</option>
-                  </select>
-                  {soundMode === 'id' && (
-                    <NumberInput
-                      aria-label="Explosion sound id"
-                      min={0}
-                      value={typeof fx.sound === 'number' ? fx.sound : 69}
-                      onChange={(e) => update({ sound: Number(e.target.value) })}
-                      className={inputClass}
+                  <BurstNumField
+                    id="explosion-push"
+                    label="Knockback"
+                    code="push"
+                    hint="Push force percentage applied to nearby worms."
+                    value={fx.push}
+                    min={0}
+                    max={400}
+                    step={1}
+                    unit="%"
+                    onChange={(push) => update({ push })}
+                  />
+                  <BurstNumField
+                    id="explosion-hole"
+                    label="Crater Radius"
+                    code="hole"
+                    hint="Terrain crater cut radius in pixels (0 leaves terrain intact)."
+                    value={fx.hole}
+                    min={0}
+                    max={200}
+                    step={1}
+                    unit="px"
+                    onChange={(hole) => update({ hole })}
+                  />
+                  <div className="space-y-1">
+                    <TooltipLabel
+                      label="Blast Sound"
+                      code="sound"
+                      desc="Native sound played by custom_explosion unless overridden by a custom WAV."
+                      htmlFor="explosion-sound"
                     />
-                  )}
+                    <select
+                      id="explosion-sound"
+                      value={soundMode}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === 'default' || value === 'none') update({ sound: value });
+                        else update({ sound: typeof fx.sound === 'number' ? fx.sound : 69 });
+                      }}
+                      className={selectClass}
+                    >
+                      <option value="default">PX Random 69–71</option>
+                      <option value="none">Silent</option>
+                      <option value="id">Sound ID…</option>
+                    </select>
+                    {soundMode === 'id' && (
+                      <NumberInput
+                        aria-label="Explosion sound id"
+                        min={0}
+                        value={typeof fx.sound === 'number' ? fx.sound : 69}
+                        onChange={(e) => update({ sound: Number(e.target.value) })}
+                        className={inputClass}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
 
+                <div className="mt-3">
+                  <PoisonDoseField
+                    id="explosion-poison"
+                    value={fx.poisonPower}
+                    onChange={(poisonPower) => update({ poisonPower, preset: 'custom' })}
+                    hint="Every live worm inside the custom blast's radius gets `worm:poison(n)`, even one the damage falloff left at 0. The dose is paid out as nonlethal health at turn boundaries. This only runs in Replace Game Blast mode; the Poison preset switches to it for you."
+                  />
+                </div>
               </>
+            )}
+
+            {fx.poisonPower > 0 && fx.mode !== 'blast' && (
+              <p className="flex items-start gap-2 rounded-lg border border-amber-300/70 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Poison needs <strong>Replace Game Blast</strong>. The overlay mode leaves WA's own
+                  blast to fire after the hook, so there is no reliable list of worms to poison. The
+                  Poison preset selects Replace Game Blast; switch the mode to make the dose land.
+                </span>
+              </p>
             )}
 
             {/* Electrical is not just a name: `px.electric`'s taze holds every
@@ -1329,9 +1365,6 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
             })()}
           </div>
         </div>
-
-        {/* Live 50 Hz Preview */}
-        <ExplosionPreview config={fx} />
       </div>
     </div>
   );

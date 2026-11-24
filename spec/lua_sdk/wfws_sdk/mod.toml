@@ -10,7 +10,7 @@
 # this bundle only replaces the flight builder.
 id = "wfws.sdk"
 name = "WFWS Engine SDK"
-version = "1.1.0"
+version = "1.1.2"
 author = "red / WFWS-E"
 api_version = 5
 format_version = 2

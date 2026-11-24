@@ -18,6 +18,7 @@ import {
 } from '../data/terrainStamp';
 import { buildRotationSheet } from '../utils/rotateSheet';
 import { NumberInput } from './NumberInput';
+import { PoisonDoseField } from './PoisonDoseField';
 import { SpritePickButton } from './SpritePickButton';
 import {
   SectionHeader,
@@ -546,6 +547,14 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                       ))}
                     </select>
                   </div>
+                </div>
+                <div className="max-w-[230px]">
+                  <PoisonDoseField
+                    id="stamp-hit-poison"
+                    value={impact.poisonPower}
+                    onChange={(poisonPower) => updateImpact({ poisonPower })}
+                    hint="A worm the pierce damages also gets `worm:poison(n)`. Mines, crates and barrels are damaged as before but are never poisoned."
+                  />
                 </div>
                 <div className="space-y-1">
                   <label

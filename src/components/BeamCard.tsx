@@ -41,6 +41,7 @@ import {
   UnitNumberInput,
 } from './RecordEditor';
 import { NumberInput } from './NumberInput';
+import { PoisonDoseField } from './PoisonDoseField';
 import { SpritePickButton } from './SpritePickButton';
 import {
   ChevronDown,
@@ -611,6 +612,15 @@ export const BeamCard: React.FC<BeamCardProps> = ({
                     </div>
                   </div>
                 )}
+
+                <div className="max-w-[230px]">
+                  <PoisonDoseField
+                    id="beam-poison"
+                    value={beam.poisonPower}
+                    onChange={(poisonPower) => update({ poisonPower })}
+                    hint="Each worm the beam actually damages gets `worm:poison(n)`; mines, crates and barrels never do. The dose is paid out as nonlethal health at turn boundaries."
+                  />
+                </div>
 
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-stone-200/70 pt-2.5 dark:border-stone-800">
                   <label className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-700 dark:text-stone-300 cursor-pointer">

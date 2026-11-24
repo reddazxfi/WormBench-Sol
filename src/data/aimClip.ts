@@ -79,7 +79,9 @@ export interface AimClipConfig {
   /**
    * What happens when the clip runs out. `endTurn` hands the turn back
    * (`wa.world.set_turn_clock(0)`) because the claim eats WA's fire, so
-   * without it the worm would sit in its aim pose with no way out.
+   * without it the worm would sit in its aim pose with no way out. A melee
+   * claim ignores it: its ghost shot lets WA end the turn on the retreat
+   * clock, and zeroing that clock would skip the window the player keeps.
    */
   finish: 'none' | 'endTurn';
 }

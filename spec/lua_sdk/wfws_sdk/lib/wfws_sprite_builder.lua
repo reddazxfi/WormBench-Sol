@@ -2095,7 +2095,12 @@ local function swing_ensure()
               wa.log(("[melee] swing done: %d ticks, %d hit(s)")
                 :format(entry.clip.ticks, st.hits or 0))
             end
-            if entry.clip.finish == "end_turn" and wa.world.set_turn_clock then
+            -- A melee swing fires a ghost shot and WA owns the turn; zeroing
+            -- the clock here would skip the retreat window and end the turn
+            -- the frame the clip ran out. `finish` belongs to a clip-only
+            -- weapon that ate the fire and has nothing else to end it.
+            if not entry.melee and entry.clip.finish == "end_turn"
+              and wa.world.set_turn_clock then
               wa.world.set_turn_clock(0)
             end
           end

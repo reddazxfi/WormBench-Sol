@@ -190,10 +190,13 @@ ctx = lua.table()
 ctx.id = "test.bat"
 
 
-def build_spec(weapon="test.bat", weap_rotation=1, aim_clamp=None, follow_swing=True,
-               power=3, lift=1, hits=None, hit_sound=0, miss_sound=0,
+def build_spec(weapon="test.bat", weap_rotation=1, aim_clamp=None, follow_swing=False,
+               push="aim", power=3, lift=1, hits=None, hit_sound=0, miss_sound=0,
                hit_wav=None, miss_wav=None, hit_priority=8, miss_priority=8,
-               swing_angle=-30):
+               # The editor's baseline clip reaches 58 degrees at the hit frame.
+               # With follow_swing off (the generator's default) the box must
+               # ignore it and still reach a worm straight ahead.
+               swing_angle=-58):
     spec = lua.table_from({
         "weapon": weapon,
         "sheet": "sprites/test.bat/hold.png",
@@ -221,7 +224,7 @@ def build_spec(weapon="test.bat", weap_rotation=1, aim_clamp=None, follow_swing=
         "melee": lua.table_from({
             "radius": 32, "width": 16, "follow_swing": follow_swing, "hit_frame": 8,
             "damage": 24,
-            "push": "aim", "power": power, "lift": lift, "log": True,
+            "push": push, "power": power, "lift": lift, "log": True,
         }),
     })
     if aim_clamp is not None:
@@ -334,7 +337,7 @@ check("no second take while swinging", len([e for e in EVENTS if e[0] == "take"]
 for n in range(12, 20):
     step(n, space=True)
 check("the clip releases the worm", ("release", 0, 0) in EVENTS)
-check("finish = end_turn ends the turn", ("turn_clock", 0) in EVENTS)
+check("a melee swing ignores finish = end_turn", ("turn_clock", 0) not in EVENTS)
 check("one take, one release",
       len([e for e in EVENTS if e[0] == "release"]) == 1,
       str([e for e in EVENTS if e[0] in ("take", "release")]))
@@ -561,6 +564,20 @@ check(
     down is not None and abs(down[0]) < 1e-9 and abs(down[1] - 2.0) < 1e-6,
     "throw %s (straight down: x = 0 even though it is the zero case, y = power - lift)"
     % (down,),
+)
+
+# The generator's default throw is the literal 12/8 table, not the aim vector,
+# and the default lift is 0, so the callback receives exactly 12/8.
+fixed_ctx = lua.table()
+fixed_ctx.id = "test.bat.fixed"
+sb.hold(fixed_ctx, build_spec(
+    "test.bat.fixed", follow_swing=False,
+    push=lua.table_from({"x": 12, "y": 8}), lift=0))
+fixed = strike_at("test.bat.fixed", 0.5, (1024, 1000), {}, 900)
+check(
+    "a fixed throw uses the literal vx/vy default",
+    fixed is not None and abs(fixed[0] - 12.0) < 1e-6 and abs(fixed[1] - 8.0) < 1e-6,
+    "throw %s (the literal 12/8 table)" % (fixed,),
 )
 
 # A combo: three strikes on their own ticks, each with its own damage and throw.

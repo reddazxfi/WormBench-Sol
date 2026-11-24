@@ -960,6 +960,7 @@ local BEAM_KEYS = {
   damage = true,
   push = true,
   burn_push = true,
+  poison = true,
   interact = true,
   kind = true,
   targets = true,
@@ -1356,6 +1357,13 @@ local function beam_damage_body(b, body, along)
   end
 
   if hit_ok then
+    -- Poison is a status dose, not a hit kind. It goes only on a worm the
+    -- hurt pass actually took, so mines, crates and barrels never get it, and
+    -- only once per beam: a burn tick calls this again for the same worm.
+    if b.poison > 0 and body.kind == "worm" and not b.poisoned[body.id] then
+      b.poisoned[body.id] = true
+      pcall(function() body:poison(b.poison) end)
+    end
     local t = b.len > 0 and (along / b.len) or 0
     if t < 0 then t = 0 elseif t > 1 then t = 1 end
     b.hits_list[#b.hits_list + 1] = { x = body.x, y = body.y, t = t }
@@ -2271,6 +2279,8 @@ function M.beam(ev, spec)
     damage_spec = spec.damage ~= nil and spec.damage or { 20, 30 },
     push = tonumber(spec.push) or 0,
     burn_push = math.max(0, tonumber(spec.burn_push) or 0),
+    poison = math.max(0, math.min(1000, math.floor(tonumber(spec.poison) or 0))),
+    poisoned = {},
     interact = interact,
     kind = spec.kind or (interact == "hit" and "taze" or "fire"),
     targets = spec.targets == "worms" and "worms" or "all",

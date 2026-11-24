@@ -37,6 +37,7 @@ export const EXPLOSION_PRESETS: Record<
       ellipseY: 0.45,
       rebuffer: true,
       smoke: true,
+      poisonPower: 0,
     },
   },
   pyro: {
@@ -57,6 +58,52 @@ export const EXPLOSION_PRESETS: Record<
       ellipseY: 1,
       rebuffer: false,
       smoke: false,
+      poisonPower: 0,
+    },
+  },
+  poison: {
+    label: 'Poison',
+    hint: 'Toxic green cloud with spin-star core; switches to Replace Game Blast so the dose lands',
+    patch: {
+      // Poison is a dose on the worm, not a hit kind. It needs the custom blast
+      // (`mode: 'blast'`) because the overlay path cannot know which worms WA's
+      // own blast took; this preset replaces the blast instead of pretending a
+      // second on_explode can poison reliably. The underlying overlay limit for
+      // non-mine rounds is deliberately not being fixed here.
+      enabled: true,
+      mode: 'blast',
+      damage: 15,
+      push: 40,
+      hole: 20,
+      sound: 'default',
+      damageType: 'blast',
+      poisonPower: 2,
+      radius: 12,
+      color: '#162211',
+      thickness: 50,
+      core: 15,
+      noise: 0.001,
+      duration: 40,
+      fade: 0.45,
+      grow: 9,
+      live: 30,
+      segments: 40,
+      ellipseX: 1.5,
+      ellipseY: 1,
+      rebuffer: true,
+      rebufferMode: 'px',
+      rebufferAt: 22,
+      smoke: true,
+      shape: 'ring',
+      style: 'classic',
+      centerGlow: {
+        shape: 'spin_star',
+        scale: 3,
+        expand: 2,
+        spin: 0.1,
+        inner: true,
+        color: '#133b02',
+      },
     },
   },
   ember: {
@@ -77,6 +124,7 @@ export const EXPLOSION_PRESETS: Record<
       ellipseY: 1,
       rebuffer: false,
       smoke: false,
+      poisonPower: 0,
     },
   },
 };
@@ -91,6 +139,7 @@ export const DEFAULT_EXPLOSION_EFFECT: ExplosionEffectConfig = {
   hole: 45,
   sound: 'default',
   damageType: 'blast',
+  poisonPower: 0,
   preset: 'electric',
   ...EXPLOSION_PRESETS.electric.patch,
 } as ExplosionEffectConfig;

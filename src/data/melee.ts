@@ -15,15 +15,21 @@ export const DEFAULT_MELEE: MeleeConfig = {
   enabled: false,
   radius: 34,
   width: 16,
-  followSwing: true,
+  // A strike starts along the worm's own aim, not the art's swing: a level
+  // swing at a worm straight ahead is the baseline every weapon must land.
+  followSwing: false,
   hitFrame: 8,
   damage: 20,
   kind: 'normal',
-  pushMode: 'aim',
+  poisonPower: 0,
+  // The default throw is literal, not the aim vector: the classic 12/8 shove.
+  pushMode: 'fixed',
   pushPower: 3,
-  pushVx: 0,
-  pushVy: 0,
-  lift: 1,
+  pushVx: 12,
+  pushVy: 8,
+  // No extra lift on the literal throw, so the default hit really is 12/8.
+  // A positive lift is opt-in and is subtracted from the y the callback gets.
+  lift: 0,
   // WA plays 96 when a grenade is thrown and when the bat comes off nothing: the
   // swing's own whoosh. On by default, because a strike that reaches nobody is
   // otherwise silent (the claim eats WA's fire, so the record's sound never runs).
@@ -68,6 +74,15 @@ export function meleeStrikes(melee: MeleeConfig): MeleeHit[] {
             damage: Math.max(0, Number(melee.damage) || 0),
             power: Number(melee.pushPower) || 0,
             lift: Number(melee.lift) || 0,
+            // Keep the single strike's throw explicit, so the preview, the
+            // panel and the export all read the same 12/8 default even when
+            // the author never opened a per-strike row.
+            ...(melee.pushMode === 'fixed'
+              ? {
+                  vx: Number(melee.pushVx) || 0,
+                  vy: Number(melee.pushVy) || 0,
+                }
+              : {}),
           },
         ];
   return hits.sort((a, b) => a.frame - b.frame);

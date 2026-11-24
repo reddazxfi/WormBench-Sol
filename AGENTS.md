@@ -86,7 +86,7 @@ different project. Do not modify it from this repository.
 │  ├─ data/
 │  │  ├─ recordTabs.tsx        # section ids/labels/icons shared by nav
 │  │  ├─ recordSchema.ts       # field tables used by the editor
-│  │  ├─ explosionPresets.ts   # PX electric / pyro / ember burst presets
+│  │  ├─ explosionPresets.ts   # PX electric / pyro / ember / poison burst presets
 │  │  ├─ emitter.ts            # PX effect-manager presets, defaults, family gates
 │  │  ├─ spriteBuilder.ts      # WFWS role defaults, state ids, availability
 │  │  └─ stockWeapons.ts       # stock donors, slots, panel positions
@@ -795,6 +795,23 @@ The editor ships `spec/lua_sdk/wfws_sdk/` (id `wfws.sdk`), exporting
   hit: `zap.set_message_electric(20, 0, -4, true)` before `blast.explode{ kind =
   "taze" }`, or `zap.set_message_electric_missile(20, ev.worm, 2)` in `effect`
   mode. The pierce and the melee strike arm their own hits the same way.
+- **Poison is a status dose, never a hit kind.** `kind = "poison"` is not valid;
+  the engine verb is `worm:poison(n)` (native, 1..1000), and WA pays the dose out
+  as nonlethal health at turn boundaries rather than as an immediate hit. The UI
+  exposes it as one shared switch (`PoisonDoseField`, `src/data/poison.ts`): off,
+  or 1..10 with a default of 2. Every damaging side applies it only to a worm it
+  actually hit: the custom blast poisons every live worm inside the larger of
+  its blast radius and the burst's visual radius after `wa.world.blast` (so a
+  damage-0 cloud, whose derived blast radius is only 4 px, still covers what it
+  draws), the beam poisons the worm after a
+  successful `hit_ok` and remembers it in `b.poisoned` so a burn beam's DoT ticks
+  cannot stack the dose, the pierce's `STAMP_HIT` calls `o:poison` in its worm
+  branch, and the melee callback appends `victim:poison(P)` after either
+  `victim:hit` or `zap.hurt_electric`. The **Poison** explosion preset hardcodes
+  `mode = "blast"` (Replace Game Blast) because the overlay path leaves WA's own
+  blast unowned and cannot carry the dose; that overlay-only-for-mines limit is
+  deliberate and is not fixed. An overlay burst drops any poison it was given
+  and the card warns instead of silently switching modes.
 - **Custom WAVs (`project.customSounds`)**: PCM files declared in the claim's
   `sounds` list and played by path, so no stock sample slot is used. Four roles:
   `launch` (`on_fire`, once per trigger, the file counterpart of the record's own
@@ -954,36 +971,43 @@ needs any of them is drawn by `wfws.sdk`'s quad layer instead of the engine.
   the retreat window, `0x55D490`), so the record now fires an **invisible ghost**
   and WA owns the turn: `sprite = 0`, `trail = { sprite = 0 }`,
   `action = "none"`, `burst = "nothing"`, `explosion = { power = 0, push_pct = 0 }`,
-  no launch/flight/blast sound, no impact particles, no alarm, and
-  `handling = { retreat = 5000 }` and `fuse = 5000` unless the author set a retreat
-  (Turn Handling). **The two numbers are one number**: WA hands the turn over when
-  the shot it fired is gone or the retreat runs out, so a ghost that detonated on
-  contact at the worm's feet ended the turn a frame after the swing and the window
-  was never seen. A nonzero `fuse` is also WA's "timed, not impact detonated"
-  switch, so the ghost lives exactly the window and then pops harmlessly, which is
-  the moment the turn ends anyway.
+  no launch/flight/blast sound, no impact particles, no alarm, and a `fuse`
+  equal to the effective retreat window (the author's Turn Handling override,
+  else the donor/scheme value, at least 500 ms). **The two numbers are one
+  number**: WA hands the turn over when the shot it fired is gone or the retreat
+  runs out, so a ghost that detonated on contact at the worm's feet ended the
+  turn a frame after the swing and the window was never seen. A nonzero `fuse`
+  is also WA's "timed, not impact detonated" switch, so the ghost lives exactly
+  the window and then pops harmlessly, which is the moment the turn ends anyway.
   Nothing leaves the worm a player can see or feel; the strike's own `hit` /
   `hitSound` / `missSound` is the weapon's voice, and `collects_crates = false`
-  keeps the ghost from picking up a crate it crosses. `project.melee.enabled` is the
-  one test (`meleeGhost` in `luaGenerator`), and it also stops the clip writing
-  `finish = "end_turn"`: a clip-only weapon ate the fire, so its `finish` is what
-  ends the turn, while a melee must not. The 5 s retreat is the control the player
-  keeps until the ghost dies or Space is pressed. Geometry in `src/data/melee.ts`, read by
+  keeps the ghost from picking up a crate it crosses. `project.melee.enabled` is
+  the one test (`meleeGhost` in `luaGenerator`), and the generator writes no
+  `finish` at all for a melee claim; the SDK also ignores a hand-written
+  `finish = "end_turn"` on a melee (`not entry.melee` guards the clock write), so
+  a melee never zeroes the turn clock. A clip-only weapon ate the fire, so its
+  `finish` is what ends the turn; a melee's ends on WA's own effective retreat
+  window (the author's override, else the donor/scheme value, at least 500 ms).
+  Geometry in `src/data/melee.ts`, read by
   the red box on the aim preview, the SDK and the test pack: the scan is **the
   worm's own aim and nothing else**. `worm.aim` is WA's sweep (0 straight down,
   0.5 level, 1 straight up) and `worm.facing` is the side, so the direction is
   `(facing * sin(aim*PI), cos(aim*PI))` in world space (y down); the clip's angle
-  at the hit frame turns it when `follow_swing`. The held art's `weap_radius` and
+  at the hit frame turns it only when `follow_swing` is on (`followSwing`, **off
+  by default**, so a level swing at a worm straight ahead lands). The held art's
+  `weap_radius` and
   `weap_rotation` are drawing controls: moving a pivot or turning a sheet does not
   change where the worm points, and using either is what pointed the box at the
   striker's back (once through the radius sign, once through the sheet's own
   angle). `radius` is the reach, `width` the half-arc, and the near edge starts
   3 px behind the worm. `spare_shooter` and
-  `once` default on, reset per Space press. The throw is the same aim vector:
-  `push = "aim"` (the default) hands `hit` `(vx, vy)` = the scan vector times
-  `push power`, with `lift` subtracted from y (world y is down, so a positive
-  lift throws up); `push = { x, y }` is the author's literal throw and still gets
-  `lift`. No `weap_radius`, no `weap_rotation`, nothing from the art. What a hit
+  `once` default on, reset per Space press. The throw defaults to the literal
+  **`push = { x = 12, y = 8 }`** (`pushMode: 'fixed'`, `pushVx` / `pushVy`), which
+  is the baseline shove the author can adjust; `push = "aim"` is the opt-in that
+  hands `hit` `(vx, vy)` = the scan vector times `push power`. In either mode
+  `lift` is subtracted from y (world y is down, so a positive lift throws up;
+  `lift` defaults to 0, so the baseline callback receives exactly 12/8). No
+  `weap_radius`, no `weap_rotation`, nothing from the art. What a hit
   does is the weapon's own `hit` callback (`victim:hurt{ amount, vx, vy }`, or
   `zap.hurt_electric` for `taze`, `pcall`ed). The hit lands on the first tick at or past `hit_frame`
   with a `st.struck` latch (`>=`, not `==`), so a frame whose message never

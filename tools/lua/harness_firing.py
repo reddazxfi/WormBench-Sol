@@ -40,6 +40,7 @@ MISSILES = {}
 WORMS = []
 BODIES = []
 HITS = []
+DOSES = []
 CUTS = []
 RIBBONS = []
 QUADS = []
@@ -91,6 +92,7 @@ def py_reset(seed=13579):
     WORMS.clear()
     BODIES.clear()
     HITS.clear()
+    DOSES.clear()
     CUTS.clear()
     RIBBONS.clear()
     QUADS.clear()
@@ -311,6 +313,10 @@ def py_record_hit(kind, bid, mode, amount, vx=None, vy=None, hit_kind=None, reac
     })
 
 
+def py_record_poison(bid, dose):
+    DOSES.append((int(bid), int(dose)))
+
+
 def py_draw_ribbon(r):
     pts_tbl = r["points"]
     pts = []
@@ -375,6 +381,7 @@ _PY = {
     "cos": math.cos,
     "atan": math.atan2,
     "worms_all": py_worms_all,
+    "record_poison": py_record_poison,
     "mines_all": py_mines_all,
     "crates_all": py_crates_all,
     "oil_all": py_oil_all,
@@ -494,6 +501,10 @@ function _make_worm(id, x, y, aim, facing, weapon)
     shots_to_fire = 1,
     target = { x = x + 300, y = y },
   }
+  function w:poison(dose)
+    _py.record_poison(self.id, dose)
+    return true
+  end
   function w:hit(opts)
     assert(type(opts) == "table", "API 5 worm:hit requires table argument")
     if opts.react == false then
@@ -803,6 +814,7 @@ firing.beam(
         "range": 500,
         "damage": 25,
         "push": 6,
+        "poison": 7,
         "kind": "taze",
         "interact": "hit",
         "spare_shooter": True,
@@ -823,6 +835,11 @@ check(
     and ("crate", 31, "obj_hit", 25) in hit_ids
     and all(h["id"] not in (11, 13) for h in HITS),
     f"hits={hit_ids}",
+)
+check(
+    "case 8c: beam poison doses the worm it hit, never a mine or crate",
+    DOSES == [(12, 7)],
+    f"doses={DOSES}",
 )
 check(
     "case 8b: terrain cut applied at wall x=320 and draw emitted ribbons",
@@ -1565,6 +1582,7 @@ firing.beam(
         "width": 12,
         "range": 240,
         "damage": 10,
+        "poison": 4,
         "interact": "burn",
         "burn_push": 0.9,
         "push": 5.0,
@@ -1583,6 +1601,11 @@ check(
     and (final_hits_14m[0]["vx"] or 0) >= 4.5
     and final_hits_14m[0]["kind"] == "fire",
     f"dot={dot_hits_14m}, final={final_hits_14m}",
+)
+check(
+    "case 14m: a burning beam doses the worm once, not once per DoT tick",
+    DOSES == [(111, 4)],
+    f"doses={DOSES}",
 )
 
 # ---- Case 14n: curved arc hits target right at far tip / crater radius ----

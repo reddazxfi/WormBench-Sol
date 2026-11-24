@@ -18,6 +18,7 @@ import type {
   RebufferMode,
   WeaponProject,
 } from '../types/weapon';
+import { clampPoisonPower } from './poison';
 
 /** Shared `wfws.sdk` sprite paths for each built-in beam texture family. */
 export const BEAM_ART_STYLE_PATHS: Record<BeamArtStyle, Record<BeamSpriteRole, string>> = {
@@ -119,6 +120,7 @@ export const DEFAULT_BEAM: BeamConfig = {
   spareShooter: true,
   targets: { ...DEFAULT_BEAM_TARGETS },
   electricTaze: false,
+  poisonPower: 0,
   terrainCut: true,
   cutRadius: 16,
   cutBorder: 4,
@@ -258,6 +260,7 @@ export function mergeBeamConfig(raw?: Partial<BeamConfig> | null): BeamConfig {
       ...(s.targets ?? {}),
     },
     electricTaze: !!s.electricTaze,
+    poisonPower: clampPoisonPower(s.poisonPower),
     terrainCut: s.terrainCut ?? DEFAULT_BEAM.terrainCut,
     cutRadius: Math.max(0, Math.min(120, Math.round(Number(s.cutRadius ?? DEFAULT_BEAM.cutRadius)))),
     cutBorder: Math.max(0, Math.min(32, Math.round(Number(s.cutBorder ?? DEFAULT_BEAM.cutBorder)))),

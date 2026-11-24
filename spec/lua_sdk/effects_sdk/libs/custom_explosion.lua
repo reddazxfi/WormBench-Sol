@@ -8,7 +8,11 @@
 -- arrows, and Lua actors whose `body.hit_by` takes blasts. Objects receive an
 -- ordinary hit, so a mine can be set off by the blast, as in PX.
 -- `o.kind` names the hit the engine delivers ("taze", a bundle's own kind);
--- left out, it is a plain blast.
+-- left out, it is a plain blast. `o.poison` is a dose (`worm:poison(n)`), not a
+-- hit kind: it is a second call on every live worm in the blast's area, after
+-- the blast. A damage-0 cloud has no blast area to speak of, so the dose covers
+-- the burst's visual radius when that is larger, which is what lets a poison
+-- preset with `damage = 0` reach the worms standing in its cloud.
 
 local M = {}
 
@@ -24,6 +28,19 @@ local function numbers(o)
   local hole = o.hole or o.destroy_radius or damage
   local effect = o.effect_radius or math.floor((damage + 2) / 2)
   return damage, push, radius, hole, effect
+end
+
+-- The dose has to reach every worm the blast could have hurt, and a damage-0
+-- cloud has to reach what it draws. Those are two different radii: `radius`
+-- is the blast's (PX derives it from damage when the caller omits it) and the
+-- burst's own `radius` is the cloud's. Cover the larger of the two.
+local function poison_area(o, radius, effect_radius)
+  if o.effect == false then return radius end
+  local burst = effect_radius
+  if type(o.effect) == "table" then
+    burst = tonumber(o.effect.radius) or burst
+  end
+  return burst > radius and burst or radius
 end
 
 local function dead(w)
@@ -86,6 +103,21 @@ function M.explode(o)
             w:hit{ amount = dmg, vx = px, vy = py }
             hits = hits + 1
           end
+        end
+      end
+    end
+  end
+
+  local poison = math.floor(tonumber(o.poison) or 0)
+  if poison > 0 then
+    poison = math.max(1, math.min(1000, poison))
+    local dose_radius = poison_area(o, radius, effect_radius)
+    local r2 = dose_radius * dose_radius
+    for _, w in ipairs(wa.worms.all()) do
+      if w.hp > 0 and not dead(w) then
+        local dx, dy = (w.x or 0) - x, (w.y or 0) - y
+        if dx * dx + dy * dy <= r2 then
+          pcall(w.poison, w, poison)
         end
       end
     end

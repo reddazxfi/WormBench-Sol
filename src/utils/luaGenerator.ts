@@ -36,6 +36,7 @@ import {
   supportsFireSequence,
 } from '../data/fireSequence';
 import { STAMP_FRAMES, stampFrameForAngle, supportsTerrainStamp } from '../data/terrainStamp';
+import { clampPoisonPower, poisonCall } from '../data/poison';
 import { COLLISION_FLAGS } from '../data/recordSchema';
 import { meleeStrikes } from '../data/melee';
 import {
@@ -2101,6 +2102,7 @@ export function generateLuaCode(project: WeaponProject): string {
   const usesBeam = beamActive(project) && !hasCustomOnFire && !hasCarriedOnFire;
   const beamCfg = usesBeam ? mergeBeamConfig(project.beam) : null;
   const usesElectricBeam = usesBeam && beamUsesElectricTaze(project);
+  const beamPoison = usesBeam ? clampPoisonPower(beamCfg?.poisonPower) : 0;
 
   // `wf-lib/wfws_firing` (`wfws.sdk`): unified sequential firing engine.
   // Supports both native WA gun timing (`gun.bullets` + nested `projectile` +
@@ -2177,6 +2179,10 @@ export function generateLuaCode(project: WeaponProject): string {
   // would blast once more on top of the pierce (and crater over a stamp).
   const silencesBlast =
     (usesExplosionEffect && explosionEffect!.mode === 'blast') || usesImpactDamage;
+  const explosionPoison =
+    usesExplosionEffect && explosionEffect!.mode === 'blast'
+      ? clampPoisonPower(explosionEffect!.poisonPower)
+      : 0;
   // Electric damage. WA has no electric hit kind, so `kind = "taze"` only names
   // the hit (WA takes it as the Prod's) and nothing about the worm changes.
   // What tazes is `px.electric`'s damage module, which is already installed as
@@ -2190,9 +2196,11 @@ export function generateLuaCode(project: WeaponProject): string {
   // The javelin's pierce takes the same hit kinds, so its `taze` needs the same
   // arm: `o:hurt{ kind = "taze" }` is a Prod to WA and nothing more.
   const usesElectricImpact = usesImpactDamage && stampImpact!.kind === 'taze';
+  const stampPoison = usesImpactDamage ? clampPoisonPower(stampImpact!.poisonPower) : 0;
   // A melee strike's electrical hit is `px.electric`'s own `hurt_electric`: WA's
   // "taze" kind alone is a Prod to it and nothing more.
   const usesElectricMelee = !!project.melee?.enabled && project.melee.kind === 'taze';
+  const meleePoison = project.melee?.enabled ? clampPoisonPower(project.melee.poisonPower) : 0;
   const usesZap =
     usesElectricBlast ||
     usesElectricImpact ||
@@ -2421,7 +2429,7 @@ export function generateLuaCode(project: WeaponProject): string {
     const impulse = Math.max(0, Math.min(1, Number(hit.impulse) || 0));
     lines.push('-- Damage instead of a blast (PX\'s javelin): the round pierces what it hits.');
     lines.push(
-      `local STAMP_HIT = { damage = ${damage}, radius = ${radius}, impulse = ${formatNumber(impulse)}, kind = ${luaQuote(hit.kind)}, spare_shooter = ${hit.spareShooter ? 'true' : 'false'} }`,
+      `local STAMP_HIT = { damage = ${damage}, radius = ${radius}, impulse = ${formatNumber(impulse)}, kind = ${luaQuote(hit.kind)}, spare_shooter = ${hit.spareShooter ? 'true' : 'false'}${stampPoison > 0 ? `, poison = ${stampPoison}` : ''} }`,
     );
     lines.push('local function stamp_hit(ev)');
     lines.push('  local vx, vy = ev.vx or 0, ev.vy or 0');
@@ -2448,6 +2456,7 @@ export function generateLuaCode(project: WeaponProject): string {
     }
     lines.push('        o:hit{ amount = STAMP_HIT.damage, vx = vx * STAMP_HIT.impulse,');
     lines.push('                 vy = vy * STAMP_HIT.impulse, kind = STAMP_HIT.kind }');
+    if (stampPoison > 0) lines.push('        if STAMP_HIT.poison then o:poison(STAMP_HIT.poison) end');
     lines.push('      else');
     lines.push('        o:hit(STAMP_HIT.damage, vx * STAMP_HIT.impulse, vy * STAMP_HIT.impulse,');
     lines.push('          STAMP_HIT.kind)');
@@ -2799,11 +2808,12 @@ export function generateLuaCode(project: WeaponProject): string {
         // power, lift, ... }`), so a combo gives each hit its own damage; the
         // literal fallback keeps a three-argument caller (an older installed
         // SDK) landing the same hit.
+        const poisonSuffix = meleePoison > 0 ? ` ${poisonCall('victim', meleePoison)}` : '';
         if (melee.kind === 'taze') {
           holdRows.push(
             `  hit = function(victim, vx, vy, hit) zap.hurt_electric(` +
               `victim, hit and hit.damage or ${damage}, ` +
-              '{ frames = 25, push_x = vx, push_y = vy, retain = true }) end,',
+              `{ frames = 25, push_x = vx, push_y = vy, retain = true })${poisonSuffix} end,`,
           );
           if (usesTazeMine) {
             holdRows.push(
@@ -2813,7 +2823,7 @@ export function generateLuaCode(project: WeaponProject): string {
         } else {
           holdRows.push(
             `  hit = function(victim, vx, vy, hit) victim:hit{ ` +
-              `amount = hit and hit.damage or ${damage}, vx = vx, vy = vy } end,`,
+              `amount = hit and hit.damage or ${damage}, vx = vx, vy = vy }${poisonSuffix} end,`,
           );
         }
         holdRows.push('},');
@@ -3087,6 +3097,7 @@ export function generateLuaCode(project: WeaponProject): string {
           ? `      damage = { ${b.damageMin}, ${b.damageMax} },`
           : `      damage = ${b.damageMin},`,
       );
+      if (beamPoison > 0) lines.push(`      poison = ${beamPoison},`);
       if (b.interact) {
         lines.push('      interact = "hit",');
         if (b.push > 0) lines.push(`      push = ${formatNumber(b.push)},`);
@@ -5767,6 +5778,9 @@ export function generateLuaCode(project: WeaponProject): string {
         // nothing about the worm.
         if (e.damageType === 'electric') {
           blastRows.push('          kind = "taze",');
+        }
+        if (explosionPoison > 0) {
+          blastRows.push(`          poison = ${explosionPoison},`);
         }
         // PX's own default is a random 69-71 blast; `sound = true` asks for it.
         // A pack WAV already covers the blast, so the native one stays off.

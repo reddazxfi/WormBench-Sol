@@ -31,10 +31,11 @@ import { DEFAULT_BODY } from '../src/data/defaults';
 import { getStockPanelPosition } from '../src/data/stockWeapons';
 import { DEFAULT_MELEE } from '../src/data/melee';
 import { DEFAULT_EMITTER, DEFAULT_EMITTER_RING, DEFAULT_EMITTER_TRAIL } from '../src/data/emitter';
-import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
+import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../src/data/explosionPresets';
 import { DEFAULT_AIRSTRIKE } from '../src/data/airstrike';
 import { DEFAULT_FIRE_SEQUENCE } from '../src/data/fireSequence';
 import { DEFAULT_BEAM } from '../src/data/beam';
+import { DEFAULT_TERRAIN_STAMP } from '../src/data/terrainStamp';
 import { scanLua } from '../src/utils/modLib/luaTable';
 import { parseWepBinary } from '../src/utils/wepParser';
 import { DEFAULT_IMPORT_HOLD, readBundleFeatures } from '../src/utils/modLib/importFeatures';
@@ -422,6 +423,20 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
     empty.includes('one pose at the strike frame'),
   );
   check('the strike is emitted with it', empty.includes('melee = {'));
+  check(
+    'the baseline strike follows the aim, not the clip angle',
+    empty.includes('follow_swing = false'),
+    empty.split(String.fromCharCode(10)).find((l) => l.includes('follow_swing')) ?? 'missing',
+  );
+  check(
+    'the baseline strike throws the 12/8 default',
+    empty.includes('push = { x = 12, y = 8 },'),
+    empty.split(String.fromCharCode(10)).find((l) => l.includes('push = ')) ?? 'missing',
+  );
+  check(
+    'a melee swing never ends the turn by zeroing its clock',
+    !empty.includes('finish = "end_turn"'),
+  );
 
   // A listed strike that throws flat used to omit `lift`, and `hold_melee_hits`
   // reads a missing key as the weapon's `lift`: the second strike of a combo was
@@ -439,6 +454,9 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
     melee: {
       ...DEFAULT_MELEE,
       enabled: true,
+      // This case is about a combo that throws along the aim, where each strike
+      // carries its own `power`; the default throw is the literal 12/8 instead.
+      pushMode: 'aim',
       lift: 5,
       hits: [
         { frame: 8, damage: 10, power: 2, lift: 5 },
@@ -2257,6 +2275,202 @@ local afterHook = 42`;
     tazeMeleeLua.includes('taze_mine = require("wf-lib/electric/taze_mine")') &&
       tazeMeleeLua.includes('on_taze_mine = function(m, w) taze_mine.taze(m'),
     tazeMeleeLua,
+  );
+
+  // Poison is a status dose, not a hit kind. It reaches the custom blast, the
+  // beam, the pierce and the melee hit, and every one is a `:poison(n)` call on
+  // a worm (or, for the held blast, a worm inside the radius), never `kind`.
+  check(
+    'the poison preset is a replacement blast with a default dose of 2',
+    EXPLOSION_PRESETS.poison.patch.mode === 'blast' &&
+      EXPLOSION_PRESETS.poison.patch.poisonPower === 2,
+    JSON.stringify(EXPLOSION_PRESETS.poison.patch),
+  );
+
+  const poisonBlastLua = generateLuaCode(
+    makeProject({
+      explosionEffect: {
+        ...DEFAULT_EXPLOSION_EFFECT,
+        enabled: true,
+        mode: 'blast',
+        poisonPower: 2,
+      },
+    }),
+  );
+  check(
+    'custom blast carries poison = 2 into blast.explode',
+    poisonBlastLua.includes('poison = 2,') &&
+      !poisonBlastLua.includes('kind = "poison"'),
+    poisonBlastLua,
+  );
+  const poisonOverlayLua = generateLuaCode(
+    makeProject({
+      explosionEffect: {
+        ...DEFAULT_EXPLOSION_EFFECT,
+        enabled: true,
+        mode: 'effect',
+        poisonPower: 9,
+      },
+    }),
+  );
+  check(
+    'overlay burst drops the poison dose (it cannot own a blast)',
+    !poisonOverlayLua.includes('poison = 9'),
+    poisonOverlayLua,
+  );
+
+  const poisonBeamLua = generateLuaCode(
+    makeProject({
+      slot: 'shotgun',
+      based_on: 'stock.shotgun',
+      donorBaseline: stockDonorBaseline('shotgun'),
+      fireType: 'beam',
+      beam: { ...DEFAULT_BEAM, enabled: true, poisonPower: 3 },
+    }),
+  );
+  check(
+    'beam carries poison = 3 into the BEAM table',
+    poisonBeamLua.includes('poison = 3,') &&
+      !poisonBeamLua.includes('kind = "poison"'),
+    poisonBeamLua,
+  );
+
+  const poisonStampLua = generateLuaCode(
+    makeProject({
+      slot: 'bazooka',
+      based_on: 'stock.bazooka',
+      donorBaseline: stockDonorBaseline('bazooka'),
+      terrainStamp: {
+        ...DEFAULT_TERRAIN_STAMP,
+        enabled: true,
+        onImpact: true,
+        impact: {
+          ...DEFAULT_TERRAIN_STAMP.impact,
+          enabled: true,
+          poisonPower: 5,
+        },
+      },
+    }),
+  );
+  check(
+    'pierce carries poison = 5 and calls o:poison on a worm hit',
+    poisonStampLua.includes('poison = 5') &&
+      poisonStampLua.includes('if STAMP_HIT.poison then o:poison(STAMP_HIT.poison) end') &&
+      !poisonStampLua.includes('kind = "poison"'),
+    poisonStampLua,
+  );
+
+  const poisonMeleeLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'bazooka',
+      based_on: 'stock.bazooka',
+      donorBaseline: stockDonorBaseline('bazooka'),
+      fireType: 'melee',
+      hold: { enabled: true, sheet: 'sprites/m/hold.png' } as any,
+      melee: {
+        ...DEFAULT_MELEE,
+        enabled: true,
+        kind: 'normal',
+        poisonPower: 7,
+      },
+    }),
+  );
+  check(
+    'melee hit appends victim:poison(7) after the hit',
+    poisonMeleeLua.includes(' victim:poison(7) end,') &&
+      !poisonMeleeLua.includes('kind = "poison"'),
+    poisonMeleeLua,
+  );
+
+  const parseFeatures = async (luaText: string) => {
+    const scan = scanLua(luaText);
+    return readBundleFeatures({
+      weapon: {
+        bundleId: 'x',
+        bundleName: 'x',
+        bundleDir: '',
+        dependencies: [],
+        spriteDecls: {},
+        componentId: 'x',
+        name: 'x',
+        modulePath: '',
+        source: scan.calls['wa.weapons.replace'],
+      },
+      files: [],
+      moduleText: luaText,
+      mappedPackArt: {},
+      digging: false,
+    });
+  };
+
+  const blastPoison = await parseFeatures(poisonBlastLua);
+  check(
+    'custom blast poison comes back with the burst',
+    blastPoison.project.explosionEffect?.poisonPower === 2 &&
+      blastPoison.project.explosionEffect?.mode === 'blast',
+    JSON.stringify(blastPoison.project.explosionEffect),
+  );
+  const overlayPoison = await parseFeatures(poisonOverlayLua);
+  check(
+    'overlay import does not invent a poison dose',
+    overlayPoison.project.explosionEffect?.poisonPower === 0,
+    JSON.stringify(overlayPoison.project.explosionEffect),
+  );
+
+  const beamPoison = await parseFeatures(poisonBeamLua);
+  check(
+    'beam poison comes back with the beam',
+    beamPoison.project.beam?.poisonPower === 3,
+    JSON.stringify(beamPoison.project.beam),
+  );
+
+  const stampPoison = await parseFeatures(poisonStampLua);
+  check(
+    'pierce poison comes back with the impact',
+    stampPoison.project.terrainStamp?.impact.poisonPower === 5,
+    JSON.stringify(stampPoison.project.terrainStamp?.impact),
+  );
+
+  const meleePoison = await parseFeatures(poisonMeleeLua);
+  check(
+    'melee poison comes back with the strike',
+    meleePoison.project.melee?.poisonPower === 7,
+    JSON.stringify(meleePoison.project.melee),
+  );
+
+  check(
+    'non-poison explosion presets explicitly zero poisonPower',
+    EXPLOSION_PRESETS.electric.patch.poisonPower === 0 &&
+      EXPLOSION_PRESETS.pyro.patch.poisonPower === 0 &&
+      EXPLOSION_PRESETS.ember.patch.poisonPower === 0,
+    JSON.stringify({
+      electric: EXPLOSION_PRESETS.electric.patch.poisonPower,
+      pyro: EXPLOSION_PRESETS.pyro.patch.poisonPower,
+      ember: EXPLOSION_PRESETS.ember.patch.poisonPower,
+    }),
+  );
+
+  const poisonPresetLua = generateLuaCode(
+    makeProject({
+      explosionEffect: {
+        ...DEFAULT_EXPLOSION_EFFECT,
+        ...EXPLOSION_PRESETS.poison.patch,
+        preset: 'poison',
+      },
+    }),
+  );
+  const poisonPresetParsed = await parseFeatures(poisonPresetLua);
+  check(
+    'poison preset matches grenade.lua settings and round-trips as preset === "poison"',
+    poisonPresetParsed.project.explosionEffect?.preset === 'poison' &&
+      poisonPresetParsed.project.explosionEffect?.mode === 'blast' &&
+      poisonPresetParsed.project.explosionEffect?.poisonPower === 2 &&
+      poisonPresetParsed.project.explosionEffect?.color === '#162211' &&
+      poisonPresetParsed.project.explosionEffect?.rebufferAt === 22 &&
+      poisonPresetParsed.project.explosionEffect?.centerGlow?.shape === 'spin_star' &&
+      poisonPresetParsed.project.explosionEffect?.centerGlow?.color === '#133b02',
+    JSON.stringify(poisonPresetParsed.project.explosionEffect),
   );
 }
 

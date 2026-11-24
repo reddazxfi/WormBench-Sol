@@ -86,6 +86,7 @@ import {
   WORM_SPRITE_POSE_ORDER,
 } from '../../data/spriteBuilder';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../../data/explosionPresets';
+import { clampPoisonPower } from '../../data/poison';
 import { DEFAULT_EMITTER } from '../../data/emitter';
 import { DEFAULT_FIRE_SEQUENCE, DEFAULT_FIRE_SEQUENCE_HOMING } from '../../data/fireSequence';
 import { DEFAULT_CUSTOM_SOUNDS } from '../../data/soundPresets';
@@ -551,6 +552,23 @@ function presetFor(config: ExplosionEffectConfig): ExplosionPreset | 'custom' {
     const match = Object.entries(patch).every(([field, value]) => {
       if (field === 'color' && typeof value === 'string') {
         return value.toLowerCase() === config.color.toLowerCase();
+      }
+      if (field === 'shape') return (config.shape ?? 'ring') === value;
+      if (field === 'style') return (config.style ?? 'classic') === value;
+      if (field === 'rebufferMode') return (config.rebufferMode ?? 'px') === value;
+      if (field === 'rebufferAt') return (config.rebufferAt ?? 16) === value;
+      if (field === 'centerGlow' && value && typeof value === 'object') {
+        const expected = value as BurstGlowConfig;
+        const actual = config.centerGlow;
+        if (!actual) return false;
+        return (
+          actual.shape === expected.shape &&
+          actual.scale === expected.scale &&
+          actual.expand === expected.expand &&
+          actual.spin === expected.spin &&
+          actual.inner === expected.inner &&
+          (actual.color ?? '').toLowerCase() === (expected.color ?? '').toLowerCase()
+        );
       }
       return (config as unknown as Record<string, unknown>)[field] === value;
     });
@@ -1202,6 +1220,7 @@ export async function readBundleFeatures(args: {
       const amount =
         /hit and hit\.damage or (-?\d+(?:\.\d+)?)/.exec(hitLine) ??
         /(?:amount\s*=\s*|hurt_electric\(victim,\s*)(-?\d+(?:\.\d+)?)/.exec(hitLine);
+      const poison = /victim:poison\(\s*(-?\d+(?:\.\d+)?)\s*\)/.exec(hitLine);
       const push = meleeTable.push;
       // A combo writes `hits = { { frame, damage, power, lift }, ... }`; one hit
       // writes `hit_frame` / `damage` / `power` and no list. Both come back as
@@ -1284,6 +1303,7 @@ export async function readBundleFeatures(args: {
         hitFrame: Math.max(0, Math.round(num(meleeTable.hit_frame) ?? 0)),
         damage: amount ? Number(amount[1]) : DEFAULT_MELEE.damage,
         kind: /hurt_electric/.test(hitLine) ? 'taze' : 'normal',
+        poisonPower: clampPoisonPower(poison ? Number(poison[1]) : 0),
         pushMode: isTable(push) ? 'fixed' : 'aim',
         pushPower: num(meleeTable.power) ?? DEFAULT_MELEE.pushPower,
         pushVx: isTable(push) ? num(push.x) ?? 0 : 0,
@@ -1903,8 +1923,12 @@ export async function readBundleFeatures(args: {
     /zap\.set_message_electric(?:_missile)?\(/.test(onExplodeText) &&
     moduleText.includes('wf-lib/electric/damage');
   if (blastCall || burstCall) {
-    let effect = explosionBase;
     const isBlast = !!blastCall;
+    let effect: ExplosionEffectConfig = {
+      ...explosionBase,
+      enabled: true,
+      mode: isBlast ? 'blast' : 'effect',
+    };
     if (blastCall) {
       const b = blastCall.table;
       effect = {
@@ -1916,6 +1940,7 @@ export async function readBundleFeatures(args: {
         // The scripted hit kind; the generator only ever writes `"taze"`.
         damageType:
           str(b.kind) === 'taze' || armedElectric ? 'electric' : 'blast',
+        poisonPower: clampPoisonPower(num(b.poison)),
         sound:
           b.sound === true ? 'default' : (num(b.sound) ?? 'none'),
       };
@@ -1923,6 +1948,10 @@ export async function readBundleFeatures(args: {
       if (inner) effect = readBurstRows(inner, effect);
     } else {
       effect = readBurstRows(burstCall!.table, effect);
+      // The overlay path cannot poison: it leaves WA's own blast unowned. A
+      // bundle that carries the field on an `fx.burst` did not get it from this
+      // editor, and re-exporting must not pretend it did.
+      effect = { ...effect, poisonPower: 0 };
       if (armedElectric) effect = { ...effect, damageType: 'electric' };
     }
     const fireCall = readCallTable(onExplodeText, 'wa.fire.spawn');
@@ -1940,7 +1969,7 @@ export async function readBundleFeatures(args: {
         },
       };
     }
-    project.explosionEffect = {
+    const resolvedEffect: ExplosionEffectConfig = {
       ...effect,
       enabled: true,
       mode: isBlast ? 'blast' : 'effect',
@@ -1951,6 +1980,10 @@ export async function readBundleFeatures(args: {
         : moduleText.includes('if explode_role ~= "bit" then return end')
           ? 'bit'
           : 'all',
+    };
+    project.explosionEffect = {
+      ...resolvedEffect,
+      preset: presetFor(resolvedEffect),
     };
     notes.push(isBlast ? 'explosion burst (blast)' : 'explosion burst (overlay)');
   }
@@ -2246,6 +2279,7 @@ export async function readBundleFeatures(args: {
       }
       if (num(bt.push) !== undefined) beam.push = num(bt.push)!;
       else if (!beam.interact) beam.push = 0;
+      beam.poisonPower = clampPoisonPower(num(bt.poison));
       if (num(bt.burn_push) !== undefined) beam.burnPush = num(bt.burn_push)!;
       else beam.burnPush = 0;
 
@@ -2664,6 +2698,7 @@ export async function readBundleFeatures(args: {
           ? (kind as TerrainStampImpactConfig['kind'])
           : 'bullet',
         spareShooter: bool(hitTable!.spare_shooter) ?? true,
+        poisonPower: clampPoisonPower(num(hitTable!.poison)),
       },
     };
     notes.push('impact damage');

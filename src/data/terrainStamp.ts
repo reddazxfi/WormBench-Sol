@@ -63,6 +63,7 @@ export const DEFAULT_TERRAIN_STAMP: TerrainStampConfig = {
     impulse: 0.5,
     kind: 'bullet',
     spareShooter: true,
+    poisonPower: 0,
   },
 };
 

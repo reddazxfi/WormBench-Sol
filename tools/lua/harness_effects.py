@@ -35,6 +35,7 @@ def check(name, ok, detail=''):
 STATE = {'frame': 0, 'spawned': 0, 'despawned': 0, 'drawn': [], 'quads': [], 'draws': []}
 LOGS = []
 WORM = {'id': 1, 'hp': 100, 'turn': True, 'x': 1000.0, 'y': 1000.0}
+DOSES = []
 MISSILES = []
 MINES = []
 
@@ -59,6 +60,7 @@ def worm_handle(_id=None):
     t = lua.table()
     for key, value in WORM.items():
         t[key] = value
+    t['poison'] = lambda _self, dose: DOSES.append(int(dose)) or True
     return t
 
 
@@ -593,6 +595,66 @@ check(
     str(captured_burst[0] if captured_burst else 'none'),
 )
 fx['burst'] = orig_burst
+
+DOSES.clear()
+blast.explode(lua_table(
+    '{ x = 1000, y = 1000, damage = 0, radius = 30, destroy = false, effect = false, sound = false, poison = 5 }'
+))
+check(
+    'a damage-0 blast still doses every live worm inside its radius',
+    DOSES == [5],
+    str(DOSES),
+)
+DOSES.clear()
+# The generated shape: no top-level radius, so the blast radius PX derives from
+# `damage = 0` is 4 px. The cloud is the burst's own radius, and the dose has
+# to cover it or a poison preset would only poison a worm standing on the pin.
+blast.explode(lua_table(
+    '{ x = 1000, y = 1000, damage = 0, destroy = false, sound = false, poison = 5, effect = { radius = 30 } }'
+))
+check(
+    'a damage-0 poison cloud doses worms inside the burst radius',
+    DOSES == [5],
+    str(DOSES),
+)
+DOSES.clear()
+blast.explode(lua_table(
+    '{ x = 2000, y = 2000, damage = 0, destroy = false, sound = false, poison = 5, effect = { radius = 30 } }'
+))
+check(
+    'a poison cloud outside its burst radius doses nobody',
+    DOSES == [],
+    str(DOSES),
+)
+DOSES.clear()
+WORM['x'] = 1030.0
+blast.explode(lua_table(
+    '{ x = 1000, y = 1000, damage = 20, radius = 30, destroy = false, sound = false, poison = 5, effect = { radius = 10 } }'
+))
+check(
+    'a damaging blast doses a worm its blast reaches outside the visual burst',
+    DOSES == [5],
+    str(DOSES),
+)
+WORM['x'] = 1000.0
+DOSES.clear()
+blast.explode(lua_table(
+    '{ x = 2000, y = 2000, damage = 0, radius = 30, destroy = false, effect = false, sound = false, poison = 5 }'
+))
+check(
+    'a poison cloud outside its radius doses nobody',
+    DOSES == [],
+    str(DOSES),
+)
+DOSES.clear()
+blast.explode(lua_table(
+    '{ x = 1000, y = 1000, damage = 0, radius = 30, destroy = false, effect = false, sound = false, poison = 5000 }'
+))
+check(
+    'the custom blast clamps a poison dose to 1000',
+    DOSES == [1000],
+    str(DOSES),
+)
 
 th = fx.emitter(lua_table(
     '{ x = 300, y = 300, preset = "thunder", spark = true, glow = true, '

@@ -34,6 +34,7 @@ import { PackSpriteUpload } from './PackSpriteUpload';
 import { NumberInput, useNumberDraft } from './NumberInput';
 import { MeleeCard } from './MeleeCard';
 import { AirstrikeCard } from './AirstrikeCard';
+import { BeamCard } from './BeamCard';
 import { LuaFindings } from './LuaFindings';
 import { checkLua, fixLockstepRng } from '../utils/luaCheck';
 import { recordField } from '../utils/recordField';
@@ -168,6 +169,7 @@ interface RecordEditorProps {
   onChange: (updated: Partial<WeaponProject>) => void;
   activeSubTab: RecordTabId;
   onSelectSubTab: (tab: RecordTabId) => void;
+  onOpenHoldBuilder?: () => void;
 }
 
 export function buildTooltip(desc?: string, code?: string): string | undefined {
@@ -349,6 +351,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
   onChange,
   activeSubTab,
   onSelectSubTab,
+  onOpenHoldBuilder,
 }) => {
   const [clusterView, setClusterView] = useState<'physics' | 'targets' | 'action'>('physics');
 
@@ -842,6 +845,17 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
       {normalizedTab === 'airstrike' && (
         <div className="p-4 sm:p-5">
           <AirstrikeCard project={project} onChange={onChange} />
+        </div>
+      )}
+
+      {/* PANEL 0B: Beam / Ray / Cone Weapon */}
+      {normalizedTab === 'beam' && (
+        <div className="p-4 sm:p-5">
+          <BeamCard
+            project={project}
+            onChange={onChange}
+            onOpenHoldBuilder={onOpenHoldBuilder}
+          />
         </div>
       )}
 

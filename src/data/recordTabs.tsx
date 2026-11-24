@@ -22,6 +22,7 @@ export type RecordTabId =
   | 'collisions'
   | 'callbacks'
   | 'gun'
+  | 'beam'
   | 'strike'
   | 'airstrike'
   | 'gun_mine'
@@ -49,6 +50,7 @@ export const RECORD_TABS: RecordTabDef[] = [
   { id: 'burst', label: 'Explodes Into', hint: 'Single blast, cluster bits or fire', icon: Sparkles },
   { id: 'sprite', label: 'Sprites & Trail', hint: 'Missile sprite, smoke trail & sounds', icon: Sliders },
   { id: 'gun', label: 'Firearm Specs', hint: 'Bullets, spread cone, pellets & hits', icon: Crosshair },
+  { id: 'beam', label: 'Beam & Cone', hint: 'Hitscan/advancing ray & cone hurt layer, charge buffer & preview', icon: Zap },
   { id: 'gun_mine', label: 'Tool & Setup', hint: 'Mine, arrow, teleport or special tool', icon: Wrench },
   { id: 'melee', label: 'Melee Strike', hint: 'Scan box, hit frame & how the victim is thrown', icon: Swords },
   { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
@@ -103,6 +105,18 @@ export function visibleRecordTabs(
     }
     return [
       { id: 'gun', label: 'Firearm Specs', hint: 'Bullets, spread cone, damage & hits', icon: Crosshair },
+      { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
+    ];
+  }
+
+  if (fireType === 'beam') {
+    return [
+      {
+        id: 'beam',
+        label: 'Beam & Cone',
+        hint: 'Hitscan or advancing ray/cone hurt layer, charge buffer, visuals & live preview',
+        icon: Zap,
+      },
       { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
     ];
   }

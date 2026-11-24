@@ -33,25 +33,42 @@ import type {
   AirstrikeReleaseMode,
   AirstrikeSheetAsset,
   AirstrikeSoundSpec,
+  BeamArtStyle,
+  BeamConfig,
+  BeamDepthBand,
+  BeamFadeMode,
+  BeamFireConfig,
+  BeamGrowEase,
+  BeamHitKind,
+  BeamHurtMode,
+  BeamLookKind,
+  BeamPathKind,
   BehaviorArtKey,
+  BurstGlowConfig,
+  BurstGlowShape,
+  BurstShape,
   CustomSoundsConfig,
   ExplosionEffectConfig,
   ExplosionPreset,
   FireSequenceConfig,
   FlightRoleArt,
+  GlowShape,
   HoldConfig,
   MissileSpriteConfig,
   PackArtAsset,
   PackArtSlot,
+  RebufferMode,
   RibbonTrailConfig,
   RoamSheetAsset,
   TerrainStampImpactConfig,
+  TrailMode,
   WeaponProject,
   WormSpritePoseAsset,
   WormSpritePoseKey,
 } from '../../types/weapon';
 import { DEFAULT_MELEE } from '../../data/melee';
 import { cloneAirstrikeConfig, DEFAULT_AIRSTRIKE } from '../../data/airstrike';
+import { beamArtStyleFromPath, cloneBeamConfig, DEFAULT_BEAM } from '../../data/beam';
 import { CLAIM_KEYS_CARRIED, CLAIM_KEYS_MODELLED } from '../../data/luaHooks';
 import { NOT_GENERATED_MARKER, maskLuaCode } from '../luaText';
 import type { MeleeHit, MeleeSound } from '../../types/weapon';
@@ -405,7 +422,7 @@ async function readRoleArt(
  */
 function readOffset(
   table: LuaValue | undefined,
-  prefix: 'fireOffset' | 'fireHandOffset',
+  prefix: 'fireOffset' | 'fireHandOffset' | 'bufferOffset' | 'bufferHandOffset',
 ): Partial<HoldConfig> {
   if (!isTable(table)) return {};
   const out: Partial<HoldConfig> = {};
@@ -542,12 +559,50 @@ function presetFor(config: ExplosionEffectConfig): ExplosionPreset | 'custom' {
   return 'custom';
 }
 
+function readCenterGlow(val: LuaValue | undefined): BurstGlowConfig | undefined {
+  if (val === false) {
+    return { shape: 'none', scale: 2.1, expand: 1.0, spin: 0.16, inner: true };
+  }
+  if (!isTable(val)) return undefined;
+  const gShapeRaw = str(val.shape);
+  const shape: BurstGlowShape =
+    gShapeRaw === 'orb' || gShapeRaw === 'star' || gShapeRaw === 'spin_star' || gShapeRaw === 'none'
+      ? gShapeRaw
+      : 'spin_star';
+  const gRgb = rgbOf(val);
+  return {
+    shape,
+    scale: num(val.scale) ?? 2.1,
+    expand: num(val.expand) ?? 1.0,
+    spin: num(val.spin) ?? 0.16,
+    inner: bool(val.inner) ?? true,
+    ...(gRgb ? { color: hexColor(gRgb.r, gRgb.g, gRgb.b) } : {}),
+  };
+}
+
 /** `fx.burst{ … }` or `blast.explode{ effect = { … } }` -> the burst panel. */
 function readBurstRows(table: LuaTable, config: ExplosionEffectConfig): ExplosionEffectConfig {
   const rgb = rgbOf(table);
   const ellipse = isTable(table.ellipse) ? table.ellipse : undefined;
   const smoke = table.smoke;
   const rebuffer = table.rebuffer;
+  const rbTable = isTable(rebuffer) ? rebuffer : undefined;
+  const rbModeRaw = rbTable ? str(rbTable.mode) : undefined;
+  const rbMode: RebufferMode | undefined =
+    rbModeRaw === 'px' || rbModeRaw === 'pulse' || rbModeRaw === 'flash' || rbModeRaw === 'none'
+      ? rbModeRaw
+      : rbTable
+        ? 'px'
+        : undefined;
+  const styleRaw = str(table.style);
+  const style: BeamArtStyle | undefined =
+    styleRaw === 'classic' || styleRaw === 'soft' || styleRaw === 'plasma' ? styleRaw : undefined;
+  const shapeRaw = str(table.shape);
+  const shape: BurstShape | undefined =
+    shapeRaw === 'ring' || shapeRaw === 'star' || shapeRaw === 'spin_star' || shapeRaw === 'none'
+      ? shapeRaw
+      : undefined;
+  const centerGlow = readCenterGlow(table.glow);
   const next: ExplosionEffectConfig = {
     ...config,
     radius: num(table.radius) ?? config.radius,
@@ -566,6 +621,13 @@ function readBurstRows(table: LuaTable, config: ExplosionEffectConfig): Explosio
     ellipseY: num(ellipse?.['2']) ?? num(ellipse?.y) ?? config.ellipseY,
     smoke: isTable(smoke) ? true : bool(smoke) ?? false,
     rebuffer: isTable(rebuffer) ? true : bool(rebuffer) ?? false,
+    ...(rbTable && num(rbTable.at) !== undefined ? { rebufferAt: Math.round(num(rbTable.at)!) } : {}),
+    ...(rbMode ? { rebufferMode: rbMode } : {}),
+    ...(style ? { style } : {}),
+    ...(shape ? { shape } : {}),
+    ...(num(table.points) !== undefined ? { starPoints: Math.round(num(table.points)!) } : {}),
+    ...(num(table.spin) !== undefined ? { spin: num(table.spin)! } : {}),
+    ...(centerGlow ? { centerGlow } : {}),
     // `rainbow = true` (or PX's `{ speed, offset }`) on the manager.
     rainbow: isTable(table.rainbow) || table.rainbow === true,
   };
@@ -711,6 +773,8 @@ function customExplodeBody(
     // toggle, so it is one of ours too. Left in, it would be re-emitted as the
     // author's custom Lua and then armed twice on the next export.
     if (stripOwnedBurst && /^zap\.set_message_electric(?:_missile)?\(/.test(trimmed)) continue;
+    if (stripOwnedBurst && /^if wa\.fire and wa\.fire\.spawn then wa\.fire\.spawn\(/.test(trimmed)) continue;
+    if (stripOwnedBurst && /^if wa\.mines and wa\.mines\.all then .*taze_mine\.taze\(/.test(trimmed)) continue;
     kept.push(line);
   }
   // A body of comments is not code: nothing to carry, and carrying it would put a
@@ -789,6 +853,10 @@ export async function readBundleFeatures(args: {
     const flashSource = flashTable ?? fireTable;
     const flashAsset = flashSource
       ? await readAsset(files, bundleDir, str(flashSource.sheet))
+      : undefined;
+    const holdBufferTable = isTable(holdTable.buffer) ? holdTable.buffer : undefined;
+    const bufferAsset = holdBufferTable
+      ? await readAsset(files, bundleDir, str(holdBufferTable.sheet))
       : undefined;
     // The firing sheet's cell, the way the generator slices it: the sheet's
     // width, and its height over the frame count (one frame is the whole
@@ -928,6 +996,74 @@ export async function readBundleFeatures(args: {
                         ),
                       }
                     : {}),
+                }
+              : {}),
+          }
+        : {}),
+      ...(holdBufferTable
+        ? {
+            bufferFile: bufferAsset?.file,
+            bufferPreview: bufferAsset?.preview,
+            bufferWidth: bufferAsset?.width,
+            bufferHeight: bufferAsset?.height,
+            ...(holdBufferTable.hide_main === true ? { bufferHideMain: true } : {}),
+            ...(num(holdBufferTable.weap_radius) !== undefined &&
+            num(holdBufferTable.weap_radius) !== Number(hold.weapRadius ?? 6)
+              ? { bufferWeapRadius: num(holdBufferTable.weap_radius) }
+              : {}),
+            ...(num(holdBufferTable.weap_rotation) !== undefined &&
+            (num(holdBufferTable.weap_rotation) as number) !==
+              Math.round((1 + (Number(hold.weapRotation) || 0) / 180) * 1e4) / 1e4
+              ? {
+                  bufferWeapRotation:
+                    Math.round(
+                      (((num(holdBufferTable.weap_rotation) as number) - 1) * 180 +
+                        Number.EPSILON) *
+                        1000,
+                    ) / 1000,
+                }
+              : {}),
+            ...(num(holdBufferTable.hand_radius) !== undefined &&
+            (num(holdBufferTable.hand_radius) as number) !== Number(hold.handRadius ?? 10)
+              ? { bufferHandRadius: num(holdBufferTable.hand_radius) }
+              : {}),
+            ...(num(holdBufferTable.hand_rotation) !== undefined &&
+            (num(holdBufferTable.hand_rotation) as number) !==
+              Math.round((1 + (Number(hold.handRotation) || 0) / 180) * 1e4) / 1e4
+              ? {
+                  bufferHandRotation:
+                    Math.round(
+                      (((num(holdBufferTable.hand_rotation) as number) - 1) * 180 +
+                        Number.EPSILON) *
+                        1000,
+                    ) / 1000,
+                }
+              : {}),
+            ...(num(holdBufferTable.hand_scale) !== undefined &&
+            (num(holdBufferTable.hand_scale) as number) !== Number(hold.handScale ?? 1)
+              ? { bufferHandScale: num(holdBufferTable.hand_scale) }
+              : {}),
+            ...(num(holdBufferTable.scale) !== undefined
+              ? { bufferScale: num(holdBufferTable.scale) }
+              : {}),
+            ...(holdBufferTable.draw_hand === false
+              ? { bufferDrawHand: false }
+              : holdBufferTable.draw_hand === true
+                ? { bufferDrawHand: true }
+                : {}),
+            ...readOffset(holdBufferTable.offset, 'bufferOffset'),
+            ...readOffset(holdBufferTable.hand_offset, 'bufferHandOffset'),
+            ...(num(holdBufferTable.frames) !== undefined
+              ? {
+                  bufferFrames: Math.max(1, Math.round(num(holdBufferTable.frames) as number)),
+                  bufferFps: Math.max(
+                    1,
+                    Math.round(
+                      (num(holdBufferTable.anim_speed) ?? 1) *
+                        1.5 *
+                        Math.max(1, Math.round(num(holdBufferTable.frames) as number)),
+                    ),
+                  ),
                 }
               : {}),
           }
@@ -1516,6 +1652,8 @@ export async function readBundleFeatures(args: {
   const trailTable = firstTable(scan, 'TRAIL');
   if (trailTable && moduleText.includes('wf-lib/effects/trail')) {
     const rgb = rgbOf(trailTable) ?? { r: 255, g: 255, b: 255 };
+    const styleRaw = str(trailTable.style);
+    const modeRaw = str(trailTable.mode);
     project.ribbonTrail = {
       enabled: true,
       max: num(trailTable.max) ?? 12,
@@ -1526,6 +1664,12 @@ export async function readBundleFeatures(args: {
       noise: num(trailTable.noise) ?? 0,
       rainbow: trailTable.rainbow === true || isTable(trailTable.rainbow),
       color: hexColor(rgb.r, rgb.g, rgb.b),
+      ...(styleRaw === 'classic' || styleRaw === 'soft' || styleRaw === 'plasma'
+        ? { style: styleRaw as BeamArtStyle }
+        : {}),
+      ...(modeRaw === 'electric' || modeRaw === 'straight' || modeRaw === 'wavy' || modeRaw === 'helix'
+        ? { mode: modeRaw as TrailMode }
+        : {}),
       // The target is read off the guard the generator emits: `trail_is_bit`
       // says "not the round" or "not a bit", and `trail_live` on its own is the
       // builder-off heuristic for `main`.
@@ -1651,8 +1795,16 @@ export async function readBundleFeatures(args: {
           ? signed(planeReturnMatch[3], planeReturnMatch[4])
           : signed(roundReturnMatch?.[3], roundReturnMatch?.[4]),
       preset: str(t.preset) === 'thunder' ? 'thunder' : 'electric',
+      ...(str(t.style) === 'soft' || str(t.style) === 'plasma' || str(t.style) === 'classic'
+        ? { style: str(t.style) as BeamArtStyle }
+        : {}),
       spark: t.spark !== false,
       glow: t.glow !== false,
+      ...(isTable(t.glow) &&
+      (str(t.glow.shape) === 'orb' || str(t.glow.shape) === 'star' || str(t.glow.shape) === 'spin_star')
+        ? { glowShape: str(t.glow.shape) as GlowShape }
+        : {}),
+      ...(isTable(t.glow) && num(t.glow.spin) !== undefined ? { glowSpin: num(t.glow.spin)! } : {}),
       reach: !!reach,
       reachDirection:
         num(reach?.direction) ??
@@ -1694,6 +1846,12 @@ export async function readBundleFeatures(args: {
             coreWidth: num(ring.core_w) ?? 0,
             glowWidth: num(ring.glow_w) ?? 0,
             thin: ring.thin === true,
+            ...(str(ring.shape) === 'star' || str(ring.shape) === 'ring'
+              ? { shape: str(ring.shape) as 'ring' | 'star' }
+              : {}),
+            ...(num(ring.star_points) !== undefined
+              ? { starPoints: Math.round(num(ring.star_points)!) }
+              : {}),
             ellipseX: num(ellipse?.['1']) ?? num(ellipse?.x) ?? base.ring.ellipseX,
             ellipseY: num(ellipse?.['2']) ?? num(ellipse?.y) ?? base.ring.ellipseY,
             track: ring.track === true,
@@ -1716,6 +1874,12 @@ export async function readBundleFeatures(args: {
               ? hexColor(emTrailRgb.r, emTrailRgb.g, emTrailRgb.b)
               : base.trail.color,
             rainbow: trailTable2.rainbow === true || isTable(trailTable2.rainbow),
+            ...(str(trailTable2.mode) === 'electric' ||
+            str(trailTable2.mode) === 'straight' ||
+            str(trailTable2.mode) === 'wavy' ||
+            str(trailTable2.mode) === 'helix'
+              ? { mode: str(trailTable2.mode) as TrailMode }
+              : {}),
           }
         : { ...base.trail, enabled: false },
       rainbow: t.rainbow === true || isTable(t.rainbow),
@@ -1725,7 +1889,11 @@ export async function readBundleFeatures(args: {
 
   // ---- explosion burst ----------------------------------------------------
   const blastCall = readCallTable(moduleText, 'blast.explode');
-  const burstCall = readCallTable(moduleText, 'fx.burst');
+  const isBeamImpactBurstOnly =
+    /\bfiring\.beam\s*\(/.test(moduleText) &&
+    /\bon_impact\s*=\s*function\([^)]*\)\s*fx\.burst\s*\{/.test(moduleText) &&
+    !blastCall;
+  const burstCall = isBeamImpactBurstOnly ? undefined : readCallTable(moduleText, 'fx.burst');
   // The Damage Type toggle. A replacement blast names the kind inside its
   // table, but an overlay arms WA's own blast instead (`set_message_electric_
   // missile`) and carries no kind, so the arm itself is the other half of the
@@ -1756,6 +1924,21 @@ export async function readBundleFeatures(args: {
     } else {
       effect = readBurstRows(burstCall!.table, effect);
       if (armedElectric) effect = { ...effect, damageType: 'electric' };
+    }
+    const fireCall = readCallTable(onExplodeText, 'wa.fire.spawn');
+    if (fireCall?.table && /^\s*if wa\.fire and wa\.fire\.spawn then /m.test(onExplodeText)) {
+      const ft = fireCall.table;
+      effect = {
+        ...effect,
+        fireSpawn: {
+          enabled: true,
+          count: Math.max(1, Math.round(num(ft.count) ?? 10)),
+          durationMs: Math.max(200, Math.round(num(ft.duration) ?? 4000)),
+          damage: Math.max(0, Math.round(num(ft.damage) ?? 5)),
+          upPower: Math.max(1, Math.round(num(ft.up_power) ?? 100)),
+          vy: num(ft.vy) ?? -4,
+        },
+      };
     }
     project.explosionEffect = {
       ...effect,
@@ -1934,13 +2117,281 @@ export async function readBundleFeatures(args: {
     }
   }
 
+  // ---- beam weapon (`firing.beam` + `BEAM` table) -------------------------
+  const hasFiringBeam = /\bfiring\.beam\s*\(/.test(moduleText);
+  const beamSoundPaths = new Set<string>();
+  if (hasFiringBeam) {
+    const bt = firstTable(scan, 'BEAM');
+    const beam: BeamConfig = cloneBeamConfig(DEFAULT_BEAM);
+    beam.enabled = true;
+    if (bt) {
+      const loadBeamSound = async (val: LuaValue | undefined): Promise<AirstrikeSoundSpec> => {
+        const id = num(val);
+        if (id !== undefined) return { id: Math.max(0, Math.round(id)) };
+        const wavPath = str(val);
+        if (wavPath) {
+          beamSoundPaths.add(wavPath);
+          const loaded = await readAsset(files, bundleDir, wavPath);
+          if (loaded) {
+            return {
+              id: 0,
+              file: {
+                file: loaded.file,
+                fileName: loaded.file.name,
+                previewUrl: loaded.preview,
+                size: loaded.bytes.length,
+              },
+            };
+          }
+        }
+        return { id: 0 };
+      };
+
+      const reach = str(bt.reach);
+      const growVal = num(bt.grow);
+      beam.growFrames =
+        reach === 'instant'
+          ? 0
+          : growVal !== undefined
+            ? Math.max(0, Math.round(growVal))
+            : reach === 'progressive'
+              ? DEFAULT_BEAM.growFrames
+              : 0;
+      const ge = str(bt.grow_ease);
+      if (ge === 'linear' || ge === 'out' || ge === 'in') {
+        beam.growEase = ge as BeamGrowEase;
+      }
+      if (num(bt.buffer) !== undefined) beam.bufferFrames = Math.max(0, Math.round(num(bt.buffer)!));
+      if (bool(bt.live_aim) !== undefined) beam.followAim = bool(bt.live_aim)!;
+      if (num(bt.hold) !== undefined) beam.holdFrames = Math.max(1, Math.round(num(bt.hold)!));
+      if (num(bt.fade) !== undefined) beam.fadeFrames = Math.max(0, Math.round(num(bt.fade)!));
+
+      const diss = str(bt.dissipate);
+      if (diss === 'fade' || diss === 'retract' || diss === 'dissolve') {
+        beam.fadeMode = diss as BeamFadeMode;
+      }
+      const lk = str(bt.look);
+      if (lk === 'ribbon' || lk === 'trail') beam.look = lk as BeamLookKind;
+      beam.artStyle = beamArtStyleFromPath(str(bt.sprite) ?? str(bt.glow_sprite));
+      const pt = str(bt.path);
+      if (pt === 'straight' || pt === 'arc' || pt === 'jagged') beam.path = pt as BeamPathKind;
+      if (num(bt.bulge) !== undefined) beam.bulge = num(bt.bulge)!;
+      if (num(bt.noise) !== undefined) beam.noise = num(bt.noise)!;
+      if (num(bt.points) !== undefined) beam.points = Math.max(2, Math.round(num(bt.points)!));
+      if (num(bt.branches) !== undefined) beam.branches = Math.max(0, Math.round(num(bt.branches)!));
+
+      if (num(bt.core0) !== undefined) beam.coreWidth = num(bt.core0)!;
+      if (num(bt.core1) !== undefined && num(bt.core1) !== beam.coreWidth) {
+        beam.tipWidth = num(bt.core1)!;
+      } else {
+        beam.tipWidth = 0;
+      }
+      if (num(bt.glow0) !== undefined) beam.glowWidth = num(bt.glow0)!;
+
+      const br = num(bt.r);
+      const bg = num(bt.g);
+      const bb = num(bt.b);
+      if (br !== undefined && bg !== undefined && bb !== undefined) {
+        beam.color = hexColor(br, bg, bb);
+      }
+      beam.rainbow = bool(bt.rainbow) ?? false;
+      beam.flicker =
+        typeof bt.flicker === 'boolean'
+          ? bt.flicker
+          : num(bt.flicker) !== undefined
+            ? num(bt.flicker)! > 0
+            : false;
+
+      const depthMatch = /\bdepth\s*=\s*wa\.depth\.(\w+)/.exec(moduleText);
+      const depthBand = depthMatch?.[1];
+      if (depthBand === 'FRONT' || depthBand === 'EFFECTS' || depthBand === 'OBJECTS') {
+        beam.depth = depthBand as BeamDepthBand;
+      } else if (depthBand === 'MIDGROUND') {
+        beam.depth = 'OBJECTS';
+      }
+
+      const hm = str(bt.hits);
+      if (hm === 'corridor' || hm === 'cone' || hm === 'first' || hm === 'none') {
+        beam.hurtMode = hm as BeamHurtMode;
+      }
+      if (num(bt.width) !== undefined) beam.width = num(bt.width)!;
+      if (num(bt.width0) !== undefined) beam.muzzleWidth = num(bt.width0)!;
+      if (num(bt.cone_deg) !== undefined) {
+        beam.coneAngleDeg = Math.max(1, Math.min(80, Math.round((num(bt.cone_deg)! / 2) * 10) / 10));
+      }
+      if (num(bt.hit_cooldown) !== undefined) {
+        beam.hitCooldownFrames = Math.max(0, Math.round(num(bt.hit_cooldown)!));
+      } else {
+        beam.hitCooldownFrames = 0;
+      }
+      if (num(bt.range) !== undefined) beam.range = num(bt.range)!;
+      if (bool(bt.stop_on_terrain) !== undefined) beam.stopOnTerrain = bool(bt.stop_on_terrain)!;
+
+      if (isTable(bt.damage)) {
+        const dMin = num(bt.damage['1'] ?? bt.damage[1]);
+        const dMax = num(bt.damage['2'] ?? bt.damage[2]);
+        if (dMin !== undefined) beam.damageMin = Math.max(0, Math.round(dMin));
+        if (dMax !== undefined) beam.damageMax = Math.max(beam.damageMin, Math.round(dMax));
+      } else if (num(bt.damage) !== undefined) {
+        const d = Math.max(0, Math.round(num(bt.damage)!));
+        beam.damageMin = d;
+        beam.damageMax = d;
+      }
+
+      const inter = str(bt.interact);
+      if (inter === 'burn') {
+        beam.interact = false;
+      } else if (inter === 'hit') {
+        beam.interact = true;
+      }
+      if (num(bt.push) !== undefined) beam.push = num(bt.push)!;
+      else if (!beam.interact) beam.push = 0;
+      if (num(bt.burn_push) !== undefined) beam.burnPush = num(bt.burn_push)!;
+      else beam.burnPush = 0;
+
+      if (isTable(bt.fire)) {
+        const bfModeRaw = str(bt.fire.mode);
+        const bfMode: BeamFireConfig['mode'] =
+          bfModeRaw === 'impact' || bfModeRaw === 'trajectory' || bfModeRaw === 'both'
+            ? bfModeRaw
+            : 'impact';
+        beam.fire = {
+          enabled: true,
+          mode: bfMode,
+          count: Math.max(1, Math.round(num(bt.fire.count) ?? 8)),
+          durationMs: Math.max(200, Math.round(num(bt.fire.duration) ?? 3500)),
+          damage: Math.max(0, Math.round(num(bt.fire.damage) ?? 5)),
+          step: Math.max(12, Math.round(num(bt.fire.step) ?? 48)),
+        };
+      }
+
+      const bk = str(bt.kind);
+      if (
+        bk === 'bullet' ||
+        bk === 'fire' ||
+        bk === 'drill' ||
+        bk === 'arrow' ||
+        bk === 'prod' ||
+        bk === 'percent' ||
+        bk === 'taze'
+      ) {
+        beam.kind = bk as BeamHitKind;
+      }
+      if (str(bt.targets) === 'worms') {
+        beam.targets = { worms: true, mines: false, crates: false, objects: false, graves: false };
+      }
+      if (bool(bt.spare_shooter) !== undefined) beam.spareShooter = bool(bt.spare_shooter)!;
+
+      const cutVal = num(bt.cut);
+      if (cutVal !== undefined && cutVal > 0) {
+        beam.terrainCut = true;
+        beam.cutRadius = Math.round(cutVal);
+      } else {
+        beam.terrainCut = false;
+      }
+      beam.impactSparks = bool(bt.sparks) ?? false;
+      beam.hitBranches = bool(bt.hit_branches) ?? false;
+      if (num(bt.standoff) !== undefined) beam.standoff = num(bt.standoff)!;
+      const offTbl = isTable(bt.offset) ? bt.offset : undefined;
+      if (offTbl) {
+        if (num(offTbl.x) !== undefined) beam.offsetX = num(offTbl.x)!;
+        if (num(offTbl.y) !== undefined) beam.offsetY = num(offTbl.y)!;
+      }
+
+      if (bt.charge_sound !== undefined) beam.chargeSound = await loadBeamSound(bt.charge_sound);
+      if (bt.sound !== undefined) beam.launchSound = await loadBeamSound(bt.sound);
+      if (bt.impact_sound !== undefined) beam.impactSound = await loadBeamSound(bt.impact_sound);
+
+      const impactMatch = /\bon_impact\s*=\s*function\([^)]*\)\s*(fx\.burst\s*\{[\s\S]*?\})\s*end/.exec(
+        moduleText,
+      );
+      if (impactMatch) {
+        const ibTbl = readCallTable(impactMatch[1], 'fx.burst')?.table;
+        if (ibTbl) {
+          const ibRgb = rgbOf(ibTbl);
+          const ibRb = isTable(ibTbl.rebuffer) ? ibTbl.rebuffer : undefined;
+          const ibRbModeRaw = ibRb ? str(ibRb.mode) : undefined;
+          const ibStyleRaw = str(ibTbl.style);
+          const ibShapeRaw = str(ibTbl.shape);
+          const ibCenterGlow = readCenterGlow(ibTbl.glow);
+          beam.impactBurst = {
+            enabled: true,
+            style:
+              ibStyleRaw === 'soft' || ibStyleRaw === 'plasma' || ibStyleRaw === 'classic'
+                ? (ibStyleRaw as BeamArtStyle)
+                : 'classic',
+            shape:
+              ibShapeRaw === 'star' || ibShapeRaw === 'spin_star' || ibShapeRaw === 'ring' || ibShapeRaw === 'none'
+                ? (ibShapeRaw as BurstShape)
+                : 'ring',
+            radius: num(ibTbl.radius) ?? 28,
+            color: ibRgb ? hexColor(ibRgb.r, ibRgb.g, ibRgb.b) : beam.color,
+            rebufferMode:
+              ibTbl.rebuffer === false
+                ? 'none'
+                : ibRbModeRaw === 'pulse' || ibRbModeRaw === 'flash' || ibRbModeRaw === 'px'
+                  ? (ibRbModeRaw as RebufferMode)
+                  : 'px',
+            rebufferAt: ibRb && num(ibRb.at) !== undefined ? Math.round(num(ibRb.at)!) : 12,
+            starPoints: num(ibTbl.points) !== undefined ? Math.round(num(ibTbl.points)!) : 5,
+            spin: num(ibTbl.spin) ?? 0.18,
+            ...(ibCenterGlow ? { centerGlow: ibCenterGlow } : {}),
+          };
+        }
+      }
+    }
+
+    // Sequenced beams move `charge_sound` into `SEQ.on_buffer` and `buffer` into `SEQ.first_delay_ms`.
+    if (project.fireSequence?.enabled && project.fireSequence.engine === 'timed') {
+      const firstCustomMs = Number(project.fireSequence.customIntervalsMs?.split(',')[0]?.trim()) || 0;
+      const firstDelayMs = Math.max(project.fireSequence.firstDelayMs ?? 0, firstCustomMs);
+      if ((beam.bufferFrames ?? 0) === 0 && firstDelayMs > 0) {
+        beam.bufferFrames = Math.max(0, Math.round(firstDelayMs / 20));
+      }
+      if (!beam.chargeSound?.file && (beam.chargeSound?.id ?? 0) === 0) {
+        const seqBufMatch = /on_buffer\s*=\s*function\([^)]*\)[^\n]*?wa\.sound\.play\([^,]+,\s*(?:"([^"]+)"|'([^']+)'|(\d+))/.exec(
+          moduleText,
+        );
+        if (seqBufMatch) {
+          const wav = seqBufMatch[1] ?? seqBufMatch[2];
+          const numId = seqBufMatch[3];
+          if (wav) {
+            beamSoundPaths.add(wav);
+            const loaded = await readAsset(files, bundleDir, wav);
+            if (loaded) {
+              beam.chargeSound = {
+                id: 0,
+                file: {
+                  file: loaded.file,
+                  fileName: loaded.file.name,
+                  previewUrl: loaded.preview,
+                  size: loaded.bytes.length,
+                },
+              };
+            }
+          } else if (numId) {
+            beam.chargeSound = { id: Math.max(0, Math.round(Number(numId))) };
+          }
+        }
+      }
+    }
+
+    if (/zap\.set_message_electric\s*\(/.test(moduleText) && moduleText.includes('wf-lib/electric/damage')) {
+      beam.electricTaze = true;
+    }
+
+    project.beam = beam;
+    project.fireType = 'beam';
+    notes.push(`beam weapon (${beam.hurtMode} / ${beam.look})`);
+  }
+
   // ---- custom WAVs --------------------------------------------------------
   const sourceSounds = source?.sounds;
   const soundsTable = isTable(sourceSounds) ? sourceSounds : undefined;
   const soundPaths = new Set<string>();
   if (soundsTable) {
     for (const value of Object.values(soundsTable)) {
-      if (typeof value === 'string') soundPaths.add(value);
+      if (typeof value === 'string' && !beamSoundPaths.has(value)) soundPaths.add(value);
     }
   }
   const intervalTable = firstTable(scan, 'SOUND');
@@ -1972,6 +2423,9 @@ export async function readBundleFeatures(args: {
     };
     for (const path of soundPaths) {
       const base = path.split('/').pop()?.toLowerCase() ?? '';
+      if (base === 'beam_charge.wav' || base === 'beam_launch.wav' || base === 'beam_impact.wav') {
+        continue;
+      }
       const role =
         base.includes('launch')
           ? 'launch'
@@ -2651,6 +3105,10 @@ export async function readBundleFeatures(args: {
 
     project.airstrike = air;
     notes.push(`airstrike takeover (${air.entry.mode} / ${air.release.mode})`);
+  }
+
+  if (moduleText.includes('wf-lib/electric/taze_mine')) {
+    project.electricTazeMines = true;
   }
 
   return { project, notes, carriedHooks };

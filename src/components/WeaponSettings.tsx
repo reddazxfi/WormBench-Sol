@@ -7,6 +7,7 @@ import { TooltipLabel, UnitNumberInput, buildTooltip } from './RecordEditor';
 import { NumberInput } from './NumberInput';
 import { recordField } from '../utils/recordField';
 import { DEFAULT_MELEE } from '../data/melee';
+import { DEFAULT_BEAM, cloneBeamConfig } from '../data/beam';
 import { SpritePickButton } from './SpritePickButton';
 import {
   AlertTriangle,
@@ -48,6 +49,12 @@ const FIRE_TYPE_OPTIONS: { id: FireType; label: string; defaultDonor: string; de
     label: 'Firearm (Hitscan Bullet Spread)',
     defaultDonor: 'uzi',
     desc: 'Instant raycast firearm with bullets, spread cones, and multi-pellet bursts.',
+  },
+  {
+    id: 'beam',
+    label: 'Beam (Ray / Cone / Laser)',
+    defaultDonor: 'handgun',
+    desc: 'Silent zeroed hitscan shot driving an instant or advancing ray/cone hurt layer with hit cooldowns and Sprite Builder animations.',
   },
   {
     id: 'drop',
@@ -476,6 +483,16 @@ export const WeaponSettings: React.FC<WeaponSettingsProps> = ({
                   ...(nextType === 'melee'
                     ? {}
                     : { melee: { ...(project.melee ?? DEFAULT_MELEE), enabled: false } }),
+                  ...(nextType === 'beam'
+                    ? {
+                        beam: {
+                          ...cloneBeamConfig(project.beam ?? DEFAULT_BEAM),
+                          enabled: true,
+                        },
+                      }
+                    : project.beam
+                      ? { beam: { ...project.beam, enabled: false } }
+                      : {}),
                 });
               }}
               className={selectInput}

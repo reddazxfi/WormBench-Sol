@@ -18,3 +18,20 @@ export const WFWS_AIRSTRIKE_LUA = wfwsAirstrikeLua;
 
 /** `wf-lib/wfws_firing`, the lockstep firing & burst sequencer module. */
 export const WFWS_FIRING_LUA = wfwsFiringLua;
+
+/**
+ * Sheets declared in `spec/lua_sdk/wfws_sdk/mod.toml` (e.g. `sprites/beam_orb.png`),
+ * resolved as Vite asset URLs so exports always match the manifest.
+ */
+export const WFWS_SDK_SHEETS: { path: string; url: string }[] = Object.entries(
+  import.meta.glob('../../spec/lua_sdk/wfws_sdk/sprites/**/*.png', {
+    eager: true,
+    import: 'default',
+  }) as Record<string, string>,
+)
+  .map(([source, url]) => {
+    const at = source.indexOf('sprites/');
+    const relative = at >= 0 ? source.slice(at) : source.split('/').pop();
+    return { path: `wf-lib/wfws_sdk/${relative}`, url };
+  })
+  .sort((a, b) => a.path.localeCompare(b.path));

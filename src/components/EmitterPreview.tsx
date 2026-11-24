@@ -35,7 +35,12 @@ const TICK_MS = 20; // WA's game frame
 const SHEETS = {
   beam: assetUrl('assets/effects/beam.png'),
   glow: assetUrl('assets/effects/beam_glow.png'),
+  beam_soft: assetUrl('assets/effects/beam_soft.png'),
+  glow_soft: assetUrl('assets/effects/beam_glow_soft.png'),
+  beam_plasma: assetUrl('assets/effects/beam_plasma.png'),
+  glow_plasma: assetUrl('assets/effects/beam_glow_plasma.png'),
   blob: assetUrl('assets/effects/glow.png'),
+  star: assetUrl('assets/effects/star.png'),
 };
 
 /**
@@ -675,9 +680,16 @@ export function EmitterPreview({ config, roundOk }: EmitterPreviewProps) {
       b: number;
     } => (rainbow || part.rainbow ? rainbowRgb(clock * 0.012) : parseHexColour(part.color ?? cfg.color));
 
+    const emStyle = cfg.style ?? 'classic';
     /** One ribbon pass: a textured quad per segment, additive, per-segment alpha. */
     const ribbon = (points: RibbonPoint[], sheetKey: 'beam' | 'glow', closed: boolean): void => {
-      const image = sheets[sheetKey];
+      const resolvedKey =
+        emStyle === 'soft'
+          ? `${sheetKey}_soft`
+          : emStyle === 'plasma'
+            ? `${sheetKey}_plasma`
+            : sheetKey;
+      const image = sheets[resolvedKey] ?? sheets[sheetKey];
       if (!image || points.length < 2) return;
       ctx.globalCompositeOperation = 'lighter';
       const count = closed ? points.length : points.length - 1;
@@ -688,7 +700,7 @@ export function EmitterPreview({ config, roundOk }: EmitterPreviewProps) {
         const dy = b.y - a.y;
         const length = Math.hypot(dx, dy);
         if (length < 0.05) continue;
-        const quad = tint(`ribbon-${sheetKey}`, image, a.colour);
+        const quad = tint(`ribbon-${resolvedKey}`, image, a.colour);
         if (!quad) continue;
         const lineWidth = Math.max(0.4, ((a.width + b.width) / 2) * scale);
         ctx.globalAlpha = clamp01((a.alpha + b.alpha) / 2);
@@ -742,53 +754,72 @@ export function EmitterPreview({ config, roundOk }: EmitterPreviewProps) {
     if (cfg.trail.enabled && state.trail.length >= 2) {
       const n = state.trail.length;
       const noise = Math.max(0, cfg.trail.noise);
+      const tMode = cfg.trail.mode ?? 'electric';
       const { coreW, glowW } = emitterTrailWidths(cfg.trail);
-      const points = state.trail.map((point, index) => {
-        let x = point.x;
-        let y = point.y;
-        if (noise > 0) {
-          const before = state.trail[index - 1] ?? point;
-          const after = state.trail[index + 1] ?? point;
-          const dx = after.x - before.x;
-          const dy = after.y - before.y;
-          const len = Math.hypot(dx, dy);
-          if (len > 0.0001) {
-            const j = trailNoise(index) * noise;
-            x -= (dy / len) * j;
-            y += (dx / len) * j;
+      const buildTrail = (sign: number) =>
+        state.trail.map((point, index) => {
+          let x = point.x;
+          let y = point.y;
+          const f = Math.max(0.1, (index + 1) / (n + 1));
+          let disp = 0;
+          if (tMode === 'wavy' || tMode === 'helix') {
+            const amp = noise > 0 ? noise : 6;
+            disp = Math.sin(f * 2.2 * Math.PI * 2 - clock * 0.28) * amp * sign * f;
+          } else if (tMode !== 'straight' && noise > 0) {
+            disp = trailNoise(index + Math.floor(clock / 2) * 7) * noise;
           }
-        }
-        const f = Math.max(0.1, (index + 1) / (n + 1));
-        const { r, g, b } = rainbowRgb(clock * 0.012 + f * 0.35);
-        const colour = rainbow || cfg.trail.rainbow ? hexOf(r, g, b) : cfg.trail.color;
-        return { x: sx(x), y: sy(y), width: f * coreW, alpha: f, colour };
-      });
+          if (disp !== 0) {
+            const before = state.trail[index - 1] ?? point;
+            const after = state.trail[index + 1] ?? point;
+            const dx = after.x - before.x;
+            const dy = after.y - before.y;
+            const len = Math.hypot(dx, dy);
+            if (len > 0.0001) {
+              x -= (dy / len) * disp;
+              y += (dx / len) * disp;
+            }
+          }
+          const { r, g, b } = rainbowRgb(clock * 0.012 + f * 0.35);
+          const colour = rainbow || cfg.trail.rainbow ? hexOf(r, g, b) : cfg.trail.color;
+          return { x: sx(x), y: sy(y), width: f * coreW, alpha: f, colour };
+        });
+      const points = buildTrail(1);
       if (coreW > 0) ribbon(points, 'beam', false);
       if (glowW > 0) {
-        // `f * glow_w`, as trail.lua sizes it: scaling the core width instead
-        // divided by a zero core.
         ribbon(
           points.map((p) => ({ ...p, width: p.alpha * glowW })),
           'glow',
           false,
         );
       }
+      if (tMode === 'helix') {
+        const pointsB = buildTrail(-1);
+        if (coreW > 0) ribbon(pointsB.map((p) => ({ ...p, width: p.width * 0.85 })), 'beam', false);
+        if (glowW > 0) ribbon(pointsB.map((p) => ({ ...p, width: p.alpha * glowW * 0.85 })), 'glow', false);
+      }
     }
 
     if (!state.dead) {
       const colour = clockColour();
 
-      // The soft halo: PX's three passes of the 128 px blob.
+      // The soft halo or spinning star flare (`glow.shape`).
       if (cfg.glow) {
-        const blob = sheets.blob;
-        const quad = blob ? tint('blob', blob, colour) : undefined;
+        const gShape = cfg.glowShape ?? 'orb';
+        const isStarGlow = gShape === 'star' || gShape === 'spin_star';
+        const glowImg = isStarGlow ? (sheets.star ?? sheets.blob) : sheets.blob;
+        const quad = glowImg ? tint(isStarGlow ? 'star-glow' : 'blob', glowImg, colour) : undefined;
         const glow = cosmetics(cfg).preset.glow;
         if (quad) {
-          const size = Math.max(6, glow.cell * glow.size * scale);
+          const size = Math.max(6, glow.cell * glow.size * (isStarGlow ? 1.55 : 1) * scale);
+          const rot = gShape === 'spin_star' ? clock * (cfg.glowSpin ?? 0.14) : 0;
           ctx.globalCompositeOperation = 'lighter';
           for (let i = 0; i < glow.passes; i += 1) {
-            ctx.globalAlpha = 0.3;
-            ctx.drawImage(quad, sx(state.x) - size / 2, sy(state.y) - size / 2, size, size);
+            ctx.save();
+            ctx.translate(sx(state.x), sy(state.y));
+            if (rot !== 0) ctx.rotate(rot);
+            ctx.globalAlpha = isStarGlow ? 0.5 : 0.3;
+            ctx.drawImage(quad, -size / 2, -size / 2, size, size);
+            ctx.restore();
           }
           ctx.globalAlpha = 1;
         }
@@ -869,13 +900,16 @@ export function EmitterPreview({ config, roundOk }: EmitterPreviewProps) {
       const sinRot = Math.sin(angle);
       const ringRgb = partColour(ring);
       const colour = hexOf(ringRgb.r, ringRgb.g, ringRgb.b);
+      const ringIsStar = ring.shape === 'star';
+      const ringStarPts = Math.max(3, Math.min(12, Math.round(ring.starPoints ?? 5)));
       const build = (radiusScale: number, styleWidth: (w: number) => number, tintColour: string) => {
         const points: RibbonPoint[] = [];
         for (let i = 0; i <= segments; i += 1) {
           const j = (state.ringNoise[i % Math.max(1, state.ringNoise.length)] ?? 0) * ring.noise;
           const a = i * ((Math.PI * 2) / segments);
-          const ux = Math.cos(a) * ex;
-          const uy = Math.sin(a) * ey;
+          const starMul = ringIsStar ? 1 + 0.34 * Math.cos(a * ringStarPts) : 1;
+          const ux = Math.cos(a) * ex * starMul;
+          const uy = Math.sin(a) * ey * starMul;
           const rx = ux * cosRot - uy * sinRot;
           const ry = ux * sinRot + uy * cosRot;
           const r = (Math.max(1, ring.radius) + j) * radiusScale;

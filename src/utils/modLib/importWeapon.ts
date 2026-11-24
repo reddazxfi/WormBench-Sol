@@ -335,13 +335,14 @@ export async function importBundleWeapon(
     );
   }
   const claimAbsorbed = ['on_explode', 'on_fire'];
-  if (split.hooks.on_fire && !nested.has('on_fire') && features.project.fireSequence?.enabled) {
+  const ownsOnFire = !!(features.project.fireSequence?.enabled || features.project.beam?.enabled);
+  if (split.hooks.on_fire && !nested.has('on_fire') && ownsOnFire) {
     const body = hookBodyOf(split.hooks.on_fire).body;
-    // Detect custom logic inside `on_fire` besides the sequential-fire call
-    // and optional `wa.sound.play(...)` calls so extra behavior is flagged.
+    // Detect custom logic inside `on_fire` besides the firing-engine call
+    // (`launch` / `actor` / `sequence` / `beam`) and optional `wa.sound.play(...)` calls.
     let remainder = body;
     const seqCallMatch =
-      /(?:firing\.(?:launch|actor|sequence)|seq\.(?:fire_seq_mis|fire_sequential_actor))\s*([({])/.exec(
+      /(?:firing\.(?:launch|actor|sequence|beam)|seq\.(?:fire_seq_mis|fire_sequential_actor))\s*([({])/.exec(
         remainder,
       );
     if (seqCallMatch) {
@@ -371,11 +372,11 @@ export async function importBundleWeapon(
       .trim();
     if (stripped.length > 0) {
       notes.push(
-        'on_fire has custom code beyond the sequential-fire burst, which is replaced by sequential fire on export',
+        'on_fire has custom code beyond the firing engine call, which is replaced on export',
       );
     }
   }
-  if (split.hooks.on_fire && !nested.has('on_fire') && !features.project.fireSequence?.enabled) {
+  if (split.hooks.on_fire && !nested.has('on_fire') && !ownsOnFire) {
     const body = hookBodyOf(split.hooks.on_fire);
     // Our own legacy launch-WAV `on_fire` is one `wa.sound.play` of the launch
     // sample plus trailing comments: stripping comments prevents duplicating it.
@@ -431,6 +432,15 @@ export async function importBundleWeapon(
       claimAbsorbed.push('on_click');
       continue;
     }
+    if (
+      key === 'on_place' &&
+      (features.project.emitter?.enabled || features.project.ribbonTrail?.enabled) &&
+      text.includes('fx.tracker{') &&
+      (text.includes('emitter_for(') || text.includes('mine_trail:'))
+    ) {
+      claimAbsorbed.push('on_place');
+      continue;
+    }
     carriedHookList.push({ key, text, line: split.hookLines?.[key as keyof typeof split.hookLines] ?? 0 });
   }
   // `wa.on.*` registrations (M6): additive, so they are carried verbatim and in
@@ -483,10 +493,10 @@ export async function importBundleWeapon(
     );
   }
   const unmodelled = unmodelledClaimKeys(weapon.source, [
-    // The sequential-fire reader reconstructs the burst inside `on_fire`, and
-    // M5/M6 carry the hooks themselves: a key either travels with the weapon or
-    // is named here.
-    ...(features.project.fireSequence?.enabled ? ['on_fire'] : []),
+    // The firing-engine reader reconstructs the sequence / beam inside `on_fire`,
+    // and M5/M6 carry the hooks themselves: a key either travels with the weapon
+    // or is named here.
+    ...(ownsOnFire ? ['on_fire'] : []),
     ...claimAbsorbed,
     ...carriedHookList.map((hook) => hook.key),
   ]);
@@ -555,9 +565,11 @@ export async function importBundleWeapon(
     customSprites: { ...(project.customSprites ?? {}) },
     fireType: isMelee
       ? 'melee'
-      : features.project.airstrike?.enabled
-        ? 'cursor'
-        : (project.fireType ?? 'power'),
+      : features.project.beam?.enabled
+        ? 'beam'
+        : features.project.airstrike?.enabled
+          ? 'cursor'
+          : (project.fireType ?? 'power'),
       id,
       name,
       description:

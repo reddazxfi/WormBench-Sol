@@ -563,6 +563,23 @@ export const TerrainStampCard: React.FC<Props> = ({ project, onChange }) => {
                     />
                     <span>Spare the worm that fired</span>
                   </label>
+                  {impact.kind === 'taze' && (
+                    <label
+                      title={buildTooltip(
+                        'Electrify nearby mines instead of detonating them on taze pierce impact.',
+                        'wf-lib/electric/taze_mine',
+                      )}
+                      className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!project.electricTazeMines}
+                        onChange={(e) => onChange({ electricTazeMines: e.target.checked })}
+                        className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                      />
+                      <span>Taze Mines Instead of Detonating (px.electric)</span>
+                    </label>
+                  )}
                   <p className="text-[11px] text-stone-500 dark:text-stone-400">
                     Every damageable thing inside the square is hit: worms, mines, crates and oil
                     drums. The round only stamps the ground when it hit nothing, and a worm that

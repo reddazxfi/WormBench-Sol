@@ -40,15 +40,46 @@ const LIBRARIES: PackLibraries = {
     spriteBuilderLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua', 'utf8'),
     airstrikeLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_airstrike.lua', 'utf8'),
     firingLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_firing.lua', 'utf8'),
+    sheets: [
+      { path: 'wf-lib/wfws_sdk/sprites/beam.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_glow.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_glow.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_glow_endpoint.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_glow_endpoint.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_orb.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_orb.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_soft.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_soft.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_glow_soft.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_glow_soft.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_end_soft.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_end_soft.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_orb_soft.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_orb_soft.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_plasma.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_plasma.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_glow_plasma.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_glow_plasma.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_end_plasma.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_end_plasma.png' },
+      { path: 'wf-lib/wfws_sdk/sprites/beam_orb_plasma.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_orb_plasma.png' },
+    ],
   },
 };
 
-const WFCHECK = 'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wfcheck.exe';
+const fetchLocalBytes = async (url: string): Promise<Uint8Array | null> =>
+  existsSync(url) ? new Uint8Array(readFileSync(url)) : null;
+
+// The checker lives in the build output, not beside `Cargo.toml`, so resolve it
+// by candidate instead of hard-coding one path: a stale path made this whole
+// assertion a silent no-op (`existsSync` false, nothing printed) for as long as
+// the binary had moved.
+const WFCHECK_CANDIDATES = [
+  process.env.WFCHECK,
+  'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/target/release/wfcheck.exe',
+  'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wfcheck.exe',
+  'C:/Users/lucia/wormforge-code/compiler-cli/wfcheck.exe',
+].filter((path): path is string => Boolean(path));
+const WFCHECK = WFCHECK_CANDIDATES.find((path) => existsSync(path)) ?? null;
 /**
- * Claim keys the engine reads in wkLua 1.0.0 RC3 (API 5) that the installed
- * checker (0.9.9) predates: `hold_as` lends a stock weapon's held pose,
- * `collects_crates` stops a ghost shot collecting a crate, and `cluster_sprite`,
- * `cluster_homing_sprite`, `cluster_homing`, `armageddon` are API 5 claim keys.
+ * Claim keys the engine reads in wkLua 1.0.0 RC3 (API 5) that the checker's own
+ * schema is missing: `hold_as` lends a stock weapon's held pose,
+ * `collects_crates` stops a ghost shot collecting a crate
+ * (`crates/lua-host/src/bundles.rs` reads it, `crates/engine/src/grants.rs`
+ * implements it), and `cluster_sprite`, `cluster_homing_sprite`,
+ * `cluster_homing`, `armageddon` are API 5 claim keys. The 1.0 RC3.5 build
+ * (`compiler-cli/target/release/wfcheck.exe`, `wfcheck 0.1.0`) still reports
+ * `collects_crates`, so this is the checker's list to fix, not the bundle's.
  * Named one by one rather than filtered by rule, so any other unknown key
  * still fails the pack.
  */
@@ -140,7 +171,7 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
 
   let before: Map<string, string | Uint8Array>;
   try {
-    before = await emitPackFiles(first.pack, LIBRARIES);
+    before = await emitPackFiles(first.pack, LIBRARIES, fetchLocalBytes);
   } catch (error) {
     const message = (error as Error).message;
     if (/document is not defined/.test(message)) {
@@ -166,7 +197,7 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
   ok(`${label}: exports`, before.size > 0, `${before.size} files`);
 
   // What the engine would refuse, refused here instead.
-  if (existsSync(WFCHECK)) {
+  if (WFCHECK) {
     const dir = mkdtempSync(join(tmpdir(), 'wfpack-'));
     const folder = `${dirname([...before.keys()][0])}`;
     const root = join(dir, folder.split('/')[0]);
@@ -181,7 +212,7 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
     const pending = PENDING_ENGINE_KEYS.filter((key) => new RegExp(`Unrecognized spec key "${key}"`).test(raw));
     const output = pending.length > 0 ? raw.replace(PENDING_FINDING, '').trim() : raw;
     if (pending.length > 0) {
-      console.log(`  note ${label}: wfcheck predates ${pending.join(', ')} (wkLua 1.0.0 claim fields)`);
+      console.log(`  note ${label}: the checker's schema lacks ${pending.join(', ')}, which the engine reads (see PENDING_ENGINE_KEYS)`);
     }
     // A foreign bundle may carry warnings and advisories of its own; what must
     // never happen is an error, because an error is a file that raises at load
@@ -195,6 +226,8 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
       `${findings.length} finding line(s) left: ` + (raw.split(String.fromCharCode(10)).slice(0, 2).join(' | ') || 'no output'),
     );
     rmSync(dir, { recursive: true, force: true });
+  } else {
+    console.log('  note: no wfcheck binary found, the engine-refusal check did not run');
   }
 
   const againFiles = toFiles(before);
@@ -218,7 +251,7 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
     `${carriedBefore} before, ${carriedAfter} after`,
   );
 
-  const after = await emitPackFiles(again.pack, LIBRARIES);
+  const after = await emitPackFiles(again.pack, LIBRARIES, fetchLocalBytes);
   const firstDigests = digests(before);
   const secondDigests = digests(after);
   const paths = [...new Set([...firstDigests.keys(), ...secondDigests.keys()])].sort();

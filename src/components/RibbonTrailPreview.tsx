@@ -10,7 +10,16 @@ const TICK_MS = 20; // 50 Hz WormForge simulation tick
 const TRAIL_SHEETS = {
   beam: assetUrl('assets/effects/beam.png'),
   glow: assetUrl('assets/effects/beam_glow.png'),
+  beam_soft: assetUrl('assets/effects/beam_soft.png'),
+  glow_soft: assetUrl('assets/effects/beam_glow_soft.png'),
+  beam_plasma: assetUrl('assets/effects/beam_plasma.png'),
+  glow_plasma: assetUrl('assets/effects/beam_glow_plasma.png'),
 };
+
+function trailNoiseAt(idx: number): number {
+  const h = (((idx % 256) + 1) * 1103515245 + 12345) % 2147483648;
+  return h / 1073741824 - 1;
+}
 
 interface RibbonTrailPreviewProps {
   config: RibbonTrailConfig;
@@ -191,9 +200,36 @@ export function RibbonTrailPreview({ config }: RibbonTrailPreviewProps) {
       ctx.restore();
     }
 
-    const pxPts = points.map((p) => ({ x: p.nx * width, y: p.ny * height }));
+    const rawPts = points.map((p) => ({ x: p.nx * width, y: p.ny * height }));
+    const mode = config.mode ?? 'electric';
+    const noiseAmp = Math.max(0, Number(config.noise) || 0);
 
-    const drawRibbonPass = (sheet: HTMLCanvasElement | undefined, baseWidth: number) => {
+    const displaced = (sign: number) =>
+      rawPts.map((pt, i) => {
+        const n = rawPts.length;
+        const f = Math.max(0.1, (i + 1) / (n + 1));
+        let disp = 0;
+        if (mode === 'wavy' || mode === 'helix') {
+          const amp = noiseAmp > 0 ? noiseAmp : 6;
+          disp = Math.sin(f * 2.2 * Math.PI * 2 - tick * 0.28) * amp * sign * f;
+        } else if (mode !== 'straight' && noiseAmp > 0) {
+          disp = trailNoiseAt(i + Math.floor(tick / 2) * 7) * noiseAmp;
+        }
+        if (disp === 0) return pt;
+        const a = rawPts[i - 1] ?? pt;
+        const b = rawPts[i + 1] ?? pt;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len <= 0.0001) return pt;
+        return { x: pt.x - (dy / len) * disp, y: pt.y + (dx / len) * disp };
+      });
+
+    const drawRibbonPass = (
+      pxPts: { x: number; y: number }[],
+      sheet: HTMLCanvasElement | undefined,
+      baseWidth: number,
+    ) => {
       if (!sheet || baseWidth <= 0 || pxPts.length < 2) return;
       const n = pxPts.length;
       ctx.globalCompositeOperation = 'lighter';
@@ -220,11 +256,27 @@ export function RibbonTrailPreview({ config }: RibbonTrailPreviewProps) {
 
     const coreW = Math.max(0, Number(config.coreWidth) || 0);
     const glowW = Math.max(0, Number(config.glowWidth) || 0);
+    const style = config.style ?? 'classic';
+    const beamSheet =
+      style === 'soft'
+        ? tinted.beam_soft ?? tinted.beam
+        : style === 'plasma'
+          ? tinted.beam_plasma ?? tinted.beam
+          : tinted.beam;
+    const glowSheet =
+      style === 'soft'
+        ? tinted.glow_soft ?? tinted.glow
+        : style === 'plasma'
+          ? tinted.glow_plasma ?? tinted.glow
+          : tinted.glow;
 
-    // Core + Glow additive passes using the exact beam.png and beam_glow.png sheets
-    drawRibbonPass(tinted.beam, coreW);
-    if (glowW > 0) {
-      drawRibbonPass(tinted.glow, glowW);
+    const strandA = displaced(1);
+    drawRibbonPass(strandA, beamSheet, coreW);
+    if (glowW > 0) drawRibbonPass(strandA, glowSheet, glowW);
+    if (mode === 'helix') {
+      const strandB = displaced(-1);
+      drawRibbonPass(strandB, beamSheet, coreW * 0.85);
+      if (glowW > 0) drawRibbonPass(strandB, glowSheet, glowW * 0.85);
     }
 
     // Active projectile marker / impact flash
@@ -252,7 +304,7 @@ export function RibbonTrailPreview({ config }: RibbonTrailPreviewProps) {
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'left';
     ctx.fillText(inFlight ? 'in flight' : 'fading tail', 10, height - 10);
-  }, [points, headPos, inFlight, tick, tinted, config.coreWidth, config.glowWidth, config.color, showWormRef, frozenWormImg]);
+  }, [points, headPos, inFlight, tick, tinted, config.coreWidth, config.glowWidth, config.color, config.style, config.mode, config.noise, showWormRef, frozenWormImg]);
 
   return (
     <div className="space-y-2">

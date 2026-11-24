@@ -20,7 +20,7 @@
  */
 import { readBundles, readWeapons, type ModFile } from '../src/utils/modLib/scan';
 import { importBundleWeapon } from '../src/utils/modLib/importWeapon';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   emitPackFiles,
   safeBundlePath,
@@ -69,11 +69,15 @@ const LIBRARIES: PackLibraries = {
   wfws: {
     modToml: readFileSync('spec/lua_sdk/wfws_sdk/mod.toml', 'utf8'),
     spriteBuilderLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua', 'utf8'),
+    sheets: [{ path: 'wf-lib/wfws_sdk/sprites/beam_orb.png', url: 'spec/lua_sdk/wfws_sdk/sprites/beam_orb.png' }],
   },
 };
 
+const fetchLocalBytes = async (url: string): Promise<Uint8Array | null> =>
+  existsSync(url) ? new Uint8Array(readFileSync(url)) : null;
+
 /** `emitPack` as the app calls it, with the libraries supplied. */
-const emitPack = (pack: PackProject) => emitPackFiles(pack, LIBRARIES);
+const emitPack = (pack: PackProject) => emitPackFiles(pack, LIBRARIES, fetchLocalBytes);
 
 let failures = 0;
 let checks = 0;

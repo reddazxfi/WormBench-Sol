@@ -52,6 +52,7 @@ export const DEFAULT_FIRE_SEQUENCE: FireSequenceConfig = {
   offsetY: -3,
   liveAim: true,
   cancelOnWeaponChange: true,
+  beamSequenceAnchor: 'on_dispatch',
   actorSprite: '',
   actorGravity: false,
   actorCollide: false,
@@ -97,6 +98,7 @@ export function mergeFireSequenceConfig(
     | 'offsetY'
     | 'liveAim'
     | 'cancelOnWeaponChange'
+    | 'beamSequenceAnchor'
     | 'actorSprite'
     | 'actorGravity'
     | 'actorCollide'
@@ -154,6 +156,7 @@ export function mergeFireSequenceConfig(
     offsetY: Number(src.offsetY ?? -3),
     liveAim: src.liveAim !== false,
     cancelOnWeaponChange: src.cancelOnWeaponChange !== false,
+    beamSequenceAnchor: src.beamSequenceAnchor === 'after_hold' ? 'after_hold' : 'on_dispatch',
     actorSprite: src.actorSprite ?? '',
     actorGravity: !!src.actorGravity,
     actorCollide: !!src.actorCollide,
@@ -161,10 +164,78 @@ export function mergeFireSequenceConfig(
   };
 }
 
+export interface BeamShotSchedule {
+  /** 50 Hz frame index (relative to trigger pull = 0) when each shot dispatches its ray. */
+  dispatchFrames: number[];
+  /** Millisecond waits array emitted into `SEQ.intervals_ms` when custom or anchored after hold. */
+  emittedIntervalsMs: number[] | null;
+  /** Opening wait before shot 1 in frames. */
+  firstWaitFrames: number;
+  /** Extra spacing added per shot when anchored after hold (in frames). */
+  anchorPadFrames: number;
+}
+
+/**
+ * Single source of truth for beam + sequence timing, shared by `luaGenerator`,
+ * `BeamPreview`, `BeamCard`, and `FireSequenceCard`.
+ *
+ * - `on_dispatch`: next shot's delay begins the moment the current beam dispatches
+ *   (the worm is not held until the beam fades, allowing overlapping pulses or
+ *   re-animating immediately).
+ * - `after_hold`: waits for the current beam's active `grow + hold` duration before
+ *   counting the inter-shot cooldown.
+ */
+export function computeBeamSequenceSchedule(
+  beam: { bufferFrames: number; growFrames: number; holdFrames: number },
+  seq: Pick<
+    FireSequenceConfig,
+    'count' | 'firstDelayMs' | 'intervalMs' | 'customIntervalsMs' | 'beamSequenceAnchor'
+  >,
+): BeamShotSchedule {
+  const count = Math.max(1, Math.round(seq.count ?? 1));
+  const anchorPadFrames =
+    seq.beamSequenceAnchor === 'after_hold'
+      ? Math.max(0, Math.round(beam.growFrames) + Math.round(beam.holdFrames))
+      : 0;
+  const anchorPadMs = anchorPadFrames * 20;
+  const custom = parseCustomIntervalsMs(seq.customIntervalsMs);
+  const effectiveFirstMs =
+    custom.length > 0
+      ? custom[0]
+      : Math.max(0, Math.round(seq.firstDelayMs ?? beam.bufferFrames * 20));
+  const baseIntervalMs = Math.max(20, Math.round(seq.intervalMs ?? 100));
+
+  const dispatchFrames: number[] = [];
+  let cursor = Math.max(0, Math.round(effectiveFirstMs / 20));
+  dispatchFrames.push(cursor);
+  for (let i = 1; i < count; i += 1) {
+    const rawMs =
+      custom.length > 0
+        ? custom[Math.min(i, custom.length - 1)]
+        : baseIntervalMs;
+    const waitFrames = Math.max(1, Math.round((rawMs + anchorPadMs) / 20));
+    cursor += waitFrames;
+    dispatchFrames.push(cursor);
+  }
+
+  let emittedIntervalsMs: number[] | null = null;
+  if (custom.length > 0) {
+    emittedIntervalsMs = custom.map((ms, idx) => (idx === 0 ? ms : ms + anchorPadMs));
+  }
+
+  return {
+    dispatchFrames,
+    emittedIntervalsMs,
+    firstWaitFrames: dispatchFrames[0] ?? 0,
+    anchorPadFrames,
+  };
+}
+
 /** True when sequential fire is enabled and launching missile rounds. */
 export function fireSequenceMissileActive(project: WeaponProject): boolean {
   if (!project.fireSequence?.enabled) return false;
   if (!supportsFireSequence(project)) return false;
+  if (project.fireType === 'beam') return false;
   return project.fireSequence.mode !== 'actors';
 }
 
@@ -270,6 +341,73 @@ export const FIRE_SEQUENCE_PRESETS: FireSequencePreset[] = [
         sound: 0,
         perShotTarget: false,
       },
+    },
+  },
+];
+
+export const BEAM_SEQUENCE_PRESETS: FireSequencePreset[] = [
+  {
+    id: 'beam_windup_gatling',
+    name: 'Wind-Up Laser Gatling',
+    desc: 'Slow opening charge & ramp (280 → 180 → 120 → 80 → 40 ms) into rapid overlapping pulses.',
+    patch: {
+      engine: 'timed',
+      count: 8,
+      firstDelayMs: 280,
+      intervalMs: 40,
+      customIntervalsMs: '280, 180, 120, 80, 40',
+      burstSize: 1,
+      spreadDeg: 6,
+      beamSequenceAnchor: 'on_dispatch',
+      liveAim: true,
+    },
+  },
+  {
+    id: 'beam_3round_pulse',
+    name: '3-Round Pulse',
+    desc: 'Brief 160 ms charge then 3 crisp pulses spaced 120 ms apart.',
+    patch: {
+      engine: 'timed',
+      count: 3,
+      firstDelayMs: 160,
+      intervalMs: 120,
+      customIntervalsMs: '',
+      burstSize: 1,
+      spreadDeg: 2,
+      beamSequenceAnchor: 'on_dispatch',
+      liveAim: true,
+    },
+  },
+  {
+    id: 'beam_scatter_fan',
+    name: 'Prism Scatter Fan',
+    desc: 'Fires 5 simultaneous rays in a 28° spread fan per trigger pull.',
+    patch: {
+      engine: 'timed',
+      count: 2,
+      firstDelayMs: 120,
+      intervalMs: 240,
+      customIntervalsMs: '',
+      burstSize: 5,
+      spreadDeg: 28,
+      beamSequenceAnchor: 'after_hold',
+      liveAim: true,
+    },
+  },
+  {
+    id: 'beam_charge_rapid',
+    name: '300ms Charge → Rapid',
+    desc: '300 ms animation wind-up before shot 1, then 6 beams firing every 60 ms.',
+    patch: {
+      engine: 'timed',
+      count: 6,
+      firstDelayMs: 300,
+      intervalMs: 60,
+      customIntervalsMs: '',
+      burstSize: 1,
+      spreadDeg: 4,
+      beamSequenceAnchor: 'on_dispatch',
+      liveAim: true,
     },
   },
 ];

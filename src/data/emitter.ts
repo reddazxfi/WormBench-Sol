@@ -178,14 +178,20 @@ export function supportsEmitter(project: WeaponProject): boolean {
 }
 
 /**
- * `anchor = 'round'` follows a missile WA builds from this record, so the
- * family has to have one: a placed mine is a mine entity, not a missile, and a
- * strike's bombs carry no `m.weapon` to recognise them by.
+ * Placed mines have a physical mine entity tracked via `on_place` + `fx.tracker{ group = wa.mines }`.
+ */
+export function supportsEmitterMine(project: WeaponProject): boolean {
+  return project.fireType === 'drop' && !project.body.fuse;
+}
+
+/**
+ * `anchor = 'round'` follows a missile WA builds from this record, or a placed
+ * mine entity via `on_place` + `fx.tracker{ group = wa.mines }`.
  */
 export function supportsEmitterRound(project: WeaponProject): boolean {
   return (
     project.fireType === 'power' ||
-    (project.fireType === 'drop' && !!project.body.fuse) ||
+    project.fireType === 'drop' ||
     (project.fireType === 'cursor' &&
       !project.teleport &&
       !!project.airstrike?.enabled &&

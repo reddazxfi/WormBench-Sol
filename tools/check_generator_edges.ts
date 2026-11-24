@@ -34,6 +34,7 @@ import { DEFAULT_EMITTER, DEFAULT_EMITTER_RING, DEFAULT_EMITTER_TRAIL } from '..
 import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
 import { DEFAULT_AIRSTRIKE } from '../src/data/airstrike';
 import { DEFAULT_FIRE_SEQUENCE } from '../src/data/fireSequence';
+import { DEFAULT_BEAM } from '../src/data/beam';
 import { scanLua } from '../src/utils/modLib/luaTable';
 import { parseWepBinary } from '../src/utils/wepParser';
 import { DEFAULT_IMPORT_HOLD, readBundleFeatures } from '../src/utils/modLib/importFeatures';
@@ -551,8 +552,8 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
     'an on_fire or round tracker was written for an emitter that never leaves the muzzle',
   );
 
-  // A placed mine has no missile of the weapon, so a stored `round` anchor has
-  // to fall back rather than emit a follower that can never latch.
+  // Placed mines attach their `round` anchor via `on_place` + `fx.tracker{ group = wa.mines }`,
+  // while tools with no spawned entity (`point`) fall back to the muzzle anchor.
   const mine = makeProject({
     fireType: 'drop',
     body: { ...DEFAULT_BODY, fuse: false },
@@ -560,9 +561,22 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
   });
   const mineLua = generateLuaCode(mine);
   check(
-    'a mine falls back to the muzzle',
-    mineLua.includes('emitter_muzzle(') && !mineLua.includes('EMITTER_ROUNDS'),
-    'the round anchor was emitted for a family with no missile',
+    'a placed mine emits an on_place wa.mines tracker for the round anchor',
+    mineLua.includes('on_place = { on = function(ev)') &&
+      mineLua.includes('group = wa.mines') &&
+      !mineLua.includes('EMITTER_ROUNDS'),
+    'expected on_place + group = wa.mines tracker for placed mine round anchor',
+  );
+  const pointTool = makeProject({
+    fireType: 'cursor',
+    teleport: true,
+    emitter: { ...DEFAULT_EMITTER, enabled: true, anchor: 'round' },
+  });
+  const pointLua = generateLuaCode(pointTool);
+  check(
+    'a point tool without missiles falls back to the muzzle',
+    pointLua.includes('emitter_muzzle(') && !pointLua.includes('EMITTER_ROUNDS'),
+    'the round anchor was emitted for a family with no missile or mine',
   );
 
   // The muzzle anchor on that same mine still may not spawn round emitters
@@ -708,17 +722,17 @@ const makeProject = (patch: Partial<WeaponProject> = {}): WeaponProject => {
     'default followFireAngle did not orient the ring to owner fire angle',
   );
 
-  const mineProjExcl = generateLuaCode(
+  const pointProjExcl = generateLuaCode(
     makeProject({
-      fireType: 'drop',
-      body: { ...DEFAULT_BODY, fuse: false },
+      fireType: 'cursor',
+      teleport: true,
       emitter: { ...DEFAULT_EMITTER, enabled: true, anchor: 'muzzle', projectileExclusive: true },
     }),
   );
   check(
-    'a placed mine falls back to muzzle even when projectileExclusive is checked',
-    mineProjExcl.includes('emitter_muzzle(') && !mineProjExcl.includes('EMITTER_ROUNDS'),
-    'a mine without a missile dropped its emitter completely',
+    'a point tool falls back to muzzle even when projectileExclusive is checked',
+    pointProjExcl.includes('emitter_muzzle(') && !pointProjExcl.includes('EMITTER_ROUNDS'),
+    'a point tool without a missile dropped its emitter completely',
   );
 
   // Pure positional offsets without radial offsets emit no aim trig in emitter_muzzle.
@@ -1928,6 +1942,321 @@ local afterHook = 42`;
     'airstrike takeover omits fuse = 0 on bazooka donor and provides fuse = 3000 on grenade donor',
     !airTakeoverBazookaLua.includes('fuse = 0') && airTakeoverGrenadeLua.includes('fuse = 3000,'),
     airTakeoverBazookaLua + '\n---\n' + airTakeoverGrenadeLua,
+  );
+
+  // Beam codegen checks: on_before_hit for electric taze, live_aim explicit, and wa.sound.play in SEQ.on_buffer.
+  const beamTaze = makeProject({
+    slot: 'shotgun',
+    based_on: 'stock.shotgun',
+    donorBaseline: stockDonorBaseline('shotgun'),
+    fireType: 'beam',
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      followAim: true,
+      kind: 'taze',
+      electricTaze: true,
+    },
+  });
+  const beamTazeLua = generateLuaCode(beamTaze);
+  check(
+    'beam taze arms px.electric in on_before_hit and emits explicit live_aim = true',
+    beamTazeLua.includes('on_before_hit = function(o)') &&
+      beamTazeLua.includes('zap.set_message_electric(20, 0, -4, true, 2)') &&
+      !beamTazeLua.includes('on_hit = function(o)') &&
+      beamTazeLua.includes('live_aim = true,'),
+    beamTazeLua,
+  );
+
+  const beamSequenced = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      followAim: false,
+      bufferFrames: 14,
+      chargeSound: {
+        id: 0,
+        file: { file: new File(['RIFF'], 'charge.wav'), fileName: 'charge.wav', previewUrl: '', size: 4 },
+      },
+    },
+    fireSequence: {
+      ...DEFAULT_FIRE_SEQUENCE,
+      enabled: true,
+      engine: 'timed',
+      mode: 'missiles',
+      count: 4,
+      firstDelayMs: 280,
+      intervalMs: 120,
+      customIntervalsMs: '280, 180, 120, 80',
+      burstSize: 3,
+      spreadDeg: 12,
+      liveAim: true,
+    },
+    hold: {
+      enabled: true,
+      sheet: '',
+      sheetFile: new File(['h'], 'hold.png'),
+      frames: 8,
+      sheetFrames: 8,
+      fps: 15,
+      animate: true,
+      handType: 'mid',
+      handRadius: 10,
+      weapRadius: 8,
+      scale: 1,
+      handScale: 1,
+      drawHand: true,
+      thrown: false,
+      putAway: true,
+      keepWhileFiring: true,
+      bufferFile: new File(['b'], 'buffer.png'),
+      bufferFrames: 8,
+      bufferFps: 15,
+      bufferHideMain: true,
+      flashFile: new File(['f'], 'flash.png'),
+      fireFrames: 1,
+      fireFps: 15,
+      fireTicks: 6,
+      fireHideMain: true,
+    } as WeaponProject['hold'],
+  });
+  const beamSeqLua = generateLuaCode(beamSequenced);
+  const beamSeqToml = generateModToml(beamSequenced);
+  check(
+    'sequenced beam on_buffer uses wa.sound.play (never wa.audio), calls firing.beam_buffer, sets live_aim = false, and points to shared wfws.sdk beam_orb.png without duplicating it in mod.toml',
+    beamSeqLua.includes('wa.sound.play(w, "sounds/') &&
+      beamSeqLua.includes('firing.beam_buffer(w, t, BEAM)') &&
+      beamSeqLua.includes('orb_sprite = "wf-lib/wfws/sprites/beam_orb.png"') &&
+      !beamSeqLua.includes('wa.audio') &&
+      beamSeqLua.includes('live_aim = false,') &&
+      beamSeqLua.includes('buffer = {') &&
+      beamSeqLua.includes('fire = {') &&
+      beamSeqToml.includes('hold.png"]') &&
+      beamSeqToml.includes('buffer.png"]') &&
+      !beamSeqToml.includes('beam_orb.png"]') &&
+      beamSeqToml.includes('frames = 8'),
+    beamSeqLua + '\n---\n' + beamSeqToml,
+  );
+
+  const trailLookBeam = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      look: 'trail',
+      path: 'arc',
+      glowWidth: 20,
+    },
+  });
+  const trailLookLua = generateLuaCode(trailLookBeam);
+  check(
+    'beam look="trail" points to shared wfws.sdk beam.png, beam_glow.png, beam_glow_endpoint.png and beam_orb.png',
+    trailLookLua.includes('sprite = "wf-lib/wfws/sprites/beam.png"') &&
+      trailLookLua.includes('glow_sprite = "wf-lib/wfws/sprites/beam_glow.png"') &&
+      trailLookLua.includes('end_sprite = "wf-lib/wfws/sprites/beam_glow_endpoint.png"') &&
+      trailLookLua.includes('orb_sprite = "wf-lib/wfws/sprites/beam_orb.png"'),
+    trailLookLua,
+  );
+
+  const softStyleLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'handgun',
+      based_on: 'stock.handgun',
+      donorBaseline: stockDonorBaseline('handgun'),
+      fireType: 'beam',
+      beam: { ...DEFAULT_BEAM, enabled: true, artStyle: 'soft' },
+    }),
+  );
+  const plasmaStyleLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'handgun',
+      based_on: 'stock.handgun',
+      donorBaseline: stockDonorBaseline('handgun'),
+      fireType: 'beam',
+      beam: { ...DEFAULT_BEAM, enabled: true, artStyle: 'plasma' },
+    }),
+  );
+  check(
+    'beam artStyle soft and plasma resolve to shared wfws.sdk alternative sprite sets',
+    softStyleLua.includes('sprite = "wf-lib/wfws/sprites/beam_soft.png"') &&
+      softStyleLua.includes('glow_sprite = "wf-lib/wfws/sprites/beam_glow_soft.png"') &&
+      softStyleLua.includes('end_sprite = "wf-lib/wfws/sprites/beam_end_soft.png"') &&
+      softStyleLua.includes('orb_sprite = "wf-lib/wfws/sprites/beam_orb_soft.png"') &&
+      plasmaStyleLua.includes('sprite = "wf-lib/wfws/sprites/beam_plasma.png"') &&
+      plasmaStyleLua.includes('glow_sprite = "wf-lib/wfws/sprites/beam_glow_plasma.png"') &&
+      plasmaStyleLua.includes('end_sprite = "wf-lib/wfws/sprites/beam_end_plasma.png"') &&
+      plasmaStyleLua.includes('orb_sprite = "wf-lib/wfws/sprites/beam_orb_plasma.png"'),
+    softStyleLua + '\n---\n' + plasmaStyleLua,
+  );
+
+  const impactBurstBeam = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      artStyle: 'plasma',
+      impactBurst: {
+        enabled: true,
+        style: 'soft',
+        shape: 'spin_star',
+        radius: 30,
+        color: '#60efff',
+        rebufferMode: 'pulse',
+        rebufferAt: 10,
+        starPoints: 6,
+        spin: 0.22,
+      },
+    },
+  });
+  const ibLua = generateLuaCode(impactBurstBeam);
+  const ibDeps = autoDependenciesForProject(impactBurstBeam).map((d) => d.id);
+  check(
+    'beam impactBurst emits on_impact fx.burst with spin_star/pulse/soft, claims fx.STAR + soft sheets, and adds effects.sdk dep',
+    ibLua.includes('on_impact = function(ex, ey, w) fx.burst{') &&
+      ibLua.includes('shape = "spin_star"') &&
+      ibLua.includes('style = "soft"') &&
+      ibLua.includes('at = 10, mode = "pulse"') &&
+      ibLua.includes('fx.STAR') &&
+      ibLua.includes('beam_soft.png') &&
+      ibDeps.includes('effects.sdk'),
+    ibLua,
+  );
+
+  // 1) Burn DoT knockback (`burn_push`) + final `push`/`kind`, plus `beam.fire` (`wa.fire.spawn`) & `electricTazeMines`
+  const burnTazeBeam = makeProject({
+    customSprites: {},
+    slot: 'uzi',
+    based_on: 'stock.uzi',
+    donorBaseline: stockDonorBaseline('uzi'),
+    fireType: 'beam',
+    electricTazeMines: true,
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      hurtMode: 'cone',
+      interact: false,
+      burnPush: 0.9,
+      push: 5,
+      kind: 'fire',
+      electricTaze: true,
+      fire: { enabled: true, mode: 'both', count: 4, durationMs: 2200, damage: 2, step: 48 },
+    },
+  });
+  const burnTazeLua = generateLuaCode(burnTazeBeam);
+  check(
+    'beam burn emits burn_push, push, kind, wa.fire.spawn, and taze_mine on_taze_mine when electricTazeMines=true',
+    burnTazeLua.includes('burn_push = 0.9') &&
+      burnTazeLua.includes('push = 5') &&
+      burnTazeLua.includes('interact = "burn"') &&
+      burnTazeLua.includes('fire = { mode = "both"') &&
+      burnTazeLua.includes('taze_mines = true') &&
+      burnTazeLua.includes('on_taze_mine = function(m, w) taze_mine.taze(m'),
+    burnTazeLua,
+  );
+
+  // 2) Glow-only mine explosion (`shape = "none"`, independent `centerGlow`, `fireSpawn`, `electricTazeMines`) + placed mine emitter & ribbon
+  const glowMine = makeProject({
+    customSprites: {},
+    slot: 'mine',
+    based_on: 'stock.mine',
+    donorBaseline: stockDonorBaseline('mine'),
+    fireType: 'drop',
+    electricTazeMines: true,
+    body: {
+      ...stockDonorBaseline('mine')!.body,
+      fuse: false,
+      proximity: 25,
+    },
+    explosionEffect: {
+      ...DEFAULT_EXPLOSION_EFFECT,
+      enabled: true,
+      mode: 'blast',
+      damageType: 'electric',
+      shape: 'none',
+      rainbow: true,
+      centerGlow: { shape: 'spin_star', scale: 2.5, expand: 1.1, spin: 0.2, inner: true },
+      fireSpawn: { enabled: true, count: 5, durationMs: 2400, damage: 1, upPower: 4, vy: -3 },
+    },
+    emitter: {
+      ...DEFAULT_EMITTER,
+      enabled: true,
+      anchor: 'round',
+      ring: { ...DEFAULT_EMITTER_RING, enabled: true, shape: 'star', radius: 18 },
+    },
+    ribbonTrail: {
+      enabled: true,
+      max: 8,
+      every: 2,
+      vanish: 2,
+      coreWidth: 5,
+      glowWidth: 10,
+      noise: 0,
+      rainbow: true,
+      color: '#ffffff',
+      target: 'main',
+    },
+  });
+  const glowMineLua = generateLuaCode(glowMine);
+  check(
+    'glow-only electric mine emits shape="none", glow={shape="spin_star"}, fx.STAR, wa.fire.spawn, taze_mine, and mine on_place tracker',
+    glowMineLua.includes('shape = "none"') &&
+      glowMineLua.includes('glow = { shape = "spin_star"') &&
+      glowMineLua.includes('fx.STAR') &&
+      glowMineLua.includes('wa.fire.spawn') &&
+      glowMineLua.includes('on_taze_mine = function(m, w) taze_mine.taze(m') &&
+      glowMineLua.includes('on_place = { on = function(ev)') &&
+      glowMineLua.includes('group = wa.mines'),
+    glowMineLua,
+  );
+
+  // 3) electricTazeMines on melee
+  const tazeMeleeLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'bazooka',
+      based_on: 'stock.bazooka',
+      donorBaseline: stockDonorBaseline('bazooka'),
+      fireType: 'melee',
+      electricTazeMines: true,
+      hold: { enabled: true, sheet: 'sprites/m/hold.png' } as any,
+      melee: {
+        ...stockDonorBaseline('bazooka') as any,
+        enabled: true,
+        kind: 'taze',
+        damage: 25,
+        push: 6,
+        pushMode: 'aim',
+        pushVx: 0,
+        pushVy: -4,
+        x: 20,
+        y: 0,
+        w: 24,
+        h: 24,
+        spareShooter: true,
+        strikes: [{ frame: 2 }],
+      },
+    }),
+  );
+  check(
+    'melee taze with electricTazeMines emits on_taze_mine using taze_mine',
+    tazeMeleeLua.includes('taze_mine = require("wf-lib/electric/taze_mine")') &&
+      tazeMeleeLua.includes('on_taze_mine = function(m, w) taze_mine.taze(m'),
+    tazeMeleeLua,
   );
 }
 

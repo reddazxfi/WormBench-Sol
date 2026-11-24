@@ -23,8 +23,23 @@ const TICK_MS = 20; // WA's game frame is 20 ms.
 const SHEETS = {
   beam: assetUrl('assets/effects/beam.png'),
   glow: assetUrl('assets/effects/beam_glow.png'),
+  beam_soft: assetUrl('assets/effects/beam_soft.png'),
+  glow_soft: assetUrl('assets/effects/beam_glow_soft.png'),
+  beam_plasma: assetUrl('assets/effects/beam_plasma.png'),
+  glow_plasma: assetUrl('assets/effects/beam_glow_plasma.png'),
+  orb: assetUrl('assets/effects/glow.png'),
+  star: assetUrl('assets/effects/star.png'),
   cloud: assetUrl('assets/effects/cloud.png'),
 };
+
+function rainbowHex(frame: number): string {
+  const rad = ((frame * 0.045) % 1) * Math.PI * 2;
+  const ch = (offset: number) =>
+    Math.max(0, Math.min(255, Math.round(180 + 75 * Math.sin(rad + offset))))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${ch(0)}${ch(2.0943951)}${ch(4.1887902)}`;
+}
 
 /** Park-Miller hashes are stable across redraws, so the ring does not boil. */
 function rand01(seed: number, epoch: number, index: number): number {
@@ -183,6 +198,10 @@ export function ExplosionPreview({ config }: ExplosionPreviewProps) {
     }
     return cache;
   }, [sheets, config.color]);
+  const dynamicTintCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  useEffect(() => {
+    dynamicTintCacheRef.current.clear();
+  }, [sheets]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -239,20 +258,42 @@ export function ExplosionPreview({ config }: ExplosionPreviewProps) {
     const age = Math.min(frame, live + 1);
     const fade = burstFade(config);
     const duration = Math.max(1, Math.round(config.duration));
-    const rebufferAt = Math.max(1, Math.round(config.rebuffer ? 16 : 0));
-    const rebuffered = config.rebuffer && age >= rebufferAt;
+    const rbMode = config.rebuffer ? (config.rebufferMode ?? 'px') : 'none';
+    const rebufferAt = Math.max(2, Math.round(config.rebufferAt ?? 16));
+    const rebuffered = rbMode !== 'none' && age >= rebufferAt;
     const noise = rebuffered ? Math.max(1.8, config.noise * 1.6) : config.noise;
-    const color = parseHex(config.color);
-    const r = color.r;
-    const g = color.g;
-    const b = color.b;
-    // The re-buffer's own envelope is negative (fade -0.85), so the ring
-    // brightens as it shrinks after frame 16 in PX's effect.
-    const timer = rebuffered
-      ? rebufferAt * fade + (age - rebufferAt) * -0.85
-      : age * fade;
+    const activeHex = config.rainbow ? rainbowHex(age) : config.color;
+    const color = parseHex(activeHex);
+    const getTinted = (key: keyof typeof SHEETS, hex = activeHex): HTMLCanvasElement | undefined => {
+      if (hex === config.color) return tinted[key];
+      const raw = sheets[key];
+      if (!raw) return tinted[key];
+      const cacheKey = `${key}|${hex}`;
+      const cache = dynamicTintCacheRef.current;
+      let hit = cache.get(cacheKey);
+      if (!hit) {
+        if (cache.size > 300) cache.clear();
+        hit = tintedSheet(raw, hex);
+        cache.set(cacheKey, hit);
+      }
+      return hit;
+    };
+    let timer = age * fade;
+    let flashBoost = 0;
+    if (rebuffered) {
+      if (rbMode === 'pulse') {
+        timer = (age - rebufferAt) * Math.max(0.1, Math.abs(fade) || 0.65);
+        flashBoost = Math.max(0, 0.45 - (age - rebufferAt) * 0.1);
+      } else if (rbMode === 'flash') {
+        timer = age * fade;
+        flashBoost = Math.max(0, 0.65 - (age - rebufferAt) * 0.1);
+      } else {
+        timer = rebufferAt * fade + (age - rebufferAt) * -0.85;
+      }
+    }
     const progress = clamp01(timer / duration);
     const env = 1 - progress;
+    const envDraw = clamp01(env + flashBoost);
 
     /** One ribbon pass: a textured quad per polygon edge, additive. */
     const ribbon = (
@@ -314,7 +355,7 @@ export function ExplosionPreview({ config }: ExplosionPreviewProps) {
     if (config.smoke && age <= live) {
       const particles = smokeParticles(seed, color.r, color.g, color.b);
       const drag = 0.1;
-      const cloud = tinted.cloud;
+      const cloud = getTinted('cloud');
       for (const particle of particles) {
         if (age >= particle.life) continue;
         const travel = (1 - Math.pow(1 - drag, age)) / drag;
@@ -342,7 +383,13 @@ export function ExplosionPreview({ config }: ExplosionPreviewProps) {
 
     if (frame <= live && env > 0) {
       const currentRadius = radius * (1 + grow * progress);
-      const segments = segCount(config.segments, radius, rebuffered ? 1.3 : 1.2);
+      const shape = config.shape ?? 'ring';
+      const isStar = shape === 'star' || shape === 'spin_star';
+      const starPts = Math.max(3, Math.min(12, Math.round(config.starPoints ?? 5)));
+      const spin = config.spin ?? 0.16;
+      const rot = shape === 'spin_star' ? age * spin : 0;
+      let segments = segCount(config.segments, radius, rebuffered ? 1.3 : 1.2);
+      if (isStar && segments < starPts * 4) segments = Math.min(255, starPts * 4);
       const epoch = rebuffered ? rebufferAt + Math.floor((age - rebufferAt) / 3) : Math.floor(age / 3);
       const noiseValues: number[] = [];
       for (let i = 0; i <= segments; i += 1) {
@@ -351,31 +398,98 @@ export function ExplosionPreview({ config }: ExplosionPreviewProps) {
 
       const ring = (lens: boolean): { x: number; y: number }[] => {
         const points: { x: number; y: number }[] = [];
+        const rRot = lens ? -rot : rot;
         for (let i = 0; i <= segments; i += 1) {
           const angle = (i / segments) * Math.PI * 2;
           const jitter = (noiseValues[i % noiseValues.length] ?? 0) * currentRadius * 0.08 * noise;
-          const rx = lens ? currentRadius * ellipseX + jitter : currentRadius + jitter;
-          const ry = lens ? currentRadius * ellipseY + jitter : currentRadius + jitter;
-          points.push({ x: cx + Math.cos(angle) * rx * scale, y: cy + Math.sin(angle) * ry * scale });
+          const starMul = isStar ? 1 + 0.38 * Math.cos(angle * starPts) : 1;
+          const rx = lens
+            ? isStar
+              ? currentRadius * 0.68 * starMul + jitter
+              : currentRadius * ellipseX + jitter
+            : currentRadius * starMul + jitter;
+          const ry = lens
+            ? isStar
+              ? currentRadius * 0.68 * starMul + jitter
+              : currentRadius * ellipseY + jitter
+            : currentRadius * starMul + jitter;
+          const aa = angle + rRot;
+          points.push({ x: cx + Math.cos(aa) * rx * scale, y: cy + Math.sin(aa) * ry * scale });
         }
         return points;
       };
 
-      const thickness = Math.max(0.5, config.thickness);
-      // The sharp core pass. The SDK derives it from `thickness` (0.9 x for the
-      // ring, 1.0 x for the lens) and floors it at 1.8 / 1.4 half-width; an
-      // explicit `core` replaces the derived width and keeps a 2.5 px floor,
-      // below which the beam texture's bright band stops reading as a line.
-      const core = config.core && config.core > 0 ? Math.max(2.5, config.core) : 0;
-      const half = core > 0 ? Math.max(core * env, 1.25) : Math.max(0.9 * thickness * env, 1.8);
-      const lensHalf = core > 0 ? Math.max(core * env, 1.25) : Math.max(thickness * env, 1.4);
-      const ringPoints = ring(false);
-      const lensPoints = ring(true);
-      // The SDK's order: ring core, ring glow, lens core, lens glow.
-      ribbon(ringPoints, tinted.beam, 2 * half * scale, env);
-      ribbon(ringPoints, tinted.glow, 2 * thickness * env * scale, env);
-      ribbon(lensPoints, tinted.beam, 2 * lensHalf * scale, env);
-      ribbon(lensPoints, tinted.glow, 2 * thickness * env * scale, env);
+      const style = config.style ?? 'classic';
+      if (shape !== 'none') {
+        const beamSheet =
+          style === 'soft'
+            ? getTinted('beam_soft') ?? getTinted('beam')
+            : style === 'plasma'
+              ? getTinted('beam_plasma') ?? getTinted('beam')
+              : getTinted('beam');
+        const glowSheet =
+          style === 'soft'
+            ? getTinted('glow_soft') ?? getTinted('glow')
+            : style === 'plasma'
+              ? getTinted('glow_plasma') ?? getTinted('glow')
+              : getTinted('glow');
+
+        const thickness = Math.max(0.5, config.thickness);
+        const core = config.core && config.core > 0 ? Math.max(2.5, config.core) : 0;
+        const half = core > 0 ? Math.max(core * env, 1.25) : Math.max(0.9 * thickness * env, 1.8);
+        const lensHalf = core > 0 ? Math.max(core * env, 1.25) : Math.max(thickness * env, 1.4);
+        const ringPoints = ring(false);
+        const lensPoints = ring(true);
+        ribbon(ringPoints, beamSheet, 2 * half * scale, envDraw);
+        ribbon(ringPoints, glowSheet, 2 * thickness * env * scale, envDraw);
+        ribbon(lensPoints, beamSheet, 2 * lensHalf * scale, envDraw);
+        ribbon(lensPoints, glowSheet, 2 * thickness * env * scale, envDraw);
+      }
+
+      const glowCfg = config.centerGlow
+        ? config.centerGlow
+        : isStar
+          ? {
+              shape: shape as 'star' | 'spin_star',
+              scale: 2.1,
+              expand: 1.0,
+              spin,
+              inner: true,
+            }
+          : undefined;
+      if (glowCfg && glowCfg.shape !== 'none') {
+        const glowKey = glowCfg.shape === 'orb' ? 'orb' : 'star';
+        const rawGlow = sheets[glowKey];
+        const glowColor = glowCfg.color && glowCfg.color.trim() ? glowCfg.color.trim() : activeHex;
+        const tintedGlow = getTinted(glowKey, glowColor);
+        if (tintedGlow && rawGlow) {
+          const glowScale = Math.max(0.1, glowCfg.scale ?? 2.1);
+          const glowExpand = Math.max(0, glowCfg.expand ?? 1.0);
+          const glowRadius = radius * (1 + grow * progress * glowExpand);
+          const glowSz = glowRadius * glowScale * scale;
+          const glowSpin = glowCfg.spin ?? spin;
+          const glowRot = glowCfg.shape === 'spin_star' ? age * glowSpin : 0;
+
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.translate(cx, cy);
+          ctx.rotate(glowRot);
+          ctx.globalAlpha = Math.min(1, envDraw * 0.9);
+          ctx.drawImage(tintedGlow, -glowSz / 2, -glowSz / 2, glowSz, glowSz);
+          ctx.restore();
+
+          if (glowCfg.inner ?? true) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.translate(cx, cy);
+            ctx.rotate(-glowRot * 1.3);
+            ctx.globalAlpha = Math.min(1, envDraw * 0.8);
+            const innerSz = glowSz * 0.5;
+            ctx.drawImage(rawGlow, -innerSz / 2, -innerSz / 2, innerSz, innerSz);
+            ctx.restore();
+          }
+        }
+      }
     }
 
     // Centre mark and a scale readout keep the proportions honest.

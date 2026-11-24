@@ -1,5 +1,96 @@
 # WormForge Weapon Studio, Engineering Notes (API 5 / WormForge 1.0 RC3)
 
+### The in-game beam painter now matches `BeamPreview`
+
+The beam read wrong in game next to its own preview: a hard white core with a
+thin glow against the preview's softer, wider beam, no impact spray at the tip,
+and a third white pass the preview never draws. `wfws_firing`'s ribbon painter
+(`ensure_beam_renderer`) now draws exactly what `BeamPreview.tsx` draws:
+
+- **Two passes, not three.** The tinted `beam_glow.png` at 0.55 alpha (was
+  0.65) under the tinted `beam.png` at full strength, with the glow's `u`
+  following the beam as the core's does. The extra white filament pass
+  (`cw * 0.42` at 0.72) is gone; it never faded out at the tip, which is why the
+  in-game core stayed white while the preview's core is the beam colour.
+- **The tip flare is the preview's.** Radius `max(8, tipW * 0.9)` instead of
+  `tipW * 0.58` on quads at three times the radius: a colour quad of the radial
+  `beam_orb.png` out to that radius, a white one over its inner half, standing
+  in for the preview's radial gradient (a ribbon cannot draw a disc).
+- **The eight impact rays exist.** They were two-point ribbons of a stripe
+  texture and of length 10..34 radiating backwards, so thin that their bright
+  band averaged away to nothing; they were also gated on the beam having hit
+  terrain or a body, so a beam that simply ran out of range in open air showed
+  no spray at all. They are now eight small quads of the orb sprite at radii
+  6..30 around the tip, white on alternate ticks, gated only on the head being
+  fully extended, exactly as the preview's `headNow >= effectiveMaxDist - 4` is.
+- **Branches to struck bodies are opt-in** (`hit_branches`): the preview has no
+  such pass, so a beam that damages a worm no longer grows a limb nobody drew.
+- **The preview had the overlap bug.** `drawRibbonStrip` drew every segment as
+  `len * 1.04`, and additive blending doubled each joint into a bright bead;
+  `wa.draw.ribbon` shares one pair of vertices between neighbouring quads, so
+  the segments now tile edge to edge. The preview's rays also used a fixed
+  `Math.PI` base angle, which only looked right for a beam fired to the right;
+  they now fan back along the beam's own heading, and a beam at maximum range
+  sparks there too.
+
+**The ends were still cut flat.** The glow band and the core both started and
+stopped on a vertical edge, which the orb flare only half covered. `beam_glow_endpoint.png`
+(pixel-art sheet, faded on its right side) is now shipped per weapon as
+`sprites/<mod>/beam_end.png` (`end_sprite`) and drawn as one short ribbon
+*outside* each end: the bright end meets the band's edge and the fade faces
+outward, so the band blooms into nothing instead of ending. It has to sit
+outside, not over the band: additive blending cannot subtract, so a cap laid
+over the band doubles the brightness through its bright section and steps down
+at its inner edge (the first attempt read as a brighter rectangular block at the
+muzzle). A cap that continues the band keeps the sum continuous, because its
+bright end and the band edge are the same brightness. The core converges into
+each end over 18 px for the same reason: the caps hide the band's edge, not a
+9 px bright filament ending square. `BeamPreview` draws the same two caps
+(unflipped, one quad each) and the same 18 px core taper, and the test pack's
+`beam_end.png` travels with `beam.png`/`beam_glow.png`/`beam_orb.png` in
+`weaponBundlePart`, `gen_test_pack` and `[sprites]`.
+
+**The muzzle cap moved into the worm, and the bolt shimmered.** Two defects
+straight from a play test. First, a cap at the muzzle has to extend *backwards*
+from the band's start, which is the weapon's edge, so a 38 px bloom hung over the
+worm instead of the gun; only the tip is capped now. Second, a jagged bolt was
+white noise per point, re-drawn **every 50 Hz tick**, so a stationary bolt was a
+sawtooth that reshuffled itself every frame, and its forks (also per-point
+`wa.draw.random`) buzzed with it. The editor's `BeamPreview` never showed that
+because it holds one shape per shot. `beam_jag` replaces both with two seeded
+sines read at the point's own place along the whole bolt (so a growing beam
+reveals more of the same shape instead of stretching it) and pinned at both ends;
+forks carry a per-fork phase; the dissolve shake reuses the same shape at a
+growing amplitude. `wa.draw.random` is left to the impact spray and the
+brightness flicker, which are meant to move. Case 14i pins the shape's stability
+across ticks, its pinned ends and its smoothness, and 14g now asserts the cap sits
+outside the *tip* and never reaches behind the muzzle.
+
+**Then the caps were in the wrong place entirely, and the core's own taper was
+the zigzag.** Appending the endpoint sheet outside the band gave a bloom behind
+the barrel at the muzzle and a smear past the impact at the tip; removing the
+muzzle cap only moved the problem. The sheet is now the band's *own* first and
+last piece: the glow body is shifted inward by `cap_len` at both ends to make
+room, the two pieces read it with the faded side outward and the bright side
+facing the body (so the join is the same brightness on both sides), and nothing
+is drawn outside the beam. The remaining "zigzag at the start" was never the
+path or the texture: the core's end taper asked for a 20 px ramp across quads
+that are ~29 px apart at `points = 16`, so the first point came out 4.5 px wide
+and the second 28 px, which at 1x reads as a spike. The ribbon is drawn at 3x
+its path points, and both ends now fade in colour and width over the same span
+the endpoint sheet covers. Cases 14g/14i/14j pin the pieces' direction, the
+bolt's stability and the taper's resolution.
+
+`tools/lua/harness_firing.py` pins it: case 14d asserts exactly one core and one
+glow ribbon (so a white pass sharing the core sprite fails), the core width at
+the tip and the two tip quads; 14e that a beam that runs out of range in open
+air still draws its eight rays; 14f that `sparks` off leaves only the flare;
+14g that the endpoint sheet continues both ends with its fade outward and 14h
+that a beam without `end_sprite` keeps its two passes and no caps.
+The harness's `wa.draw.random` is a constant 0.5, so it cannot exercise the ray
+angles; render the recorded ribbons and quads with the real sheets to see the
+fan.
+
 ### WormForge 1.0 RC3 / Lua API 5 migration
 
 All four phases of the WormForge 1.0 RC3 (Lua API 5) migration are complete:
@@ -5152,3 +5243,63 @@ and `CSoundFile` WAVs without executing PX C-script.
 - Added WF 61..66 (`61_airstrike_takeover`, `62_airstrike_crash`, `63_airstrike_strafe`, `64_airstrike_direct`, `65_firing_native`, `66_firing_timed`) to `tools/gen_test_pack.ts` (using `autoDependenciesForProject` + `mergeFireSequenceConfig`), added generator edge & import assertions in `tools/check_generator_edges.ts` / `tools/check_mod_import.ts`, added `tools/lua/harness_firing.py` (with `ev.power` mutation check), updated `spec/lua_sdk/wfws_sdk/README.md`, and synced `D:\Worms Armageddon\WormForge\Mods\wf-lib\wfws_sdk\`.
 
 
+
+### Beam painter matched to `BeamPreview` (play test round 2, `wfws.sdk` 1.1.0)
+
+The in-game painter is now measured against the preview's own maths, not only
+against the harness. Four separate defects were behind "the game does not
+resemble the preview", and three of them were *sampling*, not geometry:
+
+- **`look = "trail"` was a different painter.** `wa.draw.trail` is a projectile
+  trail: its width ramps with a point's age along the trail and its tail sheds
+  points. A ray fed into it looks like a round dragging a smear (WF 70 showed a
+  thin dotted curve while its card previewed an extending arc), and it cannot
+  grow or retract, so `dissipate = "retract"` did nothing. The trail machinery
+  (`beam_init_trails`, `beam_push_trail_point`, `beam_finish_trails`,
+  `beam_push_full_trail` and its three call sites) is gone and `look` is
+  normalised to `"ribbon"` with one log line. The card still lists the key, and
+  says it is drawn as a ribbon, so an older bundle loads and round-trips.
+- **The core taper bottomed out under one pixel.** WormForge samples its quads
+  point-wise (`cell_uv`'s half-texel inset exists for that reason), so the
+  converging core at the muzzle and at the tip drew as a *dotted* line of bright
+  pixels, which reads in game as a lumpy, wavy start on a straight beam (WF 67,
+  and `beam_vis.py`'s 1:1 render reproduced it exactly). The taper now keeps
+  **45%** of the band's width and the fade lives in the colour, in the library
+  and in the preview.
+- **The preview was bilinear.** WormForge is always nearest neighbour, so a
+  smoothed canvas softens every edge and makes the same beam read dimmer and
+  wider than the game. `BeamPreview` sets `imageSmoothingEnabled = false` on its
+  context, `flicker` no longer scales width (the library never did), and the
+  rainbow rate matches (`age * 0.04` per tick).
+- **The preview drew the whole sheet inside every segment.** `wa.draw.ribbon`
+  spreads one texture over the whole ribbon (`u` per point), so a preview that
+  calls `drawImage(sheet, …)` per segment repeats whatever gradient the sheet
+  has along its length. That is invisible for the two band sheets (uniform along
+  x, measured: 0 rows with any x-variation) and wrong for the endpoint sheet,
+  whose fade is along x. `drawRibbonStrip` now slices by the segment's own `u`
+  range (`uFrom`/`uTo`, reversed when `ua > ub`, which is what the engine's
+  `uvs` ordering does).
+
+Two more, about the bolt's *shape*:
+
+- **Jagged was a smooth wave.** Two seeded sines have no corner, so the bolt
+  stopped reading as an electric arc when the per-frame noise was removed. It is
+  now one table of kinks (`JAG_N = 17`, seeded once at spawn through
+  `beam_hash01`, one smoothing pass, ends pinned to 0) read by linear
+  interpolation at the point's place along the whole bolt: corners stay corners,
+  the shape is fixed for the shot, and a growing bolt reveals more of the same
+  shape. Forks carry their own seven-point table seeded from their phase
+  (`branch_kinks`, memoised by phase) instead of a sine pair.
+- **Forks did not scale with the head.** The library's reach is
+  `(1 - t) * head * 0.3`, so a close-range shot has short side bolts (WF 69 at
+  close range); the preview used a fixed 38 px, which is why the side bolts
+  matched at long range and not at short. The preview now uses the same formula,
+  the same width (`min(20, max(4, core * 0.35))`), the same direction
+  (`normal * side + direction * 0.5`) and the same kink table.
+
+`tools/lua/harness_firing.py` gained and lost cases to match: 7d/7e pin `look`
+normalisation (a `trail` claim draws the same two ribbons as `ribbon`), 14i
+asserts the corners are real (a second-difference spike, so a regression to
+sines fails), and 14j asserts the taper never goes sub-pixel. The off-line
+renderer (`beam_vis.py`, scratch) ports `ribbon_quads` and `cell_uv` so a render
+is the engine's geometry and sampling rather than an approximation.

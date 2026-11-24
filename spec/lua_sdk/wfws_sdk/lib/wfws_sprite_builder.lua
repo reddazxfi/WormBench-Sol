@@ -1145,9 +1145,9 @@ function M.hold_needs_lua(spec)
   local hand = spec.hand_offset
   if type(hand) == "table" and ((hand.x or 0) ~= 0 or (hand.y or 0) ~= 0) then return true end
   if spec.clip ~= nil or spec.echo ~= nil or spec.swing ~= nil then return true end
-  -- A firing role is always ours: the engine draws nothing after its two firing
-  -- frames, and px_hold_art draws only inside them.
-  if spec.fire ~= nil then return true end
+  -- A firing or buffering role is always ours: the engine draws nothing after
+  -- its two firing frames, and has no native buffer state at all.
+  if spec.fire ~= nil or spec.buffer ~= nil then return true end
   -- The held art on WA's firing frames is ours too (`keep_firing`): the engine
   -- draws it there only while `h.firing` is set, which a burst repeats without.
   if spec.keep_firing ~= nil then return true end
@@ -1410,69 +1410,54 @@ local function hold_draw_aim(entry, w, ws, pose, firing_hold, alpha_mul, blend, 
   end
 end
 
--- One firing frame of the firing role (`fire` in the spec): the same aim pose
+-- One frame of a role sheet (`fire` or `buffer` in the spec): the same aim pose
 -- the held art takes, the same cell and hand rules, but its own sheet, size,
--- strip and numbers. No draw-out and no clip: a shot is not an aim.
-local function hold_draw_fire(entry, w, ws)
-  local fire = entry.fire
+-- strip and numbers. No draw-out and no clip: a shot/charge is not an aim.
+local function hold_draw_role(entry, role, phase, w)
   local pi = math.pi
   local facing = w.facing < 0 and -1 or 1
-  -- The raw aim, on purpose: `aim_clamp` writes WA's own aim target in
-  -- `body_move`, before WA's body step, so this value is already the clamped
-  -- one and can only sit one native step (180/128 of a degree) past the limit.
-  -- `hold_clamp_aim` belongs to the *held* art, which must draw exactly at the
-  -- limit while the aim is still easing there; using it here would also draw a
-  -- clamped shot on a build where the native write was refused, where the round
-  -- really does leave at the raw aim.
   local a = w.aim or 0.5
   local rot = (1.0 - a) * pi
-  local rot_w = rot + pi * fire.weap_radial_rotation
-  local rot_h = rot - pi * fire.hand_radial_rotation
-  local size = fire.scale or 1.0
-  local cx = w.x + facing * wa.math.sin(rot_w) * fire.weap_radius
-  local cy = w.y - wa.math.cos(rot_w) * fire.weap_radius
-  local ang = (pi - pi * a - pi * (1.0 - fire.weap_rotation)) * facing
-  local frames = math.max(1, fire.frames or 1)
-  local frame = math.floor((ws.fire_phase or 0.0) * frames)
+  local rot_w = rot + pi * role.weap_radial_rotation
+  local rot_h = rot - pi * role.hand_radial_rotation
+  local size = role.scale or 1.0
+  local cx = w.x + facing * wa.math.sin(rot_w) * role.weap_radius
+  local cy = w.y - wa.math.cos(rot_w) * role.weap_radius
+  local ang = (pi - pi * a - pi * (1.0 - role.weap_rotation)) * facing
+  local frames = math.max(1, role.frames or 1)
+  local frame = math.floor((phase or 0.0) * frames)
   if frame >= frames then frame = frames - 1 end
   if frame < 0 then frame = 0 end
-  -- `offset = { x, y }`: the firing art nudged inside its own cell, in sheet
-  -- pixels and scaled with the role's own `scale`, the same channel the held
-  -- art has, turned with the drawn angle and mirrored with the side.
-  local ox = (fire.ox or 0) * size
-  local oy = (fire.oy or 0) * size
+  local ox = (role.ox or 0) * size
+  local oy = (role.oy or 0) * size
   if ox ~= 0 or oy ~= 0 then
     if facing < 0 then ox = -ox end
     local cr, sr = wa.math.cos(ang), wa.math.sin(ang)
     cx = cx + ox * cr - oy * sr
     cy = cy + ox * sr + oy * cr
   end
-  local cell_w = fire.cell_w or HOLD_HAND_CELL
-  local cell_h = fire.cell_h or HOLD_HAND_CELL
-  hold_quad(fire.sheet, cx, cy, ang,
+  local cell_w = role.cell_w or HOLD_HAND_CELL
+  local cell_h = role.cell_h or HOLD_HAND_CELL
+  hold_quad(role.sheet, cx, cy, ang,
     cell_w * size * 0.5, cell_h * size * 0.5, facing, frame, w, 1)
 
-  if fire.hand and fire.draw_hand ~= false and (fire.hand_radius or 0) ~= 0 then
-    local hx = w.x + facing * wa.math.sin(rot_h) * fire.hand_radius
-    local hy = w.y - wa.math.cos(rot_h) * fire.hand_radius
-    local h_ang = (rot + pi * fire.hand_rotation) * facing
-    local hsize = (fire.hand_scale or 1.0)
-    local h_half = (fire.hand_size or HOLD_HAND_CELL) * hsize * 0.5
-    -- The hand's nudge rides its own cell, so it scales with `hand_scale`.
-    local hox = (fire.hox or 0) * hsize
-    local hoy = (fire.hoy or 0) * hsize
+  if role.hand and role.draw_hand ~= false and (role.hand_radius or 0) ~= 0 then
+    local hx = w.x + facing * wa.math.sin(rot_h) * role.hand_radius
+    local hy = w.y - wa.math.cos(rot_h) * role.hand_radius
+    local h_ang = (rot + pi * role.hand_rotation) * facing
+    local hsize = (role.hand_scale or 1.0)
+    local h_half = (role.hand_size or HOLD_HAND_CELL) * hsize * 0.5
+    local hox = (role.hox or 0) * hsize
+    local hoy = (role.hoy or 0) * hsize
     if hox ~= 0 or hoy ~= 0 then
       if facing < 0 then hox = -hox end
       local cr, sr = wa.math.cos(h_ang), wa.math.sin(h_ang)
       hx = hx + hox * cr - hoy * sr
       hy = hy + hox * sr + hoy * cr
     end
-    hold_quad(fire.hand, hx, hy, h_ang, h_half, h_half, facing, 0, w, 1)
+    hold_quad(role.hand, hx, hy, h_ang, h_half, h_half, facing, 0, w, 1)
   end
 
-  -- The support hand stays on the gun while the firing sheet replaces it, at
-  -- full size and with its own grip numbers (a shot is not an aim, so no
-  -- draw-out and no clip carry).
   hold_draw_extra_hand(entry, w, rot, 1.0, facing, nil, true)
 end
 
@@ -1481,32 +1466,40 @@ end
 -- single frame; `fire.ticks` keeps it up for that many frames from the first
 -- firing frame, and 0 means "WA's own frames only". A gap of more than a frame
 -- between two firing states is a new shot, and restarts the strip.
+-- Also honours deterministic `sb.hold_trigger(worm, "fire", ticks)` calls from
+-- `firing.beam` / `firing.sequence` so shots after a buffer or in a multi-shot
+-- burst play the full firing strip reliably.
 local function hold_fire_step(entry, w, ws, now)
   local fire = entry.fire
   local keep = entry.keep_firing
-  if not fire and not keep then return false end
   local firing = w.state ~= nil and HOLD_FIRE_STATES[w.state] or false
-  local ticks = fire and (fire.ticks or 0) or 0
-  -- A held weapon that stays on the firing frames (`keep_firing`) needs no
-  -- window of its own: WA's own two frames are the shot.
-  if keep and not fire then ticks = 0 end
-  if firing then
+  if not firing then
+    ws.fire_passive_locked = nil
+  end
+  if not fire and not keep then return false end
+  local ticks = ws.fire_override_ticks or (fire and (fire.ticks or 0) or 0)
+  if keep and not fire and not ws.fire_override_ticks then ticks = 0 end
+  if firing and not ws.fire_override_ticks and not ws.fire_passive_locked then
     if ws.fire_start == nil or not ws.fire_last or now - ws.fire_last > 1 then
       ws.fire_start = now
       ws.fire_phase = 0.0
       ws.fire_hold_phase = 0.0
-      ws.fire_frame = now - 1
+      ws.fire_frame = now
     end
     ws.fire_last = now
   end
   if ws.fire_start == nil then return false end
   if ws.fire_start > now then
     ws.fire_start = nil
+    ws.fire_override_ticks = nil
     return false
   end
   if ticks <= 0 then
     if not firing then return false end
   elseif now - ws.fire_start >= ticks then
+    ws.fire_start = nil
+    ws.fire_override_ticks = nil
+    ws.fire_passive_locked = true
     return false
   end
   if ws.fire_frame ~= now then
@@ -1516,6 +1509,26 @@ local function hold_fire_step(entry, w, ws, now)
     end
     if keep and (entry.frames or 1) > 1 then
       ws.fire_hold_phase = hold_next_phase(ws.fire_hold_phase or 0.0, entry.anim_speed or 1.0)
+    end
+  end
+  return true
+end
+
+-- The buffering / wind-up window, driven deterministically by `sb.hold_trigger(w, "buffer", ticks)`.
+local function hold_buffer_step(entry, ws, now)
+  local buf = entry.buffer
+  if not buf or ws.buf_start == nil or not ws.buf_ticks or ws.buf_ticks <= 0 then
+    return false
+  end
+  if ws.buf_start > now or now - ws.buf_start >= ws.buf_ticks then
+    ws.buf_start = nil
+    ws.buf_ticks = nil
+    return false
+  end
+  if ws.buf_frame ~= now then
+    ws.buf_frame = now
+    if (buf.frames or 1) > 1 then
+      ws.buf_phase = hold_next_phase(ws.buf_phase or 0.0, buf.anim_speed or 1.0)
     end
   end
   return true
@@ -1535,6 +1548,49 @@ local function hold_worm_state(entry, w)
     per_worm[w.id] = ws
   end
   return per_worm, ws
+end
+
+-- Deterministically trigger a hold role ("buffer" or "fire") for `ticks` 50 Hz
+-- frames from simulation callbacks (`firing.beam`, `firing.sequence`, etc.).
+function M.hold_trigger(w, role, ticks)
+  if not w or w.id == nil then return end
+  local now = wa.world and wa.world.frame and wa.world.frame() or 0
+  local dur = math.max(0, math.floor(tonumber(ticks) or 0))
+  for i = 1, #hold_entries do
+    local entry = hold_entries[i]
+    if entry.weapon == w.weapon then
+      local _, ws = hold_worm_state(entry, w)
+      if role == "buffer" then
+        if dur > 0 and entry.buffer then
+          ws.buf_start = now
+          ws.buf_ticks = dur
+          ws.buf_phase = 0.0
+          ws.buf_frame = now
+          ws.fire_start = nil
+          ws.fire_override_ticks = nil
+          ws.fire_passive_locked = true
+        else
+          ws.buf_start = nil
+          ws.buf_ticks = nil
+        end
+      elseif role == "fire" then
+        ws.buf_start = nil
+        ws.buf_ticks = nil
+        ws.fire_passive_locked = true
+        if entry.fire or entry.keep_firing then
+          local use_ticks = dur > 0 and dur or (entry.fire and entry.fire.ticks) or 4
+          if use_ticks > 0 then
+            ws.fire_start = now
+            ws.fire_override_ticks = use_ticks
+            ws.fire_phase = 0.0
+            ws.fire_hold_phase = 0.0
+            ws.fire_frame = now
+            ws.fire_last = now
+          end
+        end
+      end
+    end
+  end
 end
 
 -- The strikes a melee swing lands: `hits = { { frame, damage, power, lift }, ... }`
@@ -1692,6 +1748,24 @@ local function hold_melee_strike(entry, w, st, index)
       -- The strike itself is the fourth argument, so a combo's callback reads
       -- `hit.damage` instead of one number baked into the closure.
       if m.hit then pcall(m.hit, o, push_x, push_y, hit) end
+    end
+  end
+  if type(m.on_taze_mine) == "function" and wa.mines and wa.mines.all then
+    st.tazed_mines = st.tazed_mines or {}
+    local mines = wa.mines.all()
+    if mines then
+      for i = 1, #mines do
+        local mine = mines[i]
+        if mine and mine.id ~= nil and not (m.once and st.tazed_mines[mine.id]) then
+          local dx, dy = mine.x - w.x, mine.y - w.y
+          local along = dx * vx + dy * vy
+          local across = -dx * vy + dy * vx
+          if along >= -MELEE_SLACK and along <= m.radius and math.abs(across) <= m.width then
+            st.tazed_mines[mine.id] = true
+            pcall(m.on_taze_mine, mine, w)
+          end
+        end
+      end
     end
   end
   st.hits = (st.hits or 0) + hits
@@ -1852,12 +1926,15 @@ local function hold_ensure_hook()
         local ws = nil
         -- A running swing is its own reason to draw (the clip owns the worm),
         -- whether or not WA still shows this weapon selected.
-        if swinging or (owns and (aiming or entry.fire or entry.keep_firing)) then
+        if swinging or (owns and (aiming or entry.fire or entry.buffer or entry.keep_firing)) then
           local _, state = hold_worm_state(entry, w)
           ws = state
         end
         if ws then
-          local firing = hold_fire_step(entry, w, ws, now)
+          -- Buffer window takes strict priority over passive WA firing-state detection so
+          -- aim -> buffer never flashes the fire pose for a frame before switching to buffer.
+          local buffering = hold_buffer_step(entry, ws, now)
+          local firing = (not buffering) and hold_fire_step(entry, w, ws, now) or false
           if aiming or swinging then
             -- Advance once per 50 Hz frame, never once per rendered frame: the
             -- render rate is not the game's and differs between machines.
@@ -1868,9 +1945,12 @@ local function hold_ensure_hook()
                 ws.phase = hold_next_phase(ws.phase, entry.anim_speed)
               end
             end
-            -- `fire.hide_main`: the firing art replaces the held weapon while
-            -- its window is open, so the gun is not drawn underneath it.
-            if not (firing and entry.fire and entry.fire.hide_main) then
+            -- `hide_main`: the active role replaces the held weapon while its
+            -- window is open, so the gun is not drawn underneath it.
+            local hidden_by_role =
+              (firing and entry.fire and entry.fire.hide_main)
+              or (buffering and entry.buffer and entry.buffer.hide_main)
+            if not hidden_by_role then
               local pose = nil
               local tick = nil
               local aim_ov = nil
@@ -1878,19 +1958,11 @@ local function hold_ensure_hook()
               if swinging then
                 tick = now - st.start
                 pose = M.clip_pose(entry.clip, tick)
-                -- The aim the swing was thrown with, so a taken worm that turns
-                -- its aim mid-clip does not drag the art round with it.
                 aim_ov = st.aim
                 face_ov = st.facing
               else
-                -- `aim_clamp`: the aim the layer draws stops at the limit, so
-                -- the player sees the weapon refuse the angle rather than
-                -- swinging from somewhere it cannot reach.
                 aim_ov = hold_clamp_aim(entry, w.aim)
               end
-              -- Ghost trail: the same clip at earlier ticks, farthest first so
-              -- the live art lands on its own smear. The pose is a pure
-              -- function of the tick, so nothing has to be recorded in the sim.
               local echo = entry.clip and entry.clip.echo
               if echo and tick then
                 for k = echo.count, 1, -1 do
@@ -1898,11 +1970,6 @@ local function hold_ensure_hook()
                   if gt >= 0 then
                     local ghost = M.clip_pose(entry.clip, gt)
                     if ghost then
-                      -- `full_size`: a ghost is the same clip evaluated at an
-                      -- earlier tick, not an aim being drawn out, so it is the
-                      -- live art's size and not the 20-frame grow-in. Without
-                      -- it a swing thrown right after the weapon is selected
-                      -- left ghosts smaller than the art they trail.
                       hold_draw_aim(entry, w, ws, ghost, false,
                         echo.fade ^ k, echo.blend, true, aim_ov, face_ov, true)
                     end
@@ -1917,20 +1984,27 @@ local function hold_ensure_hook()
             -- The engine's draw-out replays from the start on the next aim.
             ws.counter = 0
           end
-          if firing then
+          if buffering and entry.buffer then
+            hold_draw_role(entry, entry.buffer, ws.buf_phase, w)
+            if entry.buffer.hide_main then mute = true end
+          elseif firing then
             -- `keep_firing`: the held art stays on WA's firing frames, under
             -- the firing sheet if there is one. This is what px_hold_art used to
             -- fill, and it is the same aim geometry at full size.
-            if entry.keep_firing then
+            if entry.keep_firing and not (entry.fire and entry.fire.hide_main) then
               hold_draw_aim(entry, w, ws, nil, true)
               mute = true
             end
             if entry.fire then
-              hold_draw_fire(entry, w, ws)
-              -- The engine would draw its own held sheet on 0x6A/0x6B when the
-              -- weapon keeps it while firing; a hidden main weapon must not show.
+              hold_draw_role(entry, entry.fire, ws.fire_phase, w)
               if entry.fire.hide_main then mute = true end
             end
+          elseif entry.keep_firing and owns and w.state ~= nil and HOLD_FIRE_STATES[w.state] then
+            -- Between explicit flash windows while WA stays in a firing state
+            -- (e.g. gaps in a multi-shot sequence), keep drawing full-scale held
+            -- art so WA never unmutes to a tiny/put-away frame mid-burst.
+            hold_draw_aim(entry, w, ws, nil, true)
+            mute = true
           end
         end
       end
@@ -2138,37 +2212,36 @@ function M.hold(ctx, spec)
   local off = type(spec.offset) == "table" and spec.offset or {}
   local hand_off = type(spec.hand_offset) == "table" and spec.hand_offset or {}
   local clip = clip_prepare(spec.swing or spec.clip)
-  -- The firing role, normalised once so the draw reads plain numbers.
-  local fire_spec = type(spec.fire) == "table" and spec.fire or nil
-  local fire = nil
-  if fire_spec and type(fire_spec.sheet) == "string" then
-    fire = {
-      sheet = fire_spec.sheet,
-      cell_w = fire_spec.cell_w or cell,
-      cell_h = fire_spec.cell_h or cell,
-      scale = fire_spec.scale or 1.0,
-      frames = math.max(1, fire_spec.frames or 1),
-      anim_speed = fire_spec.anim_speed or 1.0,
-      ticks = math.max(0, fire_spec.ticks or 0),
-      hide_main = fire_spec.hide_main == true,
-      weap_radius = fire_spec.weap_radius or spec.weap_radius or 1.0,
-      weap_rotation = fire_spec.weap_rotation or 1.0,
-      weap_radial_rotation = fire_spec.weap_radial_rotation or 1.0,
-      hand = fire_spec.hand,
-      hand_radius = fire_spec.hand_radius or 1.0,
-      hand_rotation = fire_spec.hand_rotation or 1.0,
-      hand_radial_rotation = fire_spec.hand_radial_rotation or 1.0,
-      hand_scale = fire_spec.hand_scale or 1.0,
-      hand_size = fire_spec.hand_size or HOLD_HAND_CELL,
-      draw_hand = fire_spec.draw_hand,
-      -- `offset` / `hand_offset`, the held art's own nudge channels, in sheet
-      -- pixels: the firing role is a quad layer too, so it takes them as well.
-      ox = (type(fire_spec.offset) == "table" and fire_spec.offset.x) or 0,
-      oy = (type(fire_spec.offset) == "table" and fire_spec.offset.y) or 0,
-      hox = (type(fire_spec.hand_offset) == "table" and fire_spec.hand_offset.x) or 0,
-      hoy = (type(fire_spec.hand_offset) == "table" and fire_spec.hand_offset.y) or 0,
+  -- Normalise `fire` and `buffer` roles once so the draw reads plain numbers.
+  local function normalize_role(role_spec)
+    if type(role_spec) ~= "table" or type(role_spec.sheet) ~= "string" then return nil end
+    return {
+      sheet = role_spec.sheet,
+      cell_w = role_spec.cell_w or cell,
+      cell_h = role_spec.cell_h or cell,
+      scale = role_spec.scale or 1.0,
+      frames = math.max(1, role_spec.frames or 1),
+      anim_speed = role_spec.anim_speed or 1.0,
+      ticks = math.max(0, role_spec.ticks or 0),
+      hide_main = role_spec.hide_main == true,
+      weap_radius = role_spec.weap_radius or spec.weap_radius or 1.0,
+      weap_rotation = role_spec.weap_rotation or 1.0,
+      weap_radial_rotation = role_spec.weap_radial_rotation or 1.0,
+      hand = role_spec.hand,
+      hand_radius = role_spec.hand_radius or 1.0,
+      hand_rotation = role_spec.hand_rotation or 1.0,
+      hand_radial_rotation = role_spec.hand_radial_rotation or 1.0,
+      hand_scale = role_spec.hand_scale or 1.0,
+      hand_size = role_spec.hand_size or HOLD_HAND_CELL,
+      draw_hand = role_spec.draw_hand,
+      ox = (type(role_spec.offset) == "table" and role_spec.offset.x) or 0,
+      oy = (type(role_spec.offset) == "table" and role_spec.offset.y) or 0,
+      hox = (type(role_spec.hand_offset) == "table" and role_spec.hand_offset.x) or 0,
+      hoy = (type(role_spec.hand_offset) == "table" and role_spec.hand_offset.y) or 0,
     }
   end
+  local fire = normalize_role(spec.fire)
+  local buffer_role = normalize_role(spec.buffer)
   -- The melee strike. It needs the clip: the hit frame is a tick of the swing.
   local melee_spec = type(spec.melee) == "table" and spec.melee or nil
   -- A `melee` table without a clip cannot land anything: the strike's frames are
@@ -2204,6 +2277,7 @@ function M.hold(ctx, spec)
       spare_shooter = melee_spec.spare_shooter ~= false,
       log = melee_spec.log and true or false,
       hit = melee_spec.hit,
+      on_taze_mine = type(melee_spec.on_taze_mine) == "function" and melee_spec.on_taze_mine or nil,
       hits = hold_melee_hits(melee_spec, push == nil or push == "aim"),
     }
     melee.hit_frame = melee.hits[1].frame
@@ -2241,6 +2315,7 @@ function M.hold(ctx, spec)
     aim_range = aim_range,
     static_angles = rust.static,
     fire = fire,
+    buffer = buffer_role,
     -- `keep_while_firing` is the engine's key for the same idea; once the layer
     -- draws, honouring it here is what makes the two agree.
     keep_firing = keep_firing or nil,

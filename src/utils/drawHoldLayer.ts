@@ -7,21 +7,29 @@ export const HAND_MID_SRC = assetUrl('assets/worm/hand_rad.png');
 export const HAND_LOWER_SRC = assetUrl('assets/worm/hand_rad_lower.png');
 export const HAND_UPPER_SRC = assetUrl('assets/worm/hand_rad_upper.png');
 
+export type HoldPoseRole = 'aim' | 'buffer' | 'firing';
+
 export interface DrawHoldLayerOptions {
   hold: HoldConfig;
   cx: number;
   cy: number;
   aimT: number;
   putAwayShrink?: number;
+  /** Legacy boolean flag; superseded when `poseRole` is provided. */
   firingView: boolean;
+  /** Active Sprite Builder pose role: aiming, buffering/wind-up, or firing. */
+  poseRole?: HoldPoseRole;
   currentFrame: number;
   firePreviewFrame: number;
   fireStripFrames: number;
+  bufferPreviewFrame?: number;
+  bufferStripFrames?: number;
   swingPose?: ClipPose | null;
   echoPoses?: { pose: ClipPose; alpha: number; additive: boolean }[];
   weaponImg?: HTMLImageElement | null;
   defaultHoldImg?: HTMLImageElement | null;
   flashImg?: HTMLImageElement | null;
+  bufferImg?: HTMLImageElement | null;
   handMidImg?: HTMLImageElement | null;
   handLowerImg?: HTMLImageElement | null;
   handUpperImg?: HTMLImageElement | null;
@@ -29,9 +37,10 @@ export interface DrawHoldLayerOptions {
 }
 
 /**
- * Draw the Sprite Builder held art overlay (held weapon, swing ghosts, firing
- * flash strip, primary hand, and optional second hand) onto a right-facing
- * offscreen worm cell centered at `(cx, cy)`. Returns the clamped aim phase.
+ * Draw the Sprite Builder held art overlay (held weapon, swing ghosts, buffer
+ * wind-up strip, firing flash strip, primary hand, and optional second hand)
+ * onto a right-facing offscreen worm cell centered at `(cx, cy)`. Returns the
+ * clamped aim phase.
  */
 export function drawHoldOverlay(
   offCtx: CanvasRenderingContext2D,
@@ -44,19 +53,28 @@ export function drawHoldOverlay(
     aimT,
     putAwayShrink = 1.0,
     firingView,
+    poseRole,
     currentFrame,
     firePreviewFrame,
     fireStripFrames,
+    bufferPreviewFrame = 0,
+    bufferStripFrames = 1,
     swingPose = null,
     echoPoses = [],
     weaponImg,
     defaultHoldImg,
     flashImg,
+    bufferImg,
     handMidImg,
     handLowerImg,
     handUpperImg,
     extraHandImg,
   } = opts;
+
+  const role: HoldPoseRole = poseRole ?? (firingView ? 'firing' : 'aim');
+  const isFiring = role === 'firing';
+  const isBuffer = role === 'buffer';
+  const isAltRole = isFiring || isBuffer;
 
   const clamp = hold.aimClamp;
   const aimDrawn = clamp?.enabled
@@ -68,42 +86,60 @@ export function drawHoldOverlay(
 
   const rot = (1 - aimDrawn) * Math.PI;
   const aimWeapRotation = Number(hold.weapRotation) || 0;
-  const roleWeapRotation = firingView
-    ? Number(hold.fireWeapRotation ?? aimWeapRotation) || 0
-    : aimWeapRotation;
-  const weapRotRad = (roleWeapRotation * Math.PI) / 180;
+  const aimWeapRadius = Number(hold.weapRadius ?? 6);
+  const aimScale = Number(hold.scale) || 1;
+  const aimRotRad = (aimWeapRotation * Math.PI) / 180;
 
-  const weapRadius = Number(
-    firingView ? (hold.fireWeapRadius ?? hold.weapRadius ?? 6) : (hold.weapRadius ?? 6),
+  const roleWeapRotation = isFiring
+    ? Number(hold.fireWeapRotation ?? aimWeapRotation) || 0
+    : isBuffer
+      ? Number(hold.bufferWeapRotation ?? aimWeapRotation) || 0
+      : aimWeapRotation;
+  const roleRotRad = (roleWeapRotation * Math.PI) / 180;
+  const roleWeapRadius = Number(
+    isFiring
+      ? (hold.fireWeapRadius ?? aimWeapRadius)
+      : isBuffer
+        ? (hold.bufferWeapRadius ?? aimWeapRadius)
+        : aimWeapRadius,
   );
-  const poseScale = swingPose?.scale ?? 1;
-  const roleScale = firingView
-    ? Number(hold.fireScale ?? hold.scale) || 1
-    : Number(hold.scale) || 1;
-  const scale = roleScale * putAwayShrink * poseScale;
+  const roleScale = isFiring
+    ? Number(hold.fireScale ?? aimScale) || 1
+    : isBuffer
+      ? Number(hold.bufferScale ?? aimScale) || 1
+      : aimScale;
 
   const rotW = rot + Math.PI * Number(hold.weapRadialRotation ?? 1);
-  const weapX = cx + Math.sin(rotW) * weapRadius;
-  const weapY = cy - Math.cos(rotW) * weapRadius;
-  const weapAngle = rot + weapRotRad + ((swingPose?.angle ?? 0) * Math.PI) / 180;
+  const aimWeapX = cx + Math.sin(rotW) * aimWeapRadius;
+  const aimWeapY = cy - Math.cos(rotW) * aimWeapRadius;
+  const roleWeapX = cx + Math.sin(rotW) * roleWeapRadius;
+  const roleWeapY = cy - Math.cos(rotW) * roleWeapRadius;
+
+  const poseScale = swingPose?.scale ?? 1;
+  const roleDrawScale = roleScale * putAwayShrink * poseScale;
+  const roleAngle = rot + roleRotRad + ((swingPose?.angle ?? 0) * Math.PI) / 180;
+
+  const hideMain =
+    (isFiring && !!hold.fireHideMain && !!flashImg && flashImg.complete && flashImg.naturalWidth > 0) ||
+    (isBuffer && !!hold.bufferHideMain && !!bufferImg && bufferImg.complete && bufferImg.naturalWidth > 0);
 
   const drawHeldArt = (pose: ClipPose | null, alphaMul = 1, additive = false) => {
+    if (hideMain) return;
     const poseScaleLocal = pose?.scale ?? 1;
-    const localScale = roleScale * putAwayShrink * poseScaleLocal;
-    const localAngle = rot + weapRotRad + ((pose?.angle ?? 0) * Math.PI) / 180;
+    const localScale = aimScale * putAwayShrink * poseScaleLocal;
+    const localAngle = rot + aimRotRad + ((pose?.angle ?? 0) * Math.PI) / 180;
     offCtx.save();
     offCtx.imageSmoothingEnabled = false;
     offCtx.globalAlpha = (pose?.alpha ?? 1) * alphaMul;
     if (additive) offCtx.globalCompositeOperation = 'lighter';
-    offCtx.translate(weapX, weapY);
+    offCtx.translate(aimWeapX, aimWeapY);
     offCtx.rotate(localAngle);
     offCtx.scale(localScale, localScale);
-    const holdOffsetX = firingView ? 0 : Number(hold.offsetX ?? 0) + (pose?.dx ?? 0);
-    const holdOffsetY = firingView ? 0 : Number(hold.offsetY ?? 0) + (pose?.dy ?? 0);
+    const holdOffsetX = Number(hold.offsetX ?? 0) + (pose?.dx ?? 0);
+    const holdOffsetY = Number(hold.offsetY ?? 0) + (pose?.dy ?? 0);
     if (holdOffsetX || holdOffsetY) offCtx.translate(holdOffsetX, holdOffsetY);
 
-    const hideMain = firingView && !!hold.fireHideMain;
-    if (!hideMain && weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
+    if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
       const cells = Math.max(1, Math.round(hold.sheetFrames ?? hold.frames ?? 1));
       const totalFrames = Math.max(1, hold.frames || 1);
       const frameHeight = weaponImg.naturalHeight / cells;
@@ -125,7 +161,6 @@ export function drawHoldOverlay(
         frameHeight,
       );
     } else if (
-      !hideMain &&
       defaultHoldImg &&
       defaultHoldImg.complete &&
       defaultHoldImg.naturalWidth > 0
@@ -135,7 +170,7 @@ export function drawHoldOverlay(
         -defaultHoldImg.naturalWidth / 2,
         -defaultHoldImg.naturalHeight / 2,
       );
-    } else if (!hideMain) {
+    } else {
       offCtx.fillStyle = '#d65443';
       offCtx.strokeStyle = '#85271e';
       offCtx.lineWidth = 1;
@@ -158,16 +193,45 @@ export function drawHoldOverlay(
   }
   drawHeldArt(swingPose);
 
-  // Firing flash strip
-  if (firingView && flashImg && flashImg.complete && flashImg.naturalWidth > 0) {
-    const cellH = flashImg.naturalHeight / Math.max(1, fireStripFrames);
-    const cellW = flashImg.naturalWidth;
-    const flashFrame = fireStripFrames > 1 ? firePreviewFrame % fireStripFrames : 0;
+  // Buffering wind-up strip
+  if (isBuffer && bufferImg && bufferImg.complete && bufferImg.naturalWidth > 0) {
+    const frames = Math.max(1, bufferStripFrames);
+    const cellH = bufferImg.naturalHeight / frames;
+    const cellW = bufferImg.naturalWidth;
+    const bufFrame = frames > 1 ? bufferPreviewFrame % frames : 0;
     offCtx.save();
     offCtx.imageSmoothingEnabled = false;
-    offCtx.translate(weapX, weapY);
-    offCtx.rotate(weapAngle);
-    offCtx.scale(scale, scale);
+    offCtx.translate(roleWeapX, roleWeapY);
+    offCtx.rotate(roleAngle);
+    offCtx.scale(roleDrawScale, roleDrawScale);
+    const bufOffX = Number(hold.bufferOffsetX ?? 0);
+    const bufOffY = Number(hold.bufferOffsetY ?? 0);
+    if (bufOffX || bufOffY) offCtx.translate(bufOffX, bufOffY);
+    offCtx.drawImage(
+      bufferImg,
+      0,
+      bufFrame * cellH,
+      cellW,
+      cellH,
+      -cellW / 2,
+      -cellH / 2,
+      cellW,
+      cellH,
+    );
+    offCtx.restore();
+  }
+
+  // Firing flash strip
+  if (isFiring && flashImg && flashImg.complete && flashImg.naturalWidth > 0) {
+    const frames = Math.max(1, fireStripFrames);
+    const cellH = flashImg.naturalHeight / frames;
+    const cellW = flashImg.naturalWidth;
+    const flashFrame = frames > 1 ? firePreviewFrame % frames : 0;
+    offCtx.save();
+    offCtx.imageSmoothingEnabled = false;
+    offCtx.translate(roleWeapX, roleWeapY);
+    offCtx.rotate(roleAngle);
+    offCtx.scale(roleDrawScale, roleDrawScale);
     const fireOffX = Number(hold.fireOffsetX ?? 0);
     const fireOffY = Number(hold.fireOffsetY ?? 0);
     if (fireOffX || fireOffY) offCtx.translate(fireOffX, fireOffY);
@@ -186,27 +250,49 @@ export function drawHoldOverlay(
   }
 
   // Primary hand
-  if ((firingView ? (hold.fireDrawHand ?? hold.drawHand) : hold.drawHand) !== false) {
+  const drawPrimaryHand = isFiring
+    ? (hold.fireDrawHand ?? hold.drawHand) !== false
+    : isBuffer
+      ? (hold.bufferDrawHand ?? hold.drawHand) !== false
+      : hold.drawHand !== false;
+
+  if (drawPrimaryHand) {
     const handRadius = Number(
-      firingView ? (hold.fireHandRadius ?? hold.handRadius ?? 10) : (hold.handRadius ?? 10),
+      isFiring
+        ? (hold.fireHandRadius ?? hold.handRadius ?? 10)
+        : isBuffer
+          ? (hold.bufferHandRadius ?? hold.handRadius ?? 10)
+          : (hold.handRadius ?? 10),
     );
     const roleHandRotation = Number(
-      (firingView ? (hold.fireHandRotation ?? hold.handRotation) : hold.handRotation) || 0,
+      (isFiring
+        ? (hold.fireHandRotation ?? hold.handRotation)
+        : isBuffer
+          ? (hold.bufferHandRotation ?? hold.handRotation)
+          : hold.handRotation) || 0,
     );
     const roleHandScale = Number(
-      (firingView ? (hold.fireHandScale ?? hold.handScale) : hold.handScale) || 1,
+      (isFiring
+        ? (hold.fireHandScale ?? hold.handScale)
+        : isBuffer
+          ? (hold.bufferHandScale ?? hold.handScale)
+          : hold.handScale) || 1,
     );
     const rotH = rot - Math.PI * Number(hold.handRadialRotation ?? 1);
     let handX = cx + Math.sin(rotH) * handRadius;
     let handY = cy - Math.cos(rotH) * handRadius;
     const handAngle = rot + Math.PI * (1 + roleHandRotation / 180);
     const handCarry = roleHandScale * putAwayShrink;
-    const handNudgeX = firingView
+    const handNudgeX = isFiring
       ? Number(hold.fireHandOffsetX ?? 0)
-      : Number(hold.handOffsetX ?? 0) + (swingPose?.dx ?? 0);
-    const handNudgeY = firingView
+      : isBuffer
+        ? Number(hold.bufferHandOffsetX ?? 0)
+        : Number(hold.handOffsetX ?? 0) + (swingPose?.dx ?? 0);
+    const handNudgeY = isFiring
       ? Number(hold.fireHandOffsetY ?? 0)
-      : Number(hold.handOffsetY ?? 0) + (swingPose?.dy ?? 0);
+      : isBuffer
+        ? Number(hold.bufferHandOffsetY ?? 0)
+        : Number(hold.handOffsetY ?? 0) + (swingPose?.dy ?? 0);
     const hox = handNudgeX * handCarry;
     const hoy = handNudgeY * handCarry;
     if (hox || hoy) {
@@ -238,22 +324,22 @@ export function drawHoldOverlay(
 
   // Optional second hand
   const extra =
-    hold.extraHand?.enabled && !(firingView && hold.extraHand.fireDraw === false)
+    hold.extraHand?.enabled && !(isAltRole && hold.extraHand.fireDraw === false)
       ? hold.extraHand
       : null;
   if (extra) {
-    const xRadius = (firingView ? extra.fireRadius : undefined) ?? extra.radius ?? 0;
-    const xRotation = (firingView ? extra.fireRotation : undefined) ?? extra.rotation ?? 0;
-    const xScale = (firingView ? extra.fireScale : undefined) ?? extra.scale ?? 1;
-    const xOffX = (firingView ? extra.fireOffsetX : undefined) ?? extra.offsetX ?? 0;
-    const xOffY = (firingView ? extra.fireOffsetY : undefined) ?? extra.offsetY ?? 0;
+    const xRadius = (isAltRole ? extra.fireRadius : undefined) ?? extra.radius ?? 0;
+    const xRotation = (isAltRole ? extra.fireRotation : undefined) ?? extra.rotation ?? 0;
+    const xScale = (isAltRole ? extra.fireScale : undefined) ?? extra.scale ?? 1;
+    const xOffX = (isAltRole ? extra.fireOffsetX : undefined) ?? extra.offsetX ?? 0;
+    const xOffY = (isAltRole ? extra.fireOffsetY : undefined) ?? extra.offsetY ?? 0;
     const rotX = rot - Math.PI;
     let xX = cx + Math.sin(rotX) * xRadius;
     let xY = cy - Math.cos(rotX) * xRadius;
     const xAngle = rot + Math.PI * (1 + xRotation / 180);
-    const xSize = Number(xScale) * (firingView ? 1 : putAwayShrink);
-    const xNudgeX = Number(xOffX) + (firingView ? 0 : swingPose?.dx ?? 0);
-    const xNudgeY = Number(xOffY) + (firingView ? 0 : swingPose?.dy ?? 0);
+    const xSize = Number(xScale) * (isAltRole ? 1 : putAwayShrink);
+    const xNudgeX = Number(xOffX) + (isAltRole ? 0 : swingPose?.dx ?? 0);
+    const xNudgeY = Number(xOffY) + (isAltRole ? 0 : swingPose?.dy ?? 0);
     if (xNudgeX || xNudgeY) {
       const ox = xNudgeX * xSize;
       const oy = xNudgeY * xSize;

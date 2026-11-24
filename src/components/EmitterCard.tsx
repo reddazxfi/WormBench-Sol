@@ -10,6 +10,7 @@ import {
   DEFAULT_EMITTER_TRAIL,
   EMITTER_PRESETS,
   supportsEmitter,
+  supportsEmitterMine,
   supportsEmitterPlane,
   supportsEmitterRound,
 } from '../data/emitter';
@@ -169,6 +170,7 @@ export function EmitterCard({ project, onChange }: CardProps) {
   const updateTrail = (patch: Partial<EmitterTrailConfig>) =>
     update({ trail: { ...(em.trail ?? DEFAULT_EMITTER_TRAIL), ...patch } });
   const roundOk = supportsEmitterRound(project);
+  const mineOk = supportsEmitterMine(project);
   const planeOk = supportsEmitterPlane(project);
   const anchor: 'muzzle' | 'round' | 'plane' =
     em.anchor === 'plane' && planeOk
@@ -227,11 +229,19 @@ export function EmitterCard({ project, onChange }: CardProps) {
           <div>
             <TooltipLabel
               label="Anchor"
-              code={planeOk ? 'on_start / missile_frame / FRAME_FINISH' : 'FRAME_FINISH / missile_frame'}
+              code={
+                planeOk
+                  ? 'on_start / missile_frame / FRAME_FINISH'
+                  : mineOk
+                    ? 'on_place / fx.tracker(wa.mines)'
+                    : 'FRAME_FINISH / missile_frame'
+              }
               desc={
                 planeOk
                   ? 'Strike Plane attaches the emitter directly to the flying airstrike aircraft (and optionally its dropped bombs). Fired Round follows each dropped missile. Muzzle follows the worm while aiming.'
-                  : "Fired Round follows each missile. Muzzle follows the turn worm's fire angle and can hand off when the trigger fires. The generator avoids on_fire so WA still launches the shot."
+                  : mineOk
+                    ? 'Placed Mine attaches the emitter via on_place + fx.tracker to every live mine placed by this weapon. Muzzle follows the turn worm while aiming.'
+                    : "Fired Round follows each missile. Muzzle follows the turn worm's fire angle and can hand off when the trigger fires. The generator avoids on_fire so WA still launches the shot."
               }
             />
             <div
@@ -242,7 +252,7 @@ export function EmitterCard({ project, onChange }: CardProps) {
               {(
                 [
                   { id: 'muzzle', label: 'Muzzle / Aim', enabled: true },
-                  { id: 'round', label: 'Fired Round', enabled: roundOk },
+                  { id: 'round', label: mineOk ? 'Placed Mine' : 'Fired Round', enabled: roundOk },
                   ...(planeOk ? [{ id: 'plane' as const, label: 'Strike Plane', enabled: true }] : []),
                 ] satisfies Array<{ id: 'muzzle' | 'round' | 'plane'; label: string; enabled: boolean }>
               ).map((option) => (
@@ -511,6 +521,85 @@ export function EmitterCard({ project, onChange }: CardProps) {
             fallback="#82b4ff"
             onChange={(color) => update({ color })}
           />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <TooltipLabel
+                label="Texture Style"
+                code="style"
+                desc="Shared effects.sdk ribbon texture family for reach bolts, ring, and trail."
+              />
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                {(
+                  [
+                    { id: 'classic', label: 'Classic' },
+                    { id: 'soft', label: 'Soft' },
+                    { id: 'plasma', label: 'Plasma' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => update({ style: opt.id })}
+                    className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                      (em.style ?? 'classic') === opt.id
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {em.glow && (
+              <div>
+                <TooltipLabel
+                  label="Glow Shape"
+                  code="glow.shape"
+                  desc="Orb uses the soft halo; Star and Spinning Star draw a glowing 4-point star flare."
+                />
+                <div className="grid grid-cols-3 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                  {(
+                    [
+                      { id: 'orb', label: 'Orb' },
+                      { id: 'star', label: 'Star' },
+                      { id: 'spin_star', label: 'Spin Star' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => update({ glowShape: opt.id })}
+                      className={`rounded-lg px-1.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                        (em.glowShape ?? 'orb') === opt.id
+                          ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                          : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          {em.glow && em.glowShape === 'spin_star' && (
+            <div className="max-w-[180px]">
+              <NumField
+                id="emitter-glow-spin"
+                label="Star Spin"
+                code="glow.spin"
+                hint="Star rotation speed in radians per 50 Hz tick."
+                value={em.glowSpin ?? 0.14}
+                min={-1}
+                max={1}
+                step={0.02}
+                unit="rad/f"
+                onChange={(glowSpin) => update({ glowSpin })}
+              />
+            </div>
+          )}
 
           {em.reach && (
             <>
@@ -787,6 +876,35 @@ export function EmitterCard({ project, onChange }: CardProps) {
                     unit="x"
                     onChange={(ellipseY) => updateRing({ ellipseY })}
                   />
+                  <div>
+                    <TooltipLabel
+                      label="Ring Shape"
+                      code="ring.shape"
+                      desc="Circle/ellipse ring or spiked star ring."
+                    />
+                    <select
+                      value={em.ring.shape ?? 'ring'}
+                      onChange={(e) =>
+                        updateRing({ shape: e.target.value as 'ring' | 'star' })
+                      }
+                      className="w-full rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-forge-500 dark:border-stone-700 dark:bg-stone-900 dark:text-white"
+                    >
+                      <option value="ring">Ring</option>
+                      <option value="star">Star</option>
+                    </select>
+                  </div>
+                  {em.ring.shape === 'star' && (
+                    <NumField
+                      id="emitter-ring-star-points"
+                      label="Star Points"
+                      code="star_points"
+                      hint="Number of spikes on the star ring (3 to 12)."
+                      value={em.ring.starPoints ?? 5}
+                      min={3}
+                      max={12}
+                      onChange={(starPoints) => updateRing({ starPoints })}
+                    />
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Toggle
@@ -869,7 +987,7 @@ export function EmitterCard({ project, onChange }: CardProps) {
                     id="emitter-trail-noise"
                     label="Noise"
                     code="noise"
-                    hint="Lateral jitter in pixels."
+                    hint="Lateral jitter or wave amplitude in pixels."
                     value={em.trail.noise}
                     min={0}
                     max={24}
@@ -877,6 +995,27 @@ export function EmitterCard({ project, onChange }: CardProps) {
                     unit="px"
                     onChange={(noise) => updateTrail({ noise })}
                   />
+                  <div>
+                    <TooltipLabel
+                      label="Trail Mode"
+                      code="trail.mode"
+                      desc="Electric crackle, Straight, Wavy sine, or Twin Helix."
+                    />
+                    <select
+                      value={em.trail.mode ?? 'electric'}
+                      onChange={(e) =>
+                        updateTrail({
+                          mode: e.target.value as 'electric' | 'straight' | 'wavy' | 'helix',
+                        })
+                      }
+                      className="w-full rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-forge-500 dark:border-stone-700 dark:bg-stone-900 dark:text-white"
+                    >
+                      <option value="electric">Electric</option>
+                      <option value="straight">Straight</option>
+                      <option value="wavy">Wavy</option>
+                      <option value="helix">Helix</option>
+                    </select>
+                  </div>
                   <NumField
                     id="emitter-trail-core"
                     label="Core Width"

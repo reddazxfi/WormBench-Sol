@@ -2225,6 +2225,21 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                         </div>
                       )}
 
+                      {air.plane.boomMode === 'custom' && air.plane.boomHitKind === 'taze' && (
+                        <label
+                          title="Electrify nearby mines into electric mines instead of detonating them when the aircraft strikes with taze damage (wf-lib/electric/taze_mine)."
+                          className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!project.electricTazeMines}
+                            onChange={(e) => onChange({ electricTazeMines: e.target.checked })}
+                            className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                          />
+                          <span>Taze Mines Instead of Detonating (px.electric)</span>
+                        </label>
+                      )}
+
                       {(air.plane.boomMode === 'native' ||
                         air.plane.boomVisual === 'native' ||
                         air.plane.boomVisual === 'both') && (

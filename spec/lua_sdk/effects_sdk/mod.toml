@@ -18,9 +18,19 @@ asset_namespace = "wf-lib/effects"
 
 [sprites."sprites/px_effects/beam_glow.png"]
 
+[sprites."sprites/px_effects/beam_soft.png"]
+
+[sprites."sprites/px_effects/beam_glow_soft.png"]
+
+[sprites."sprites/px_effects/beam_plasma.png"]
+
+[sprites."sprites/px_effects/beam_glow_plasma.png"]
+
 [sprites."sprites/px_effects/spark"]
 
 [sprites."sprites/px_effects/glow.png"]
+
+[sprites."sprites/px_effects/star.png"]
 
 [sprites."sprites/px_effects/cloud.png"]
 [exports]

@@ -1,6 +1,7 @@
 export type FireType =
   | 'power'
   | 'hitscan'
+  | 'beam'
   | 'drop'
   | 'cursor'
   | 'special'
@@ -265,6 +266,30 @@ export interface HoldConfig {
    * sheet.
    */
   fireHideMain?: boolean;
+  /**
+   * Buffering / wind-up role (`buffer` in `sb.hold`): drawn while a Beam or
+   * Timed Sequencer is charging/buffering before releasing the shot. Mirrors
+   * the Firing role so Aiming, Buffering, and Firing can each carry their own
+   * sheet, strip rate, placement, and hand grip.
+   */
+  bufferFile?: File;
+  bufferPreview?: string;
+  bufferWidth?: number;
+  bufferHeight?: number;
+  bufferFrames?: number;
+  bufferFps?: number;
+  bufferHideMain?: boolean;
+  bufferWeapRadius?: number;
+  bufferWeapRotation?: number;
+  bufferScale?: number;
+  bufferOffsetX?: number;
+  bufferOffsetY?: number;
+  bufferDrawHand?: boolean;
+  bufferHandRadius?: number;
+  bufferHandRotation?: number;
+  bufferHandScale?: number;
+  bufferHandOffsetX?: number;
+  bufferHandOffsetY?: number;
   /**
    * The held art nudged inside its own cell, in sheet pixels, scaled with
    * `weap_scale` (the aim counterpart of `MissileSpriteConfig.offsetX/Y`).
@@ -563,6 +588,35 @@ export interface RoamSheetsConfig {
   flight2: RoamSheetAsset;
 }
 
+export type TrailMode = 'electric' | 'straight' | 'wavy' | 'helix';
+export type BurstShape = 'ring' | 'star' | 'spin_star' | 'none';
+export type BurstGlowShape = 'none' | 'orb' | 'star' | 'spin_star';
+export type RebufferMode = 'px' | 'pulse' | 'flash' | 'none';
+export type GlowShape = 'orb' | 'star' | 'spin_star';
+
+export interface BurstGlowConfig {
+  shape: BurstGlowShape;
+  /** Diameter scale factor relative to radius (default 2.1). */
+  scale: number;
+  /** Expansion multiplier synced to burst grow (0 = fixed, 1 = matches ring, >1 = blooms faster). */
+  expand: number;
+  /** Angular rotation speed in rad/tick when `shape === 'spin_star'` (default 0.16). */
+  spin: number;
+  /** Draw counter-rotating white-hot inner flare (default true). */
+  inner: boolean;
+  /** Optional override color hex (blank inherits burst color). */
+  color?: string;
+}
+
+export interface ExplosionFireSpawnConfig {
+  enabled: boolean;
+  count: number;
+  durationMs: number;
+  damage: number;
+  upPower: number;
+  vy: number;
+}
+
 export interface RibbonTrailConfig {
   enabled: boolean;
   /** Points kept behind the round (`max`). */
@@ -585,6 +639,10 @@ export interface RibbonTrailConfig {
   rainbow: boolean;
   /** Hex colour, e.g. `#ff8800` (`r`, `g`, `b`). */
   color: string;
+  /** Shared effects_sdk texture family (`classic` | `soft` | `plasma`). */
+  style?: BeamArtStyle;
+  /** Ribbon displacement algorithm (`electric` | `straight` | `wavy` | `helix`). */
+  mode?: TrailMode;
   /**
    * Which missiles of the weapon get the ribbon: the fired round, its cluster
    * bits, or both. `bit` is the round's complement, which is what a weapon that
@@ -740,6 +798,12 @@ export interface FireSequenceConfig {
   liveAim: boolean;
   /** End the burst when the worm stops holding this weapon (timed engine). */
   cancelOnWeaponChange: boolean;
+  /**
+   * For Beam weapons with sequencing: whether the inter-shot delay starts as
+   * soon as the ray dispatches (`on_dispatch`, allowing overlapping beams &
+   * early re-animation) or after the beam's grow + hold finishes (`after_hold`).
+   */
+  beamSequenceAnchor?: 'on_dispatch' | 'after_hold';
   /** Actors mode: the spawned sheet and its physics. */
   actorSprite: string;
   actorGravity: boolean;
@@ -796,6 +860,22 @@ export interface ExplosionEffectConfig {
   ellipseY: number;
   /** Re-noise and recolour halfway through, as the electric explosion does. */
   rebuffer: boolean;
+  /** Frame when rebuffer triggers (default 16). */
+  rebufferAt?: number;
+  /** Rebuffer algorithm (`px` rewind | `pulse` second wave | `flash` surge | `none`). */
+  rebufferMode?: RebufferMode;
+  /** Shared effects_sdk texture family (`classic` | `soft` | `plasma`). */
+  style?: BeamArtStyle;
+  /** Burst silhouette (`ring` | `star` | `spin_star` | `none`). */
+  shape?: BurstShape;
+  /** Spike count for `star` / `spin_star` shapes (3..12, default 5). */
+  starPoints?: number;
+  /** Angular rotation speed in rad/tick for `spin_star` (default 0.16). */
+  spin?: number;
+  /** Independent center glow / star flare configuration (works with or without ring). */
+  centerGlow?: BurstGlowConfig;
+  /** Spawn real WA flames (`wa.fire.spawn`) at explosion center. */
+  fireSpawn?: ExplosionFireSpawnConfig;
   smoke: boolean;
 }
 
@@ -827,6 +907,10 @@ export interface EmitterRingConfig {
    * an offset from that heading and `speed` is not applied while tracking.
    */
   track: boolean;
+  /** Ring silhouette (`ring` | `star`). */
+  shape?: 'ring' | 'star';
+  /** Spike count when `shape === 'star'` (3..12, default 5). */
+  starPoints?: number;
   color: string;
   rainbow: boolean;
 }
@@ -841,6 +925,7 @@ export interface EmitterTrailConfig {
   glowWidth: number;
   color: string;
   rainbow: boolean;
+  mode?: TrailMode;
 }
 
 /**
@@ -884,8 +969,14 @@ export interface EmitterConfig {
   posY?: number;
   /** Which reach preset the numbers below started from. */
   preset: 'electric' | 'thunder';
+  /** Shared effects_sdk texture family (`classic` | `soft` | `plasma`). */
+  style?: BeamArtStyle;
   spark: boolean;
   glow: boolean;
+  /** Glow silhouette (`orb` | `star` | `spin_star`). */
+  glowShape?: GlowShape;
+  /** Angular rotation speed in rad/tick when `glowShape === 'spin_star'` (default 0.14). */
+  glowSpin?: number;
   /** Short bolts that jump out every cooldown (`reach`). */
   reach: boolean;
   /** Direction of reach bolts in screen coordinates, 0 right, 90 down, -90 up. */
@@ -1372,6 +1463,166 @@ export interface AirstrikeConfig {
   };
 }
 
+export type BeamHurtMode = 'corridor' | 'cone' | 'first' | 'none';
+export type BeamPathKind = 'straight' | 'arc' | 'jagged';
+export type BeamLookKind = 'ribbon' | 'trail';
+export type BeamArtStyle = 'classic' | 'soft' | 'plasma';
+export type BeamSpriteRole = 'core' | 'glow' | 'end' | 'orb';
+export type BeamFadeMode = 'fade' | 'retract' | 'dissolve';
+export type BeamGrowEase = 'linear' | 'out' | 'in';
+export type BeamDepthBand = 'FRONT' | 'EFFECTS' | 'OBJECTS';
+export type BeamHitKind = StampHitKind;
+
+export interface BeamImpactBurstConfig {
+  enabled: boolean;
+  style: BeamArtStyle;
+  shape: BurstShape;
+  radius: number;
+  color: string;
+  rebufferMode: RebufferMode;
+  rebufferAt: number;
+  starPoints: number;
+  spin: number;
+  centerGlow?: BurstGlowConfig;
+}
+
+export interface BeamFireConfig {
+  enabled: boolean;
+  mode: 'impact' | 'trajectory' | 'both';
+  count: number;
+  durationMs: number;
+  damage: number;
+  step: number;
+}
+
+export interface BeamTargetsConfig {
+  worms: boolean;
+  mines: boolean;
+  crates: boolean;
+  objects: boolean;
+  graves: boolean;
+}
+
+/**
+ * `wf-lib/wfws_firing`'s `firing.beam(ev, BEAM)`: hitscan or progressive ray /
+ * cone beam weapon backed by a silent zeroed gun record (`fires.subtype = 8`).
+ * Self-contained sheets (`beam.png` / `beam_glow.png`) ship inside the weapon
+ * folder so beam weapons require only `wfws.sdk` (no `effects.sdk`).
+ */
+export interface BeamConfig {
+  enabled: boolean;
+  /** Maximum ray reach in pixels. */
+  range: number;
+  /** Stop the ray at solid terrain (`wa.land.trace`). */
+  stopOnTerrain: boolean;
+  /** Pre-fire charge/windup buffer in 50 Hz frames (0 = fire immediately). */
+  bufferFrames: number;
+  /** Advance duration in 50 Hz frames (0 = instant full reach). */
+  growFrames: number;
+  /** Easing curve for progressive head advance. */
+  growEase: BeamGrowEase;
+  /** Full-reach active duration in 50 Hz frames. */
+  holdFrames: number;
+  /** Post-hold fade/retract duration in 50 Hz frames. */
+  fadeFrames: number;
+  /** How the beam exits during fadeFrames. */
+  fadeMode: BeamFadeMode;
+  /** Re-anchor muzzle to the worm position each tick while alive. */
+  followWorm: boolean;
+  /** Re-read worm aim each tick while alive (continuous sweep). */
+  followAim: boolean;
+  /** Hurt geometry: parallel corridor, expanding cone, first-hit swept trace, or visual only. */
+  hurtMode: BeamHurtMode;
+  /** Corridor half-width or swept circle radius (px). */
+  width: number;
+  /** Cone half-width at the muzzle (`width0`, px). */
+  muzzleWidth: number;
+  /** Cone opening half-angle (`cone_deg`, degrees; 12° = 24° total fan). */
+  coneAngleDeg: number;
+  /** Frames between repeated hits on the same body (0 = hit once per beam). */
+  hitCooldownFrames: number;
+  /** Minimum damage per hit (HP, or % for `percent`). */
+  damageMin: number;
+  /** Maximum damage per hit (equal to `damageMin` for fixed damage). */
+  damageMax: number;
+  /** Knockback speed along the beam direction (px/frame). */
+  push: number;
+  /** Subtle per-tick DoT knockback when `interact === false` (`burn` mode). */
+  burnPush?: number;
+  /** Extra upward knockback lift (px/frame, positive = up). */
+  pushUp: number;
+  /** Hit kind passed to `worm:hit` / `obj:hit`. */
+  kind: BeamHitKind;
+  /** Whether hits trigger full knockback/reaction (`false` sends `react = false`). */
+  interact: boolean;
+  /** Optional WA fire spawning at impact and/or along beam trajectory (`wa.fire.spawn`). */
+  fire?: BeamFireConfig;
+  /** Exclude the firing worm from the beam's own hurt pass. */
+  spareShooter: boolean;
+  /** Entity classes damaged by the hurt layer. */
+  targets: BeamTargetsConfig;
+  /** Arm `px.electric` hold/spark reaction on worm hits (adds `px.electric` dep). */
+  electricTaze: boolean;
+  /** Carve terrain crater where the ray hits solid land (`wa.land.cut`). */
+  terrainCut: boolean;
+  /** Terrain cut crater radius in px. */
+  cutRadius: number;
+  /** Terrain cut scorched border width in px. */
+  cutBorder: number;
+  /** Spawn native engine spark streaks at terrain impact. */
+  impactSparks: boolean;
+  /** Number of impact sparks. */
+  sparkCount: number;
+  /** Renderer: textured additive ribbon (`wa.draw.ribbon`) or engine trail (`wa.draw.trail`). */
+  look: BeamLookKind;
+  /** Shared `wfws.sdk` beam texture family (`classic` | `soft` | `plasma`). */
+  artStyle: BeamArtStyle;
+  /** Centreline path shape: laser straight, curved arc, or crackling lightning. */
+  path: BeamPathKind;
+  /** Peak perpendicular bulge for `arc` paths (px). */
+  bulge: number;
+  /** Lateral lightning jitter for `jagged` paths (px). */
+  noise: number;
+  /** Vertices sampled along the beam (2..48). */
+  points: number;
+  /** Secondary lightning fork branches (0..6). */
+  branches: number;
+  /** Length of each secondary fork branch (px). */
+  branchLen: number;
+  /** Draw small visual branches snapping from the beam to each hit target. */
+  hitBranches: boolean;
+  /** Core ribbon width at muzzle (px). */
+  coreWidth: number;
+  /** Optional width at tip/head (0 = uniform `coreWidth`, > 0 flares/tapers). */
+  tipWidth: number;
+  /** Outer additive glow ribbon width (px; 0 disables glow pass). */
+  glowWidth: number;
+  /** Outer glow brightness multiplier (0..1). */
+  glowAlpha: number;
+  /** Hex colour tint (e.g. `#5ad7ff`). */
+  color: string;
+  /** Cycle hue smoothly over time. */
+  rainbow: boolean;
+  /** Subtle per-frame width & brightness pulse. */
+  flicker: boolean;
+  /** Draw depth layer (`wa.depth.<band>`). */
+  depth: BeamDepthBand;
+  /** Distance forward along aim from worm centre to beam origin (px). */
+  standoff: number;
+  /** Extra world X offset from worm centre (px, mirrored by facing). */
+  offsetX: number;
+  /** Extra world Y offset from worm centre (px, negative = up). */
+  offsetY: number;
+  /** Sound played when the charge buffer starts (`bufferFrames > 0`). */
+  chargeSound: AirstrikeSoundSpec;
+  /** Sound played when the beam releases. */
+  launchSound: AirstrikeSoundSpec;
+  /** Sound played where the beam strikes terrain. */
+  impactSound: AirstrikeSoundSpec;
+  /** Optional `effects.sdk` burst (ring, star, or spinning star) triggered at beam impact. */
+  impactBurst?: BeamImpactBurstConfig;
+}
+
 export interface WeaponProject {
   id: string; // e.g. "my_pack.heavy_bazooka"
   name: string;
@@ -1402,6 +1653,11 @@ export interface WeaponProject {
    * full missile effects/builder hooks for missile payloads.
    */
   airstrike?: AirstrikeConfig;
+  /**
+   * Beam / Ray / Cone weapon (`wf-lib/wfws_firing`'s `firing.beam`).
+   * Active whenever `fireType === 'beam'` (and `beam.enabled !== false`).
+   */
+  beam?: BeamConfig;
   /**
    * `hold_as = "stock.<weapon>"` on the claim: the stock weapon whose held pose
    * the worm aims this one in. Set by an import that carried one; otherwise the
@@ -1438,6 +1694,8 @@ export interface WeaponProject {
   ribbonTrail: RibbonTrailConfig;
   /** Effects-SDK explosion burst, added to or replacing WA's own blast. */
   explosionEffect: ExplosionEffectConfig;
+  /** Editor-wide flag: electrical weapons/effects taze mines via `px.electric` instead of detonating them. */
+  electricTazeMines?: boolean;
   /**
    * PX's effect manager as a live emitter: a ring, sparks, bolts and a ribbon
    * at a point that follows the muzzle or the fired round (`fx.emitter`).

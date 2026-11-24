@@ -10,11 +10,26 @@ trail.MAX, trail.EVERY, trail.VANISH = 12, 2, 2
 trail.CORE_W, trail.GLOW_W = 8.0, 13.0
 -- Lateral jitter in pixels and PX's hue cycle for the additive pass.
 trail.NOISE, trail.RAINBOW = 0.0, false
+trail.MODE, trail.WAVE_FREQ, trail.WAVE_SPEED = "electric", 2.2, 0.28
 trail.R, trail.G, trail.B = 255, 255, 255
 -- nil -> `wa.depth.OBJECTS`, resolved inside a game frame.
 trail.DEPTH = nil
 trail.BEAM = "wf-lib/effects/sprites/px_effects/beam.png"
 trail.GLOW = "wf-lib/effects/sprites/px_effects/beam_glow.png"
+trail.STYLES = {
+  classic = {
+    beam = "wf-lib/effects/sprites/px_effects/beam.png",
+    glow = "wf-lib/effects/sprites/px_effects/beam_glow.png",
+  },
+  soft = {
+    beam = "wf-lib/effects/sprites/px_effects/beam_soft.png",
+    glow = "wf-lib/effects/sprites/px_effects/beam_glow_soft.png",
+  },
+  plasma = {
+    beam = "wf-lib/effects/sprites/px_effects/beam_plasma.png",
+    glow = "wf-lib/effects/sprites/px_effects/beam_glow_plasma.png",
+  },
+}
 
 local trails = {}
 local live = {} -- round id -> trail while it is in the air
@@ -107,15 +122,23 @@ function trail.add(id, owner, opts)
     max = trail.MAX, every = trail.EVERY, vanish = trail.VANISH,
     core_w = trail.CORE_W, glow_w = trail.GLOW_W,
     noise = trail.NOISE, rainbow = trail.RAINBOW,
+    mode = trail.MODE, wave_freq = trail.WAVE_FREQ, wave_speed = trail.WAVE_SPEED,
+    style = "classic",
     r = trail.R, g = trail.G, b = trail.B,
     depth = trail.DEPTH, beam = trail.BEAM, glow = trail.GLOW,
   }
   -- Fixed key order; `pairs` would be unordered.
   for _, k in ipairs({
     "max", "every", "vanish", "core_w", "glow_w", "noise", "rainbow",
+    "mode", "wave_freq", "wave_speed", "style",
     "r", "g", "b", "depth", "beam", "glow",
   }) do
     if opts and opts[k] ~= nil then t[k] = opts[k] end
+  end
+  local st = trail.STYLES[t.style]
+  if st then
+    if not (opts and opts.beam ~= nil) then t.beam = st.beam end
+    if not (opts and opts.glow ~= nil) then t.glow = st.glow end
   end
   t.rainbow = rainbow_of(t.rainbow)
   -- Resolve the depth default in a game frame, where `wa` exists.
@@ -178,11 +201,13 @@ function trail.install()
   -- PX's DrawTrail. Reuse one ribbon spec: a table per draw made garbage.
   if wa.on.draw and wa.draw.ribbon then
     local RIBBON = { blend = "add", points = {} }
-    local function pass(t, sprite, width)
+    local function pass(t, sprite, width, phase_sign)
       local pts, n = t.pts, #t.pts
       if n < 2 then return end -- `if (trailAmount < 2) return;` (:1300)
       RIBBON.sprite, RIBBON.depth = sprite, t.depth
       local rp = RIBBON.points
+      local mode = t.mode or "electric"
+      local sign = phase_sign or 1
       for i = 1, n do
         -- PX's t: strength, texcoord and width in one number.
         local f = i / (n + 1)
@@ -190,15 +215,24 @@ function trail.install()
         local p = rp[i]
         if not p then p = {}; rp[i] = p end
         local x, y = pts[i][1], pts[i][2]
-        if t.noise > 0 then
+        local disp = 0
+        if mode == "wavy" or mode == "helix" then
+          local amp = (t.noise and t.noise > 0) and t.noise or 6.0
+          local freq = t.wave_freq or 2.2
+          local spd = t.wave_speed or 0.28
+          disp = wa.math.sin(f * freq * 6.2831853 - tick * spd) * amp * sign * f
+        elseif mode ~= "straight" and t.noise > 0 then
+          local idx = ((i - 1 + math.floor(tick / 2) * 7) % 256) + 1
+          disp = NOISE[idx] * t.noise
+        end
+        if disp ~= 0 then
           -- Perpendicular to the local tangent, as PX jitters a reach arc.
           local a = pts[i - 1] or pts[i]
           local b = pts[i + 1] or pts[i]
           local dx, dy = b[1] - a[1], b[2] - a[2]
           local len = math.sqrt(dx * dx + dy * dy)
           if len > 0.0001 then
-            local j = NOISE[((i - 1) % 256) + 1] * t.noise
-            x, y = x - dy / len * j, y + dx / len * j
+            x, y = x - dy / len * disp, y + dx / len * disp
           end
         end
         p.x, p.y, p.u, p.width = x, y, f, f * width
@@ -217,8 +251,12 @@ function trail.install()
     end
     wa.on.draw(function()
       for _, t in ipairs(trails) do
-        pass(t, t.beam, t.core_w)
-        if t.glow_w > 0 then pass(t, t.glow, t.glow_w) end
+        pass(t, t.beam, t.core_w, 1)
+        if t.glow_w > 0 then pass(t, t.glow, t.glow_w, 1) end
+        if t.mode == "helix" then
+          pass(t, t.beam, t.core_w * 0.85, -1)
+          if t.glow_w > 0 then pass(t, t.glow, t.glow_w * 0.85, -1) end
+        end
       end
     end)
   end

@@ -7,6 +7,7 @@ import {
   WFWS_AIRSTRIKE_LUA,
   WFWS_FIRING_LUA,
   WFWS_SDK_MOD_TOML,
+  WFWS_SDK_SHEETS,
   WFWS_SPRITE_BUILDER_LUA,
 } from '../data/wfwsSdk';
 import {
@@ -35,6 +36,7 @@ const LIBRARIES: PackLibraries = {
     spriteBuilderLua: WFWS_SPRITE_BUILDER_LUA,
     airstrikeLua: WFWS_AIRSTRIKE_LUA,
     firingLua: WFWS_FIRING_LUA,
+    sheets: WFWS_SDK_SHEETS,
   },
   effects: {
     modToml: EFFECTS_SDK_MOD_TOML,

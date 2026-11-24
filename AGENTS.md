@@ -324,10 +324,14 @@ top-level `cluster_sprite` / `cluster_homing_sprite`, `:hurt` vs `:hit`,
 `on_bump` vs `on_contact`) and automatically runs `migrateApi4Lua`
 (`src/utils/api4Migration.ts`) on carried and custom Lua when importing from
 `api_version < 5` bundles, reporting Tier-1 rewrites and Tier-2 manual checks in
-the import notes. Installed `wfcheck.exe` (0.9.9) predates API 5 claim keys
-(`hold_as`, `collects_crates`, `cluster_sprite`, `cluster_homing_sprite`,
-`cluster_homing`, `armageddon`), which are tracked in `PENDING_ENGINE_KEYS` in
-`tools/check_pack_fixture.ts`.
+the import notes. The checker's own schema is still missing some claim keys the
+engine reads (`hold_as`, `collects_crates`, `cluster_sprite`,
+`cluster_homing_sprite`, `cluster_homing`, `armageddon`): the 1.0 RC3.5 build
+(`wfcheck 0.1.0`, engine 1.0.0) reports `collects_crates`
+(`crates/lua-host/src/bundles.rs` reads it and `crates/engine/src/grants.rs`
+implements it), so this is the checker's list to fix, not a bundle defect. They
+are tracked in `PENDING_ENGINE_KEYS` in `tools/check_pack_fixture.ts`, which
+strips exactly those findings and nothing else.
 
 ---
 
@@ -710,6 +714,81 @@ The editor ships `spec/lua_sdk/wfws_sdk/` (id `wfws.sdk`), exporting
   difference between the presets (thunder strikes once from below and holds;
   electric crackles twice), and it lives next to the card rather than in a
   separate preview page because the numbers being edited are what it plays.
+- **Beam (`project.beam`, `wfws_firing`'s `M.beam`)** is a claim-owned hitscan
+  or progressive ray: `on_fire` hands the shot to the library, an invisible
+  driver actor owns its clock (`buffer` charge, `grow`, `hold`, `fade`), and the
+  library traces the end point, samples `wa.world.electrical_nearby` along the
+  exposed head for `hits = "corridor" | "cone" | "first" | "none"`, and draws
+  it in `wa.on.draw`. It lives in `wfws_firing`, not `effects_sdk`: a beam owns
+  `on_fire`, damage and a driver, and every export ships `effects.sdk` for hold
+  art, so a beam bump there would reach weapons that never fire one. The
+  library declares only `wf.sdk` and must never require `effects.sdk` (a
+  library's require resolves in its own bundle), which is why the beam draws
+  its band with `wa.draw.ribbon` (and its impact sparks with
+  `wa.draw.trail`) rather than with `fx.arc`.
+  **`BeamPreview` is the contract, and the library draws exactly what it
+  draws**: two additive ribbon passes (the tinted `beam_glow.png` at 0.55 alpha
+  under the tinted `beam.png` at full strength), a tip flare of radius
+  `max(8, tipW * 0.9)` (the radial `beam_orb.png` as a colour quad out to that
+  radius over a white quad at half of it, standing in for the preview's radial
+  gradient), eight impact ticks thrown back along the beam at radii 6..30
+  once the head is fully extended, whichever stopped it (terrain, a body, or the
+  end of `range`), and a **softened ends**: `end_sprite` (the shipped
+  `beam_end.png`, the glow sheet with one faded side) is the *band's own first
+  and last piece*, not a cap appended to it. The glow body is **shifted inward**
+  by `cap_len` at each end to make room, and the two pieces read the sheet with
+  their faded side outward and their bright side facing the body, so the join is
+  the same brightness on both sides and nothing is ever drawn outside the beam:
+  no bloom over the worm at the muzzle, nothing smeared past whatever the beam
+  struck. Appending a cap *outside* was wrong twice over (behind the barrel, and
+  past the impact), and laying one *over* the band cannot work either, because
+  additive blending cannot subtract and the cap steps up at both of its own
+  edges. The core fades and narrows into the same span instead of ending square,
+  and **the ribbon is drawn at 3x its path points** (`points` is the bolt's kink
+  count): at 16 points a long beam's quads are ~29 px apart, far too coarse to
+  resolve a 20 px fade, which is what left a one-quad notch at the muzzle
+  (a half-width first point, full width at the second) that read in game as the
+  core zigzagging. **The end taper never goes below 45% of the band's width**:
+  WormForge samples its quads point-wise (`cell_uv`'s half-texel inset exists for
+  exactly that), so a quad narrower than one pixel is a *dotted* line of bright
+  pixels at the muzzle and at the tip, which is what read in game as a lumpy,
+  wavy start on an otherwise straight beam. The fade belongs in the colour.
+  **A jagged bolt is a shape, and a shape with corners** (`beam_jag`): one table
+  of kinks (`JAG_N`, seeded once at spawn from `wa.random` through
+  `beam_hash01`, one smoothing pass, ends pinned to 0) read by **linear
+  interpolation** at the point's place along the whole bolt, so the corners stay
+  put for the beam's life and a growing beam reveals more of the same shape. Two
+  seeded sines were the wrong shape as well as the wrong idea: a sine has no
+  corner, which is what stopped the bolt reading as an electric arc. White noise
+  per point, re-drawn every 50 Hz tick, is a sawtooth that reshuffles itself
+  every frame. Forks (`draw_branch`) carry their own seven-point table seeded
+  from the fork's phase (`branch_kinks`), so they bend in the same places for
+  the beam's life, and their reach is a fraction of the *exposed* head
+  (`(1 - t) * head * 0.3`), so a close-range shot has short side bolts exactly as
+  the preview now draws them; `wa.draw.random` is left to the impact spray and
+  the brightness flicker, which are meant to move. A third white "hot" filament
+  pass, orb quads at three times the flare radius and soft backwards spark
+  ribbons were what made the in-game beam read as a hard white core with a thin
+  glow next to a softer, wider preview. `hit_branches = true` adds a branch to
+  each struck body and is off by default, because the preview has no such pass.
+  **`look = "trail"` is the ribbon painter too.** `wa.draw.trail` is a
+  *projectile* trail: its width ramps with a point's age along the trail and its
+  tail sheds points, so a ray fed into it looks like a round dragging a smear and
+  cannot grow or retract, which is what WF 70 (an `arc` with a `retract` fade)
+  showed in game while its card previewed an extending curve. The key stays
+  accepted, is normalised to `"ribbon"` with one log line, and the card says so.
+  **A preview must not overlap its textured quads**: `wa.draw.ribbon` shares
+  vertices between neighbouring quads, so a preview that pads each segment
+  (`len * 1.04`) double-draws every joint and beads along the beam (the burst
+  preview already knew this). **A preview must also slice the sheet by `u`**:
+  the engine spreads one texture over the whole ribbon (`u` per point), so a
+  preview that draws the whole sheet inside every segment repeats whatever
+  gradient the sheet has along its length, which is invisible for the two band
+  sheets (uniform along x) and wrong for the endpoint sheet, whose fade is along
+  x. And **the gameplay preview samples point-wise** (`imageSmoothingEnabled =
+  false`, as `BeamPreview` now does): WormForge is always nearest neighbour, so a
+  bilinear canvas softens every edge and makes the same beam look dimmer and
+  blurrier than the game. `flicker` is brightness only, never width.
 - **Damage Type: Electrical** works through `px.electric`, never the SDK. WA has
   no electric hit kind (`kind = "taze"` alone is the Prod), so the generator
   declares `local zap` at module level, assigns it inside `install`, and arms the
@@ -2109,11 +2188,17 @@ the point. One in-memory case pins the hold's **cell** count: a claim holding
 `frames = 1` over a sheet the manifest declares as 20 comes back as `frames = 1`
 plus `sheetFrames = 20`, and the export declares `frames = 20` for the picture.
 
-Compiler check (lives in the code-editor repo):
+Compiler check (lives in the code-editor repo; the binary is in its build
+output, not beside `Cargo.toml`, and points at the 1.0 RC3.5 spec):
 
 ```powershell
-& 'C:\Users\lucia\Documents\GitHub\Worm-Forge-Lua-Editor\compiler-cli\wfcheck.exe' --format pretty '<bundle folder>'
+& 'C:\Users\lucia\Documents\GitHub\Worm-Forge-Lua-Editor\compiler-cli\target\release\wfcheck.exe' --format pretty '<bundle folder>'
 ```
+
+`tools/check_pack_fixture.ts` resolves it from `$env:WFCHECK`, then that path,
+then the two older ones, and says so if it finds none. A hard-coded dead path
+made its engine-refusal assertion a silent no-op for a while, so keep the
+candidate list honest.
 
 The engine sources and sample records used to verify field mappings:
 

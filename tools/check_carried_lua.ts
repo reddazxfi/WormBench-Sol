@@ -875,7 +875,7 @@ if (statSync(BUNDLE, { throwIfNoEntry: false })) {
     }
     const carried = shape(project);
     if (carried.hooks > 0 || carried.registrations > 0) carriedWeapons += 1;
-    if (weapon.name.includes('Emitter')) {
+    if (weapon.name === 'WF 56 Emitter Ring') {
       // The emitter writes two registrations of its own (`body_move`/`FRAME_FINISH`
       // and the `missile_frame` latch); both must be recognised, or a re-import
       // would ship a second emitter.

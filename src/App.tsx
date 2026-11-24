@@ -39,6 +39,7 @@ import { DEFAULT_EXPLOSION_EFFECT } from './data/explosionPresets';
 import { DEFAULT_AIM_CLIP } from './data/aimClip';
 import { DEFAULT_MELEE } from './data/melee';
 import { DEFAULT_AIRSTRIKE, cloneAirstrikeConfig } from './data/airstrike';
+import { DEFAULT_BEAM, cloneBeamConfig } from './data/beam';
 import { stockDonor, stockDonorBaseline } from './data/stockDonors';
 import { DEFAULT_BODY, DEFAULT_DIG, DEFAULT_FIRE, DEFAULT_ROAM } from './data/defaults';
 import { DEFAULT_CUSTOM_SOUNDS } from './data/soundPresets';
@@ -126,6 +127,7 @@ const INITIAL_PROJECT: WeaponProject = {
   aimClip: { ...DEFAULT_AIM_CLIP, keys: DEFAULT_AIM_CLIP.keys.map((k) => ({ ...k })) },
   melee: { ...DEFAULT_MELEE },
   airstrike: cloneAirstrikeConfig(DEFAULT_AIRSTRIKE),
+  beam: cloneBeamConfig(DEFAULT_BEAM),
   terrainStamp: { ...DEFAULT_TERRAIN_STAMP },
   customSounds: { ...DEFAULT_CUSTOM_SOUNDS },
   extraDependencies: [],
@@ -803,6 +805,7 @@ export default function App() {
                 onChange={updateProject}
                 activeSubTab={activeSubTab}
                 onSelectSubTab={setActiveSubTab}
+                onOpenHoldBuilder={() => setActiveTab('hold')}
               />
             </div>
           )}

@@ -12,6 +12,8 @@ import {
   airstrikePlaneSheetPath,
   airstrikeSoundPath,
   airstrikeStrafeSheetPath,
+  beamSoundPath,
+  beamSpritePath,
   roamSheetPath,
   roamSheetsOwnFlight,
   generateLuaCode,
@@ -23,6 +25,7 @@ import {
   behaviorStateSheetPath,
   customSoundPath,
   meleeSoundPath,
+  bufferSheetPath,
   extraHandSheetPath,
   flashSheetPath,
   holdNeedsAimLayer,
@@ -41,6 +44,7 @@ import {
 import { supportsTerrainStamp } from '../data/terrainStamp';
 import { meleeStrikes } from '../data/melee';
 import { airstrikeActive, mergeAirstrikeConfig } from '../data/airstrike';
+import { beamActive, mergeBeamConfig } from '../data/beam';
 import {
   bitBuilderMode,
   primaryBuilderOn,
@@ -128,6 +132,9 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
     // exists, so nothing dangles when it is off.
     if (project.hold.flashFile) {
       addSheet(flashSheetPath(project), project.hold.flashFile);
+    }
+    if (project.hold.bufferFile) {
+      addSheet(bufferSheetPath(project), project.hold.bufferFile);
     }
     // The second hand's own art. Without an upload the layer draws the first
     // hand's sheet, so there is nothing to write.
@@ -302,6 +309,21 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
     }
   }
 
+  // Beam weapon uploaded WAVs (`beam_charge.wav`, `beam_launch.wav`, `beam_impact.wav`).
+  if (beamActive(project)) {
+    const beam = mergeBeamConfig(project.beam);
+    for (const role of ['charge', 'launch', 'impact'] as const) {
+      const wavPath = beamSoundPath(project, role);
+      const spec =
+        role === 'charge'
+          ? beam.chargeSound
+          : role === 'impact'
+            ? beam.impactSound
+            : beam.launchSound;
+      if (wavPath && spec?.file?.file) plain.push({ path: wavPath, source: spec.file.file });
+    }
+  }
+
   // WAVs a carried block plays by path (M6). The four roles above are the
   // editor's own; a bundle's sample that is neither is written where its code
   // names it, because the claim's `sounds` list and this file are one contract.
@@ -335,6 +357,7 @@ export interface WfwsLibraries {
   spriteBuilderLua: string;
   airstrikeLua?: string;
   firingLua?: string;
+  sheets?: { path: string; url: string }[];
 }
 
 /** A library bundle an export ships when a weapon requires its modules. */
@@ -349,6 +372,8 @@ export interface PackLibrary {
 export interface PackLibraries {
   wfws: WfwsLibraries;
   effects?: PackLibrary;
+  /** Self-contained beam textures shipped inside beam weapon folders (`beam.png`, `beam_glow.png`, `beam_end.png`, `beam_orb.png`). */
+  beamSheets?: { coreUrl: string; glowUrl: string; endUrl?: string; orbUrl?: string };
 }
 
 /** Does the generated weapon require a module from the effects library? */
@@ -407,13 +432,20 @@ export async function emitPackFiles(
   // fallback art are one sheet, not four, and the bytes have to match before the
   // alias may rewrite a path. `modToml` is the combined manifest, so the frame
   // count a declaration asks for is the one compared.
+  // Shared beam textures live once in `wf-lib/wfws_sdk/sprites/`, so no
+  // per-weapon beam PNGs need to be duplicated into weapon folders.
+  const beamExtraLoaded: { path: string; bytes: Uint8Array }[] = [];
+
   const sheets = parts.flatMap((part) => part.sheets);
-  const loaded = await Promise.all(
-    sheets.map(async (sheet) => ({
-      path: sheet.path,
-      bytes: new Uint8Array(await sheet.source.arrayBuffer()),
-    })),
-  );
+  const loaded = [
+    ...(await Promise.all(
+      sheets.map(async (sheet) => ({
+        path: sheet.path,
+        bytes: new Uint8Array(await sheet.source.arrayBuffer()),
+      })),
+    )),
+    ...beamExtraLoaded,
+  ];
   const deduped = dedupeSheets(loaded, modToml);
   const alias = deduped.alias;
   const withAliases = (lua: string) =>
@@ -456,6 +488,12 @@ export async function emitPackFiles(
   }
   if (libraries.wfws.firingLua) {
     await put('wf-lib/wfws_sdk/lib/wfws_firing.lua', libraries.wfws.firingLua);
+  }
+  if (libraries.wfws.sheets) {
+    for (const sheet of libraries.wfws.sheets) {
+      const bytes = await fetchBytes(sheet.url);
+      if (bytes) await put(sheet.path, bytes);
+    }
   }
 
   // The effects SDK travels the same way when **any** weapon of the pack requires
@@ -618,7 +656,7 @@ export function validateBundle(
       );
     }
     if (
-      /\bfiring\.(?:launch|actor|sequence|homing|fuse)\b/.test(source) &&
+      /\bfiring\.(?:launch|actor|sequence|homing|fuse|beam)\b/.test(source) &&
       !source.includes('wf-lib/wfws_firing')
     ) {
       problems.push(

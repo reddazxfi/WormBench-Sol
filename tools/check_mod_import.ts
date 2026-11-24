@@ -71,7 +71,7 @@ check(
   bundles.some((bundle) => bundle.id === 'wfws.sdk'),
   bundles.map((bundle) => bundle.id).join(', '),
 );
-check('test pack has 66 weapons', weapons.length === 66, String(weapons.length));
+check('test pack has 72 weapons', weapons.length === 72, String(weapons.length));
 
 const byName = new Map(weapons.map((weapon) => [weapon.name, weapon]));
 const projects = new Map<string, WeaponProject>();
@@ -112,7 +112,11 @@ for (const weapon of weapons) {
   }
   if (text.includes('local TRAIL =')) check(`${name}: ribbon trail enabled`, p.ribbonTrail.enabled);
   if (text.includes('fx.burst{') || text.includes('blast.explode{')) {
-    check(`${name}: explosion burst enabled`, p.explosionEffect.enabled);
+    if (text.includes('firing.beam(') && text.includes('on_impact = function(') && !text.includes('blast.explode{')) {
+      check(`${name}: beam impact burst enabled`, !!p.beam?.impactBurst?.enabled);
+    } else {
+      check(`${name}: explosion burst enabled`, !!p.explosionEffect?.enabled);
+    }
   }
   if (
     text.includes('firing.launch(') ||
@@ -123,6 +127,9 @@ for (const weapon of weapons) {
   ) {
     check(`${name}: fire sequence enabled`, !!p.fireSequence?.enabled);
   }
+  if (text.includes('firing.beam(')) {
+    check(`${name}: beam enabled`, p.fireType === 'beam' && !!p.beam?.enabled);
+  }
   if (text.includes('air.install(ctx,')) {
     check(`${name}: airstrike enabled`, !!p.airstrike?.enabled);
   }
@@ -132,9 +139,17 @@ for (const weapon of weapons) {
   }
   if (text.includes('sounds = {')) {
     const sounds = p.customSounds;
+    const beamSounds = p.beam;
     check(
       `${name}: a custom sound is enabled`,
-      sounds.explosionEnabled || sounds.intervalEnabled || sounds.shotEnabled,
+      !!(
+        sounds?.explosionEnabled ||
+        sounds?.intervalEnabled ||
+        sounds?.shotEnabled ||
+        beamSounds?.chargeSound?.file ||
+        beamSounds?.launchSound?.file ||
+        beamSounds?.impactSound?.file
+      ),
     );
   }
 }
@@ -286,6 +301,7 @@ for (const weapon of weapons) {
   near('WF 22: colour', overlay.explosionEffect.color, '#8282ff');
   near('WF 22: smoke', overlay.explosionEffect.smoke, false);
   near('WF 22: preset', overlay.explosionEffect.preset, 'pyro');
+  near('WF 22: fireSpawn enabled + count', `${overlay.explosionEffect.fireSpawn?.enabled}/${overlay.explosionEffect.fireSpawn?.count}`, 'true/6');
 }
 
 // ---- custom WAVs (WF 23, WF 29) -----------------------------------------
@@ -378,6 +394,7 @@ function fullProject(p: WeaponProject, name: string): WeaponProject {
     explosionEffect: p.explosionEffect ?? DEFAULT_EXPLOSION_EFFECT,
     terrainStamp: p.terrainStamp,
     emitter: p.emitter,
+    beam: p.beam,
     airstrike: p.airstrike,
     fireSequence: p.fireSequence ?? DEFAULT_FIRE_SEQUENCE,
     customSounds: p.customSounds ?? DEFAULT_CUSTOM_SOUNDS,
@@ -2341,6 +2358,58 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
       on_hit: onHitImport.project.fireConfig?.decay_mode,
     }),
   );
+
+  // Beam weapons (WF 67 .. WF 71)
+  const wf67 = project('WF 67 Beam Instant');
+  near('WF 67: beam instant fireType is beam', wf67?.fireType, 'beam');
+  near('WF 67: beam enabled and range', wf67?.beam?.enabled && wf67?.beam?.range, 520);
+  near('WF 67: hurtMode is corridor', wf67?.beam?.hurtMode, 'corridor');
+  hasFile('WF 67: launch sound WAV recovered', wf67?.beam?.launchSound?.file);
+
+  const wf68 = project('WF 68 Beam Plasma Cone');
+  near('WF 68: cone hurtMode + live_aim + follow_worm', wf68?.beam?.hurtMode, 'cone');
+  near('WF 68: followAim preserved as true', wf68?.beam?.followAim, true);
+  near('WF 68: growFrames / dissolve fade / non-interrupt', wf68?.beam?.fadeMode, 'dissolve');
+  near('WF 68: interact = false preserved', wf68?.beam?.interact, false);
+  near('WF 68: burnPush & final push recovered', `${wf68?.beam?.burnPush}/${wf68?.beam?.push}`, '0.9/5');
+  near('WF 68: impact fireSpawn recovered', `${wf68?.beam?.fire?.enabled}/${wf68?.beam?.fire?.mode}/${wf68?.beam?.fire?.count}`, 'true/impact/5');
+
+  const wf69 = project('WF 69 Beam Taze Bolt');
+  near('WF 69: jagged electric bolt kind + electricTaze', wf69?.beam?.kind, 'taze');
+  near('WF 69: electricTaze recovered', wf69?.beam?.electricTaze, true);
+  near('WF 69: electricTazeMines recovered', wf69?.electricTazeMines, true);
+  near('WF 69: branches = 5', wf69?.beam?.branches, 5);
+  near('WF 69: hurtMode = first', wf69?.beam?.hurtMode, 'first');
+  check('WF 69: Lua uses on_before_hit and taze_mine for taze', luaOf('WF 69 Beam Taze Bolt').includes('on_before_hit = function(o)') && luaOf('WF 69 Beam Taze Bolt').includes('taze_mine.taze'));
+  hasFile('WF 69: impact sound WAV recovered', wf69?.beam?.impactSound?.file);
+
+  const wf70 = project('WF 70 Beam Charge 3-Pose');
+  near('WF 70: arc look = trail, fadeMode = retract', `${wf70?.beam?.path}/${wf70?.beam?.look}/${wf70?.beam?.fadeMode}`, 'arc/trail/retract');
+  near('WF 70: bufferFrames = 15', wf70?.beam?.bufferFrames, 15);
+  near('WF 70: hold frames = 8 and bufferFrames = 8', `${wf70?.hold?.frames}/${wf70?.hold?.bufferFrames}`, '8/8');
+  hasFile('WF 70: hold sheet file recovered', wf70?.hold);
+  hasFile('WF 70: buffer sheet file recovered', wf70?.hold?.bufferFile ? { file: wf70.hold.bufferFile } : undefined);
+  hasFile('WF 70: flash sheet file recovered', wf70?.hold?.flashFile ? { file: wf70.hold.flashFile } : undefined);
+  hasFile('WF 70: charge sound WAV recovered', wf70?.beam?.chargeSound?.file);
+
+  const wf71 = project('WF 71 Beam Gatling Spinup');
+  near('WF 71: fireType is beam with timed sequencer', `${wf71?.fireType}/${wf71?.fireSequence?.enabled}/${wf71?.fireSequence?.engine}`, 'beam/true/timed');
+  near('WF 71: count = 5, burstSize = 3, spreadDeg = 12', `${wf71?.fireSequence?.count}/${wf71?.fireSequence?.burstSize}/${wf71?.fireSequence?.spreadDeg}`, '5/3/12');
+  near('WF 71: bufferFrames synced from firstDelayMs', wf71?.beam?.bufferFrames, 14);
+  check(
+    'WF 71: SEQ.on_buffer uses wa.sound.play and never wa.audio',
+    luaOf('WF 71 Beam Gatling Spinup').includes('wa.sound.play(w,') &&
+      !luaOf('WF 71 Beam Gatling Spinup').includes('wa.audio'),
+  );
+  hasFile('WF 71: charge sound WAV recovered', wf71?.beam?.chargeSound?.file);
+  hasFile('WF 71: 3-pose buffer sheet recovered', wf71?.hold?.bufferFile ? { file: wf71.hold.bufferFile } : undefined);
+
+  const wf72 = project('WF 72 Glow-Only Mine & Emitter');
+  near('WF 72: glow-only shape and centerGlow', `${wf72?.explosionEffect.shape}/${wf72?.explosionEffect.centerGlow?.shape}`, 'none/spin_star');
+  near('WF 72: rainbow and electricTazeMines', `${wf72?.explosionEffect.rainbow}/${wf72?.electricTazeMines}`, 'true/true');
+  near('WF 72: mine fireSpawn recovered', `${wf72?.explosionEffect.fireSpawn?.enabled}/${wf72?.explosionEffect.fireSpawn?.count}`, 'true/4');
+  near('WF 72: placed-mine emitter anchor recovered', `${wf72?.emitter?.enabled}/${wf72?.emitter?.anchor}/${wf72?.emitter?.ring?.shape}`, 'true/round/star');
+  near('WF 72: placed-mine ribbonTrail recovered', `${wf72?.ribbonTrail?.enabled}/${wf72?.ribbonTrail?.max}/${wf72?.ribbonTrail?.rainbow}`, 'true/10/true');
 }
 
 if (failures.length > 0) {

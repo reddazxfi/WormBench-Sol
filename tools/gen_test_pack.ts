@@ -58,9 +58,13 @@ import {
   wfwsRoleFlags,
   extraHandSheetPath,
   flashSheetPath,
+  bufferSheetPath,
+  beamSpritePath,
+  beamSoundPath,
   terrainStampPath,
 } from '../src/utils/luaGenerator';
 import { DEFAULT_AIRSTRIKE } from '../src/data/airstrike';
+import { DEFAULT_BEAM, beamActive } from '../src/data/beam';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../src/data/explosionPresets';
 import { stockDonor } from '../src/data/stockDonors';
 import { DEFAULT_CUSTOM_SOUNDS } from '../src/data/soundPresets';
@@ -283,6 +287,9 @@ const GRENADE_BMP = specPng('famas.png');
 const ICE_BMP = specPng('fire_famas.png');
 const DRUM_BMP = specPng('oildrum1.png');
 const SHEEP_BMP = specPng('sspsheep1.png');
+const BEAM_AIM_HOLD_PNG = readFileSync(join(specDir, 'beam_aim', 'hold.png'));
+const BEAM_AIM_BUFFER_PNG = readFileSync(join(specDir, 'beam_aim', 'buffer.png'));
+const BEAM_AIM_FLASH_PNG = readFileSync(join(specDir, 'beam_aim', 'flash.png'));
 
 /**
  * The stamp picture: an arrow pointing up, built rather than taken from `spec/`
@@ -371,8 +378,13 @@ function roleSheet(base: Bitmap, png: Buffer, frames: number): Buffer {
   return encodePng(rotationSheet(base, count));
 }
 
-const file = (bytes: Buffer, name: string) =>
-  new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+const FILE_BYTES = new WeakMap<File, Buffer>();
+
+const file = (bytes: Buffer, name: string) => {
+  const f = new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+  FILE_BYTES.set(f, bytes);
+  return f;
+};
 
 function art(slot: PackArtSlot, bytes: Buffer, frames: number) {
   return {
@@ -439,8 +451,10 @@ function stampAsset() {
 }
 
 function soundAsset(bytes: Buffer, name: string) {
+  const f = new File([new Uint8Array(bytes)], name, { type: 'audio/wav' });
+  FILE_BYTES.set(f, bytes);
   return {
-    file: new File([new Uint8Array(bytes)], name, { type: 'audio/wav' }),
+    file: f,
     fileName: name,
     previewUrl: '',
     size: bytes.length,
@@ -562,6 +576,10 @@ function makeOp(partial: {
   customLua?: string;
   /** Opt-in Lua airstrike takeover (`wf-lib/wfws_airstrike`). */
   airstrike?: WeaponProject['airstrike'];
+  /** Direct beam firing config (`wf-lib/wfws_firing` `beam`). */
+  beam?: Partial<NonNullable<WeaponProject['beam']>>;
+  /** Electrify nearby mines instead of detonating them on electric hits/blasts. */
+  electricTazeMines?: boolean;
 }): WeaponProject {
   return {
     id: partial.id,
@@ -576,6 +594,7 @@ function makeOp(partial: {
     // invented one: an untouched weapon writes no `fires` table.
     specialSubtype: partial.specialSubtype ?? stockDonor(partial.slot)?.specialSubtype ?? 0,
     teleport: false,
+    ...(partial.electricTazeMines ? { electricTazeMines: true } : {}),
     panel_icon: 'grenade',
     defaults: { ammo: -1, delay: 0, crateChance: 0, crateType: 'weapon', afterUse: '', ...partial.defaults },
     body: {
@@ -640,6 +659,7 @@ function makeOp(partial: {
     fireSequence: partial.fireSequence
       ? mergeFireSequenceConfig(partial.fireSequence)
       : { ...DEFAULT_FIRE_SEQUENCE },
+    ...(partial.beam ? { beam: { ...DEFAULT_BEAM, ...partial.beam } } : {}),
     airstrike: partial.airstrike,
     extraDependencies: [],
     hold: {
@@ -1006,7 +1026,13 @@ const TESTS: TestCase[] = [
       slot: 'mine',
       fireType: 'drop',
       body: { sprite: 'mine', damage: 45, fuse: false, proximity: 25, arm_delay_ms: 1000, trigger_delay_ms: 2000 },
-      explosion: { enabled: true, mode: 'effect', preset: 'pyro', ...EXPLOSION_PRESETS.pyro.patch },
+      explosion: {
+        enabled: true,
+        mode: 'effect',
+        preset: 'pyro',
+        ...EXPLOSION_PRESETS.pyro.patch,
+        fireSpawn: { enabled: true, count: 6, durationMs: 2600, damage: 1, upPower: 4, vy: -3 },
+      },
     }),
     intent: 'Mine keeps its ordinary blast and draws the Pyro blue burst on top of it.',
     expect: 'The mine still damages, pushes and craters as a stock mine; a round blue ring appears at the same point.',
@@ -2734,6 +2760,440 @@ const TESTS: TestCase[] = [
     watch:
       'Shots move 100x too slow (`ev.power / 100` bug), digit fuse stays at 3 s, or timed sequence ignores custom intervals.',
   },
+  {
+    project: makeOp({
+      id: 'wftest.67_beam_instant',
+      name: 'WF 67 Beam Instant',
+      slot: 'handgun',
+      fireType: 'beam',
+      beam: {
+        enabled: true,
+        range: 520,
+        stopOnTerrain: true,
+        bufferFrames: 0,
+        growFrames: 0,
+        holdFrames: 10,
+        fadeFrames: 8,
+        fadeMode: 'fade',
+        hurtMode: 'corridor',
+        width: 14,
+        damageMin: 35,
+        damageMax: 35,
+        push: 5,
+        pushUp: 2,
+        kind: 'bullet',
+        terrainCut: true,
+        cutRadius: 14,
+        cutBorder: 3,
+        impactSparks: true,
+        sparkCount: 6,
+        look: 'ribbon',
+        path: 'straight',
+        coreWidth: 28,
+        glowWidth: 64,
+        glowAlpha: 0.7,
+        color: '#5ad7ff',
+        launchSound: { id: 0, file: soundAsset(INTERVAL_WAV, 'beam_launch.wav') },
+      },
+    }),
+    intent:
+      'Minimal instant corridor laser (`wf-lib/wfws_firing` `beam` with zero buffer/grow): straight cyan ribbon (`beam.png` + `beam_glow.png` with `beam_end.png` as its own first and last piece), terrain cut, impact sparks, and launch WAV.',
+    expect:
+      'Tap Space to fire an instant straight cyan beam along aim: both ends bloom into a soft fade instead of a flat cut, the tip throws eight impact ticks, stops at terrain, carves a 14 px crater, deals 35 bullet damage across the corridor, and plays launch sound.',
+    watch:
+      'Ribbon textures fail to load, beam misses worms along the corridor, the muzzle end looks lumpy or dotted instead of a clean fade (the core taper bottoming out under one pixel), or outer handgun fires a ghost bullet alongside the beam.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.68_beam_cone',
+      name: 'WF 68 Beam Plasma Cone',
+      slot: 'uzi',
+      fireType: 'beam',
+      beam: {
+        enabled: true,
+        artStyle: 'soft',
+        range: 260,
+        stopOnTerrain: true,
+        growFrames: 14,
+        growEase: 'out',
+        holdFrames: 24,
+        fadeFrames: 12,
+        fadeMode: 'dissolve',
+        followWorm: true,
+        followAim: true,
+        hurtMode: 'cone',
+        muzzleWidth: 6,
+        coneAngleDeg: 16,
+        hitCooldownFrames: 8,
+        damageMin: 8,
+        damageMax: 10,
+        push: 5,
+        burnPush: 0.9,
+        pushUp: 1,
+        kind: 'fire',
+        interact: false,
+        terrainCut: false,
+        fire: { enabled: true, mode: 'impact', count: 5, durationMs: 2400, damage: 1, step: 48 },
+        impactSparks: true,
+        sparkCount: 4,
+        look: 'ribbon',
+        path: 'straight',
+        coreWidth: 30,
+        tipWidth: 120,
+        glowWidth: 88,
+        glowAlpha: 0.75,
+        color: '#ff7733',
+        flicker: true,
+      },
+    }),
+    intent:
+      'Progressive widening flame/plasma cone (`hurtMode = "cone"`, `live_aim = true`, `follow_worm = true`, `growFrames = 14`, `fadeMode = "dissolve"`, `interact = false`, `hitCooldownFrames = 8`).',
+    expect:
+      'Fire once and steer aim with Up/Down: beam extends smoothly over 14 frames, widens to tipWidth 38, follows aim while active, ticks non-interrupting fire damage every 8 frames in a 16 deg cone, then dissolves.',
+    watch:
+      '`live_aim` ignored while active, cone hurts worms behind terrain or outside wedge, or `interact = false` stops working.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.69_beam_taze',
+      name: 'WF 69 Beam Taze Bolt',
+      slot: 'shotgun',
+      fireType: 'beam',
+      electricTazeMines: true,
+      beam: {
+        enabled: true,
+        range: 460,
+        stopOnTerrain: true,
+        growFrames: 4,
+        holdFrames: 16,
+        fadeFrames: 10,
+        fadeMode: 'fade',
+        hurtMode: 'first',
+        width: 12,
+        damageMin: 28,
+        damageMax: 38,
+        push: 4,
+        pushUp: 3,
+        kind: 'taze',
+        electricTaze: true,
+        terrainCut: true,
+        cutRadius: 12,
+        cutBorder: 2,
+        impactSparks: true,
+        sparkCount: 8,
+        look: 'ribbon',
+        path: 'jagged',
+        noise: 14,
+        points: 10,
+        branches: 5,
+        branchLen: 60,
+        hitBranches: false,
+        coreWidth: 26,
+        glowWidth: 68,
+        glowAlpha: 0.85,
+        color: '#7ef9ff',
+        rainbow: true,
+        flicker: true,
+        impactSound: { id: 0, file: soundAsset(EXPLOSION_WAV, 'beam_impact.wav') },
+      },
+    }),
+    intent:
+      'Forked jagged electric bolt (`path = "jagged"`, `branches = 5`, `hurtMode = "first"`, `kind = "taze"`, `on_before_hit` arming `px.electric` before `body:hit`, `rainbow = true`, numeric/string `impact_sound`), bent along one stable shape with a soft capped tip.',
+    expect:
+      'Fire at two lined-up worms: a jagged rainbow bolt with sharp corners (not a smooth wave, and not a per-frame sawtooth: one kink table per shot) and 5 stable sub-branches that shorten with the exposed head at close range, its far end blooming out of the softened tip, shocking ONLY the first worm (`hurtMode = "first"`), rendering the electric taze reaction on hit, and playing the impact WAV. The muzzle end starts at the gun, with no bloom over the worm.',
+    watch:
+      'Electric overlay missing (`on_before_hit` too late), hits pierce past the first worm, or `impactSound` errors on string WAV path.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.70_beam_3pose',
+      name: 'WF 70 Beam Charge 3-Pose',
+      slot: 'handgun',
+      fireType: 'beam',
+      beam: {
+        enabled: true,
+        range: 500,
+        stopOnTerrain: true,
+        bufferFrames: 15,
+        growFrames: 6,
+        growEase: 'out',
+        holdFrames: 16,
+        fadeFrames: 10,
+        fadeMode: 'retract',
+        hurtMode: 'corridor',
+        width: 16,
+        damageMin: 42,
+        damageMax: 42,
+        push: 7,
+        pushUp: 3,
+        kind: 'bullet',
+        terrainCut: true,
+        cutRadius: 18,
+        cutBorder: 4,
+        impactSparks: true,
+        sparkCount: 8,
+        look: 'trail',
+        artStyle: 'plasma',
+        path: 'arc',
+        bulge: 28,
+        coreWidth: 32,
+        glowWidth: 76,
+        glowAlpha: 0.7,
+        color: '#60efff',
+        standoff: 54,
+        offsetX: 0,
+        offsetY: 1,
+        chargeSound: { id: 0, file: soundAsset(INTERVAL_WAV, 'beam_charge.wav') },
+        launchSound: { id: 0, file: soundAsset(EXPLOSION_WAV, 'beam_launch.wav') },
+        impactBurst: {
+          enabled: true,
+          style: 'plasma',
+          shape: 'spin_star',
+          radius: 26,
+          color: '#60efff',
+          rebufferMode: 'pulse',
+          rebufferAt: 10,
+          starPoints: 5,
+          spin: 0.2,
+        },
+      },
+      hold: {
+        enabled: true,
+        sheetFile: file(BEAM_AIM_HOLD_PNG, 'hold.png'),
+        frames: 8,
+        sheetFrames: 8,
+        sheetWidth: 100,
+        sheetHeight: 256,
+        fps: 15,
+        animate: true,
+        handType: 'mid',
+        handRadius: 0.01,
+        handRadialRotation: 0.03,
+        weapRadius: 19,
+        weapRotation: -90,
+        weapRadialRotation: 0,
+        scale: 0.7,
+        handScale: 1,
+        drawHand: false,
+        thrown: false,
+        putAway: true,
+        keepWhileFiring: true,
+        offsetX: 0,
+        offsetY: 4,
+        bufferFile: file(BEAM_AIM_BUFFER_PNG, 'buffer.png'),
+        bufferFrames: 8,
+        bufferWidth: 100,
+        bufferHeight: 256,
+        bufferFps: 15,
+        bufferScale: 0.7,
+        bufferOffsetX: 0,
+        bufferOffsetY: 4,
+        bufferWeapRadius: 19,
+        bufferWeapRotation: -90,
+        bufferHandRadius: 10,
+        bufferDrawHand: false,
+        bufferHideMain: true,
+        flashFile: file(BEAM_AIM_FLASH_PNG, 'flash.png'),
+        fireFrames: 1,
+        flashWidth: 113,
+        flashHeight: 32,
+        fireFps: 15,
+        fireScale: 0.7,
+        fireTicks: 4,
+        fireOffsetX: 0,
+        fireOffsetY: 4,
+        fireWeapRadius: 23,
+        fireWeapRotation: -90,
+        fireHandRadius: 10,
+        fireDrawHand: false,
+        fireHideMain: true,
+      },
+    }),
+    intent:
+      '3-pose animated charge-buffer arc beam (`spec/beam_aim/hold.png` 8f aiming, `buffer.png` 8f wind-up during 15-frame `buffer`, `flash.png` 113x32 firing pose, curved `arc` beam with `retract` fade; `look = "trail"` is an alias for the ribbon painter, because the engine trail is a projectile smear that can neither grow nor retract).',
+    expect:
+      'Equipping animates the 8-frame hold gun; pressing Space plays charge WAV and switches to the 8-frame buffer animation for 300 ms, then flashes to the 113x32 firing gun as the curved arc beam extends over 6 frames, holds, and retracts to the muzzle the way the card previews it (no smear, no projectile-like trail).',
+    watch:
+      'Buffer strip sliced wrong (missing `[sprites]` `frames = 8`), worm hands overlap or disappear during buffer/fire, the arc draws as a thin dotted trail instead of the previewed ribbon, or beam fires before the 300 ms buffer finishes.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.71_beam_gatling',
+      name: 'WF 71 Beam Gatling Spinup',
+      slot: 'handgun',
+      fireType: 'beam',
+      beam: {
+        enabled: true,
+        range: 440,
+        stopOnTerrain: true,
+        bufferFrames: 14,
+        growFrames: 0,
+        holdFrames: 8,
+        fadeFrames: 6,
+        fadeMode: 'fade',
+        hurtMode: 'corridor',
+        width: 12,
+        damageMin: 14,
+        damageMax: 14,
+        push: 3,
+        pushUp: 1.5,
+        kind: 'bullet',
+        terrainCut: true,
+        cutRadius: 10,
+        cutBorder: 3,
+        impactSparks: true,
+        sparkCount: 5,
+        look: 'ribbon',
+        path: 'straight',
+        coreWidth: 24,
+        glowWidth: 58,
+        glowAlpha: 0.7,
+        color: '#ffcf56',
+        standoff: 54,
+        offsetX: 0,
+        offsetY: 1,
+        chargeSound: { id: 0, file: soundAsset(INTERVAL_WAV, 'beam_charge.wav') },
+      },
+      fireSequence: {
+        ...DEFAULT_FIRE_SEQUENCE,
+        enabled: true,
+        engine: 'timed',
+        mode: 'missiles',
+        count: 5,
+        firstDelayMs: 280,
+        intervalMs: 120,
+        customIntervalsMs: '280, 180, 120, 80, 60',
+        burstSize: 3,
+        spreadDeg: 12,
+        standoff: 54,
+        offsetX: 0,
+        offsetY: 1,
+        liveAim: true,
+        cancelOnWeaponChange: true,
+      },
+      customSounds: {
+        shotEnabled: true,
+        shot: soundAsset(INTERVAL_WAV, 'shot.wav'),
+        shotEvery: 1,
+        shotPriority: 8,
+      },
+      hold: {
+        enabled: true,
+        sheetFile: file(BEAM_AIM_HOLD_PNG, 'hold.png'),
+        frames: 8,
+        sheetFrames: 8,
+        sheetWidth: 100,
+        sheetHeight: 256,
+        fps: 15,
+        animate: true,
+        handType: 'mid',
+        handRadius: 0.01,
+        handRadialRotation: 0.03,
+        weapRadius: 19,
+        weapRotation: -90,
+        weapRadialRotation: 0,
+        scale: 0.7,
+        handScale: 1,
+        drawHand: false,
+        thrown: false,
+        putAway: true,
+        keepWhileFiring: true,
+        offsetX: 0,
+        offsetY: 4,
+        bufferFile: file(BEAM_AIM_BUFFER_PNG, 'buffer.png'),
+        bufferFrames: 8,
+        bufferWidth: 100,
+        bufferHeight: 256,
+        bufferFps: 15,
+        bufferScale: 0.7,
+        bufferOffsetX: 0,
+        bufferOffsetY: 4,
+        bufferWeapRadius: 19,
+        bufferWeapRotation: -90,
+        bufferHandRadius: 10,
+        bufferDrawHand: false,
+        bufferHideMain: true,
+        flashFile: file(BEAM_AIM_FLASH_PNG, 'flash.png'),
+        fireFrames: 1,
+        flashWidth: 113,
+        flashHeight: 32,
+        fireFps: 15,
+        fireScale: 0.7,
+        fireTicks: 4,
+        fireOffsetX: 0,
+        fireOffsetY: 4,
+        fireWeapRadius: 23,
+        fireWeapRotation: -90,
+        fireHandRadius: 10,
+        fireDrawHand: false,
+        fireHideMain: true,
+      },
+    }),
+    intent:
+      'Timed spin-up beam burst (`firing.sequence` with `mode = "beam"`, `intervals_ms = { 280, 180, 120, 80, 60 }`, `pellets = 3`, `spread_deg = 12`, `on_buffer` charge pose + `wa.sound.play`) plus 3-pose art.',
+    expect:
+      'Fire once: weapon spins up with buffer pose + charge WAV for 280 ms, then accelerates across 5 volleys of 3 fanned golden beams (12 deg spread) while flashing the 113x32 muzzle pose on each volley.',
+    watch:
+      '`wa.audio` runtime error on spin-up, beams stack at 0 spread (`pellets`/`spread_deg` ignored), or spin-up cadence stays flat.',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.72_glow_mine_emitter',
+      name: 'WF 72 Glow-Only Mine & Emitter',
+      slot: 'mine',
+      fireType: 'drop',
+      electricTazeMines: true,
+      body: { sprite: 'mine', damage: 35, fuse: false, proximity: 28, arm_delay_ms: 800, trigger_delay_ms: 1500 },
+      explosion: {
+        enabled: true,
+        mode: 'blast',
+        preset: 'custom',
+        damage: 35,
+        push: 4,
+        hole: 18,
+        damageType: 'electric',
+        shape: 'none',
+        radius: 36,
+        rainbow: true,
+        centerGlow: { shape: 'spin_star', scale: 2.6, expand: 1.2, spin: 0.22, inner: true },
+        fireSpawn: { enabled: true, count: 4, durationMs: 2200, damage: 1, upPower: 3, vy: -2 },
+        smoke: false,
+      },
+      emitter: {
+        ...DEFAULT_EMITTER,
+        enabled: true,
+        anchor: 'round',
+        ring: {
+          ...DEFAULT_EMITTER_RING,
+          enabled: true,
+          shape: 'star',
+          radius: 18,
+          segments: 16,
+          noise: 0.5,
+          speed: 4,
+          color: '#6be3ff',
+        },
+      },
+      trailer: {
+        enabled: true,
+        max: 10,
+        every: 2,
+        vanish: 2,
+        coreWidth: 5,
+        glowWidth: 12,
+        noise: 0.3,
+        rainbow: true,
+        color: '#ffffff',
+        target: 'main',
+      },
+    }),
+    intent:
+      'Glow-only rainbow electric explosion (`shape = "none"`, `centerGlow` spinning star, `rainbow = true`, `fireSpawn`), `electricTazeMines`, plus placed-mine emitter (`fx.tracker`) and ribbon trail.',
+    expect:
+      'Placed mine orbits a spinning star emitter ring while armed, leaves a rainbow ribbon as it settles, detonates with a spinning rainbow center glow and fire particles (without ribbon arcs), and electrifies nearby mines instead of detonating them.',
+    watch:
+      'Missing mine tracker (`wa.on.mine_frame` error), texbeam ring still drawn under `shape = "none"`, rainbow stuck on white, or nearby mines blowing up instead of electrifying.',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2751,7 +3211,7 @@ mkdirSync(join(BUNDLE, 'profiles'), { recursive: true });
 
 const quote = (value: string) => JSON.stringify(value);
 const componentBlocks: string[] = [];
-const spriteDecls = new Map<string, { frames: number; fps: number; play: string }>();
+const spriteDecls = new Map<string, { frames?: number; fps?: number; play?: string }>();
 const usedSheets = new Set<string>();
 let usesBuilders = false;
 let usesRibbon = false;
@@ -2803,22 +3263,48 @@ for (const test of TESTS) {
   // repeat-fire frames, so a sequential-fire test needs the pixels too.
   if (project.hold?.enabled) {
     mkdirSync(join(BUNDLE, 'sprites', folder), { recursive: true });
-    writeFileSync(join(BUNDLE, holdSheetPath(project)), AIM_PNG);
+    const holdPath = holdSheetPath(project);
+    const holdBytes = (project.hold.sheetFile && FILE_BYTES.get(project.hold.sheetFile)) || AIM_PNG;
+    writeFileSync(join(BUNDLE, holdPath), holdBytes);
+    const holdCells = Math.max(1, Math.round(project.hold.sheetFrames ?? project.hold.frames ?? 1));
+    if (holdCells > 1) {
+      spriteDecls.set(holdPath, {
+        frames: holdCells,
+        fps: Math.max(1, Number(project.hold.fps) || 15),
+        play: 'loop',
+      });
+    }
     // The firing-state sheet. Loaded through the hold table, so it needs no
-    // `mod.toml` declaration, only the file. The ice sprite keeps it visibly
-    // different from the held gun, so a missing or stuck flash is obvious.
+    // `mod.toml` declaration unless it is a multi-frame strip.
     if (project.hold.flashFile) {
       // A strip has to be a real strip: WA slices the height by the frame count
       // at load, and the panel reads the count back from the picture.
       const fireFrames = Math.max(1, Math.round(project.hold.fireFrames ?? 1));
       const flashPath = flashSheetPath(project);
-      writeFileSync(join(BUNDLE, flashPath), fireFrames > 1 ? FIRING_STRIP_PNG : ICE_PNG);
+      const flashBytes =
+        FILE_BYTES.get(project.hold.flashFile) || (fireFrames > 1 ? FIRING_STRIP_PNG : ICE_PNG);
+      writeFileSync(join(BUNDLE, flashPath), flashBytes);
       // A strip's cell count has to be declared, or the engine slices the sheet
       // by its own height / width rule and the quads show half a cell each.
       if (fireFrames > 1) {
         spriteDecls.set(flashPath, {
           frames: fireFrames,
           fps: Math.max(1, Number(project.hold.fireFps) || 15),
+          play: 'loop',
+        });
+      }
+    }
+    if (project.hold.bufferFile) {
+      const bufferFrames = Math.max(1, Math.round(project.hold.bufferFrames ?? 1));
+      const bufferPath = bufferSheetPath(project);
+      const bufferBytes =
+        FILE_BYTES.get(project.hold.bufferFile) ||
+        (bufferFrames > 1 ? FIRING_STRIP_PNG : ICE_PNG);
+      writeFileSync(join(BUNDLE, bufferPath), bufferBytes);
+      if (bufferFrames > 1) {
+        spriteDecls.set(bufferPath, {
+          frames: bufferFrames,
+          fps: Math.max(1, Number(project.hold.bufferFps) || 15),
           play: 'loop',
         });
       }
@@ -2975,6 +3461,22 @@ for (const test of TESTS) {
     }
   }
 
+  // Beam WAVs (shared beam sprites live once inside `wf-lib/wfws_sdk/sprites/`).
+  if (beamActive(project)) {
+    for (const [role, spec] of [
+      ['charge', project.beam?.chargeSound],
+      ['launch', project.beam?.launchSound],
+      ['impact', project.beam?.impactSound],
+    ] as const) {
+      const sndPath = beamSoundPath(project, role);
+      if (sndPath && spec?.file?.file) {
+        mkdirSync(join(BUNDLE, 'sounds', folder), { recursive: true });
+        const wav = FILE_BYTES.get(spec.file.file) ?? INTERVAL_WAV;
+        writeFileSync(join(BUNDLE, sndPath), wav);
+      }
+    }
+  }
+
   for (const dep of autoDependenciesForProject(project)) {
     if (dep.id === 'wf.sdk') usesHolds = true;
     else if (dep.id === 'wfws.sdk') usesBuilders = true;
@@ -3022,8 +3524,10 @@ toml.push('', ...componentBlocks);
 
 for (const [path, decl] of spriteDecls) {
   toml.push(`[sprites.${quote(path)}]`);
-  if (decl.frames > 1) toml.push(`frames = ${decl.frames}`);
-  toml.push(`fps = ${decl.fps}`, `play = ${quote(decl.play)}`, '');
+  if (decl.frames && decl.frames > 1) toml.push(`frames = ${decl.frames}`);
+  if (decl.fps !== undefined) toml.push(`fps = ${decl.fps}`);
+  if (decl.play !== undefined) toml.push(`play = ${quote(decl.play)}`);
+  toml.push('');
 }
 
 writeFileSync(join(BUNDLE, 'mod.toml'), toml.join('\n'));
@@ -3033,7 +3537,24 @@ writeFileSync(join(BUNDLE, 'mod.toml'), toml.join('\n'));
 // whatever copy happens to be installed in `Mods/`, which may be an older
 // version without the API they use (that is how WF 44 lost its stamp:
 // `sb.heading` did not exist and the callback aborted on the nil call).
-for (const rel of ['mod.toml', 'lib/wfws_sprite_builder.lua', 'lib/wfws_airstrike.lua', 'lib/wfws_firing.lua']) {
+for (const rel of [
+  'mod.toml',
+  'lib/wfws_sprite_builder.lua',
+  'lib/wfws_airstrike.lua',
+  'lib/wfws_firing.lua',
+  'sprites/beam.png',
+  'sprites/beam_glow.png',
+  'sprites/beam_glow_endpoint.png',
+  'sprites/beam_orb.png',
+  'sprites/beam_soft.png',
+  'sprites/beam_glow_soft.png',
+  'sprites/beam_end_soft.png',
+  'sprites/beam_orb_soft.png',
+  'sprites/beam_plasma.png',
+  'sprites/beam_glow_plasma.png',
+  'sprites/beam_end_plasma.png',
+  'sprites/beam_orb_plasma.png',
+]) {
   const dest = join(BUNDLE, 'wf-lib', 'wfws_sdk', rel);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, readFileSync(join(ROOT, 'spec', 'lua_sdk', 'wfws_sdk', rel)));

@@ -36,6 +36,7 @@ STATE = {'frame': 0, 'spawned': 0, 'despawned': 0, 'drawn': [], 'quads': [], 'dr
 LOGS = []
 WORM = {'id': 1, 'hp': 100, 'turn': True, 'x': 1000.0, 'y': 1000.0}
 MISSILES = []
+MINES = []
 
 wa = lua.table()
 lua.globals()['wa'] = wa
@@ -66,6 +67,9 @@ wa.worms.all = lambda: lua.table_from([worm_handle()])
 
 wa.missiles = lua.table()
 wa.missiles.all = lambda: lua.table_from(MISSILES)
+
+wa.mines = lua.table()
+wa.mines.all = lambda: lua.table_from(MINES)
 
 wa.land = lua.table()
 wa.land.trace = lambda x0, y0, x1, y1: lua.table_from({'hit': False})
@@ -604,6 +608,148 @@ check(
     th is not None and th['trail'] is not False and th['trail']['r'] == 255 and th['trail']['g'] == 10 and th['trail']['b'] == 20,
     f"trail={dict(th['trail']) if th and th['trail'] else None}",
 )
+
+# Multi-modal effects_sdk: trail styles & modes, star/spin_star burst + custom rebuffer, star emitter glow & ring
+STATE['drawn'].clear()
+STATE['quads'].clear()
+helix_t = trail.add(9901, WORM, lua_table('{ style = "soft", mode = "helix", noise = 8, core_w = 6, glow_w = 10, every = 1 }'))
+for step in range(4):
+    trail.sample(9901, 100 + step * 10, 100, 10, 0)
+    tick_actors()
+draw()
+helix_sprites = [d['sprite'] for d in STATE['drawn']]
+check(
+    'helix soft trail draws 4 soft ribbon passes (2 counter-phase strands)',
+    len([s for s in helix_sprites if s == 'wf-lib/effects/sprites/px_effects/beam_soft.png']) >= 2
+    and len([s for s in helix_sprites if s == 'wf-lib/effects/sprites/px_effects/beam_glow_soft.png']) >= 2,
+    f'sprites={helix_sprites}',
+)
+trail.drop(9901)
+
+STATE['drawn'].clear()
+STATE['quads'].clear()
+star_b = fx.burst(lua_table(
+    '{ x = 250, y = 250, radius = 32, duration = 12, live = 20, smoke = false, '
+    'style = "plasma", shape = "spin_star", points = 6, spin = 0.2, '
+    'rebuffer = { at = 6, mode = "pulse", noise = 1.5, r = 100, g = 220, b = 255, fade = 0.65 } }'
+))
+for _ in range(7):
+    tick_actors()
+draw()
+star_quads = [q for q in STATE['quads'] if q.get('sprite') == 'wf-lib/effects/sprites/px_effects/star.png']
+plasma_ribbons = [d for d in STATE['drawn'] if d.get('sprite') == 'wf-lib/effects/sprites/px_effects/beam_plasma.png']
+check(
+    'spin_star plasma burst with pulse rebuffer at frame 6 draws plasma ribbons, fx.STAR quads, and positive forward fade',
+    star_b is not None
+    and star_b['fade'] > 0
+    and len(plasma_ribbons) >= 2
+    and len(star_quads) >= 2,
+    f'fade={star_b["fade"] if star_b else None}, plasma={len(plasma_ribbons)}, star_quads={len(star_quads)}',
+)
+
+STATE['drawn'].clear()
+STATE['quads'].clear()
+star_em = fx.emitter(lua_table(
+    '{ x = 150, y = 150, owner = WORM, style = "soft", spark = false, reach = false, trail = false, '
+    'glow = { shape = "spin_star", spin = 0.2 }, ring = { radius = 24, shape = "star", star_points = 6 } }'
+))
+tick_actors()
+draw()
+em_star_quads = [q for q in STATE['quads'] if q.get('sprite') == 'wf-lib/effects/sprites/px_effects/star.png']
+em_soft_rings = [d for d in STATE['drawn'] if d.get('sprite') == 'wf-lib/effects/sprites/px_effects/beam_soft.png']
+check(
+    'emitter with spin_star glow and soft star ring draws fx.STAR quads and soft ribbons',
+    star_em is not None and len(em_star_quads) >= 1 and len(em_soft_rings) >= 1,
+    f'star_quads={len(em_star_quads)}, soft_rings={len(em_soft_rings)}',
+)
+if star_em is not None:
+    star_em['remove'](star_em)
+if th is not None:
+    th['remove'](th)
+
+# Expire earlier bursts before testing glow-only burst
+for _ in range(30):
+    tick_actors()
+
+# Glow-only burst (shape = "none") + independent orb glow + rainbow color cycling
+STATE['drawn'].clear()
+STATE['quads'].clear()
+glow_only_b = fx.burst(lua_table(
+    '{ x = 720, y = 720, radius = 36, duration = 16, live = 16, smoke = false, '
+    'rainbow = true, shape = "none", glow = { shape = "orb", scale = 2.4, expand = 1.2, inner = true } }'
+))
+colors_seen = set()
+tick_actors()
+draw()
+glow_only_ribbons = [
+    d for d in STATE['drawn']
+    if d['points'] and abs(d['points'][0]['x'] - 720.0) < 90.0 and abs(d['points'][0]['y'] - 720.0) < 90.0
+]
+glow_only_quads = [
+    q for q in STATE['quads']
+    if 'glow.png' in str(q.get('sprite')) and abs(q['x'] - 720.0) < 90.0 and abs(q['y'] - 720.0) < 90.0
+]
+STATE['drawn'].clear()
+STATE['quads'].clear()
+ring_rainbow_b = fx.burst(lua_table(
+    '{ x = 720, y = 720, radius = 30, duration = 20, live = 20, smoke = false, rainbow = true, shape = "ring" }'
+))
+for _ in range(5):
+    tick_actors()
+    draw()
+    for d in STATE['drawn']:
+        for pt in d['points']:
+            if pt.get('color') is not None:
+                colors_seen.add(int(pt['color']))
+check(
+    'shape = "none" glow-only burst draws zero texbeam ribbons and renders independent orb glow quads',
+    glow_only_b is not None and len(glow_only_ribbons) == 0 and len(glow_only_quads) >= 2,
+    f'ribbons={len(glow_only_ribbons)}, orb_quads={len(glow_only_quads)}',
+)
+check(
+    'rainbow = true cycles burst ribbon color across 50 Hz ticks',
+    len(colors_seen) >= 2,
+    f'distinct_colors={len(colors_seen)}',
+)
+if glow_only_b is not None:
+    glow_only_b['dead'] = True
+if ring_rainbow_b is not None:
+    ring_rainbow_b['dead'] = True
+
+# fx.mine forwards ring, color, rainbow, style cleanly
+mine_rec = lua_table('{ id = 4401, x = 310, y = 410 }')
+MINES.append(mine_rec)
+mine_em, mine_tr = fx.mine(lua_table('{ target = wa.mines.all()[1], style = "soft", color = { r = 80, g = 220, b = 255 }, rainbow = true, ring = { radius = 16, shape = "star", speed = 0.2 }, spark = false, reach = false, glow = true, trail = false }'))
+STATE['drawn'].clear()
+STATE['quads'].clear()
+tick_actors()
+draw()
+mine_rings = [d for d in STATE['drawn'] if 'beam_soft.png' in str(d.get('sprite'))]
+check(
+    'fx.mine forwards style, color, rainbow and star ring options to tracked mine emitter',
+    mine_em is not None and len(mine_rings) >= 1,
+    f'mine_rings={len(mine_rings)}',
+)
+if mine_em is not None:
+    mine_em['dead'] = True
+if mine_tr is not None:
+    mine_tr['release']()
+
+# custom_explosion on_taze_mine invokes callback on mine within radius instead of arm()
+tazed_mines = []
+blast.explode(lua_table(
+    '{ x = 300, y = 400, radius = 40, damage = 20, push = 40, hole = 16, destroy = true, '
+    'effect = false, sound = false }'
+), )
+# Register a second blast call with on_taze_mine through Lua wrapper
+lua.globals()['_rec_taze_mine'] = lambda m: tazed_mines.append(int(m['id']))
+blast.explode(lua.eval('{ x = 300, y = 400, radius = 40, damage = 20, push = 40, hole = 16, destroy = false, effect = false, sound = false, on_taze_mine = function(m) _rec_taze_mine(m) end }'))
+check(
+    'custom_explosion invokes on_taze_mine for mines inside blast radius',
+    tazed_mines == [4401],
+    f'tazed_mines={tazed_mines}',
+)
+MINES.clear()
 
 print()
 if FAILED:

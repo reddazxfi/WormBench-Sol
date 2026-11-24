@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   WeaponProject,
+  HoldConfig,
   HandType,
   MissileAnimType,
   BehaviorArtKey,
@@ -423,24 +424,21 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
   // ticks after the fire message. The preview "Test" button does the same at
   // 20 ms a tick.
   const flashFileInputRef = useRef<HTMLInputElement>(null);
+  const bufferFileInputRef = useRef<HTMLInputElement>(null);
   const extraHandFileInputRef = useRef<HTMLInputElement>(null);
   const flashImgRef = useRef<HTMLImageElement | null>(null);
   const [flashLoadedImg, setFlashLoadedImg] = useState<HTMLImageElement | null>(null);
+  const bufferImgRef = useRef<HTMLImageElement | null>(null);
+  const [bufferLoadedImg, setBufferLoadedImg] = useState<HTMLImageElement | null>(null);
   const extraHandImgRef = useRef<HTMLImageElement | null>(null);
   const [extraHandLoadedImg, setExtraHandLoadedImg] = useState<HTMLImageElement | null>(null);
-  // 50 Hz ticks on the firing tab: the strip's frame is derived from them the
-  // way `sb.hold` derives it from the world clock, so the tab shows the
-  // firing animation running instead of a single still.
+  // 50 Hz ticks on the firing & buffering tabs so strips animate at their true FPS.
   const [fireTick, setFireTick] = useState(0);
+  const [bufferTick, setBufferTick] = useState(0);
 
-  // The Space swing: `swingStart` is a wall-clock stamp so the preview plays at
-  // 20 ms a tick like the game, and `swingTick` re-renders the canvas as it
-  // runs. Nothing is stored on the project here: the clip is the author's data
-  // and this only plays it.
-  // Two faces of one builder: the held art and the firing sheet. Both are the
-  // same gun with the same geometry; the tab keeps the firing controls from
-  // crowding the aim ones.
-  const [aimTab, setAimTab] = useState<'aim' | 'firing'>('aim');
+  // Three faces of one builder: the held art, optional wind-up/buffer art
+  // (for beams & sequential fire), and the firing sheet.
+  const [aimTab, setAimTab] = useState<'aim' | 'buffer' | 'firing'>('aim');
   const [postureTab, setPostureTab] = useState<'hold' | 'wormSprites'>(() =>
     !project.hold?.enabled && !!project.wormSprites?.enabled ? 'wormSprites' : 'hold',
   );
@@ -521,12 +519,16 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [swingStart, swingTick]);
 
-  // The firing role's clock: one tick per 50 Hz frame while its tab is open, so
-  // the strip runs at the rate the game plays it (`fireFps` frames a second).
+  // The firing & buffering role clocks: 50 Hz ticks while the tab is open.
   useEffect(() => {
-    if (aimTab !== 'firing') return;
-    const timer = setInterval(() => setFireTick((tick) => tick + 1), 20);
-    return () => clearInterval(timer);
+    if (aimTab === 'firing') {
+      const timer = setInterval(() => setFireTick((tick) => tick + 1), 20);
+      return () => clearInterval(timer);
+    }
+    if (aimTab === 'buffer') {
+      const timer = setInterval(() => setBufferTick((tick) => tick + 1), 20);
+      return () => clearInterval(timer);
+    }
   }, [aimTab]);
 
   useEffect(() => {
@@ -544,7 +546,27 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     return () => clearTimeout(timer);
   }, [putAwayCounter]);
 
-  const hold = project.hold;
+  const EMPTY_HOLD: HoldConfig = {
+    enabled: false,
+    sheet: '',
+    handType: 'mid',
+    handRadius: 10,
+    weapRadius: 6,
+    weapRotation: 0,
+    scale: 1,
+    handScale: 1,
+    frames: 1,
+    fps: 15,
+    animate: false,
+    drawHand: true,
+    keepWhileFiring: false,
+    thrown: false,
+    putAway: true,
+    handRad: 10,
+    handRadLower: 0,
+    handRadUpper: 0,
+  };
+  const hold = project.hold ?? EMPTY_HOLD;
   const defaultArt = defaultArtFor(project);
   // The clip the preview plays: the project's own, or the default shape while
   // the card is on and no keys exist yet (so pressing Space always shows
@@ -570,6 +592,29 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       (hold.handOffsetX ?? 0) !== 0 ||
       (hold.handOffsetY ?? 0) !== 0 ||
       !!project.aimClip?.enabled);
+  const showBufferTab =
+    project.fireType === 'beam' || !!project.fireSequence?.enabled || !!hold.bufferFile;
+  useEffect(() => {
+    if (!showBufferTab && aimTab === 'buffer') setAimTab('aim');
+  }, [showBufferTab, aimTab]);
+  const hasBufferGeometry =
+    hold.bufferWeapRadius !== undefined ||
+    hold.bufferWeapRotation !== undefined ||
+    hold.bufferScale !== undefined ||
+    hold.bufferOffsetX !== undefined ||
+    hold.bufferOffsetY !== undefined ||
+    hold.bufferHandOffsetX !== undefined ||
+    hold.bufferHandOffsetY !== undefined ||
+    hold.bufferHandRadius !== undefined ||
+    hold.bufferHandRotation !== undefined ||
+    hold.bufferHandScale !== undefined;
+  const bufferStripFrames = Math.max(1, Math.round(hold.bufferFrames ?? 1));
+  const bufferFps = Math.max(1, Math.round(Number(hold.bufferFps) || 15));
+  const bufferCellWidth = Math.max(1, Math.round(hold.bufferWidth ?? 0));
+  const bufferCellHeight = Math.max(1, Math.round((hold.bufferHeight ?? 0) / bufferStripFrames));
+  const bufferPreviewFrame =
+    bufferStripFrames > 1 ? Math.floor((bufferTick * bufferFps) / 50) % bufferStripFrames : 0;
+
   // The firing role's resolved numbers, the way the generator resolves them:
   // unset means "the aim art", which is PX's FAMAS case.
   const fireStripFrames = Math.max(1, Math.round(hold.fireFrames ?? 1));
@@ -928,6 +973,20 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     }
   }, [hold.flashPreview]);
 
+  useEffect(() => {
+    if (hold.bufferPreview) {
+      const img = new Image();
+      img.onload = () => {
+        bufferImgRef.current = img;
+        setBufferLoadedImg(img);
+      };
+      img.src = hold.bufferPreview;
+    } else {
+      bufferImgRef.current = null;
+      setBufferLoadedImg(null);
+    }
+  }, [hold.bufferPreview]);
+
   // The second hand's own art, when it has one. Without it the preview draws
   // the first hand's sheet, exactly as the layer does.
   const extraHandPreview = hold.extraHand?.enabled ? hold.extraHand.preview : undefined;
@@ -1109,6 +1168,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     // short of straight up/down, the same numbers the Lua clamps with. The
     // worm's own posture strip still follows the real aim, exactly as in game.
     const firingView = aimTab === 'firing' || fireDemoTick !== null;
+    const bufferView = !firingView && aimTab === 'buffer';
+    const poseRole = firingView ? 'firing' : bufferView ? 'buffer' : 'aim';
     const useWeaponFirePose =
       aimTab === 'firing' || (fireDemoTick !== null && fireDemoTick < 4);
 
@@ -1168,7 +1229,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       }
     }
 
-    // 2. Shared Sprite Builder hold/firing/hands overlay
+    // 2. Shared Sprite Builder hold/buffer/firing/hands overlay
     const activeFireFrame =
       fireDemoTick !== null
         ? fireStripFrames > 1
@@ -1182,14 +1243,18 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       aimT,
       putAwayShrink,
       firingView,
+      poseRole,
       currentFrame,
       firePreviewFrame: activeFireFrame,
       fireStripFrames,
+      bufferPreviewFrame,
+      bufferStripFrames,
       swingPose,
       echoPoses,
       weaponImg: weaponLoadedImg || weaponImgRef.current,
       defaultHoldImg: defaultHoldLoaded,
       flashImg: flashLoadedImg || flashImgRef.current,
+      bufferImg: bufferLoadedImg || bufferImgRef.current,
       handMidImg: handMidImgRef.current,
       handLowerImg: handLowerImgRef.current,
       handUpperImg: handUpperImgRef.current,
@@ -1292,7 +1357,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       ctx.restore();
     }
     ctx.restore();
-  }, [hold, project.wormSprites?.enabled, project.wormSprites?.animate, project.melee, project.aimClip, aimAngleIndex, currentFrame, facingRight, assetsLoaded, weaponLoadedImg, defaultHoldLoaded, putAwayCounter, flashLoadedImg, extraHandLoadedImg, firePreviewFrame, fireStripFrames, fireDemoTick, wormAnimTick, wormPoseSeq, aimZoom, swingPose, swingStart, swingTick, echoPoses, aimTab, postureTab]);
+  }, [hold, project.wormSprites?.enabled, project.wormSprites?.animate, project.melee, project.aimClip, aimAngleIndex, currentFrame, facingRight, assetsLoaded, weaponLoadedImg, defaultHoldLoaded, putAwayCounter, flashLoadedImg, bufferLoadedImg, extraHandLoadedImg, firePreviewFrame, fireStripFrames, bufferPreviewFrame, bufferStripFrames, fireDemoTick, wormAnimTick, wormPoseSeq, aimZoom, swingPose, swingStart, swingTick, echoPoses, aimTab, postureTab]);
 
   // Derive active preview role settings for the 50 Hz simulation canvas
   const activeRolePreviewCfg = (() => {
@@ -1321,7 +1386,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         return {
           ...missile,
           anim: 'none' as MissileAnimType,
-          frames: project.roamSheets.flight1.frames || 1,
+          frames: project.roamSheets?.flight1?.frames || 1,
         };
       }
       return missile;
@@ -2048,6 +2113,64 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     if (flashFileInputRef.current) flashFileInputRef.current.value = '';
   };
 
+  const applyBufferFile = async (file: File, framesHint?: number) => {
+    const previewUrl = URL.createObjectURL(file);
+    let bufferWidth: number | undefined;
+    let bufferHeight: number | undefined;
+    try {
+      const px = await imagePixelSize(previewUrl);
+      bufferWidth = px.width;
+      bufferHeight = px.height;
+    } catch {
+      // Browser still draws it; cell falls back to square.
+    }
+    const autoFrames =
+      framesHint && framesHint > 0
+        ? framesHint
+        : bufferWidth && bufferHeight && bufferHeight > bufferWidth && bufferHeight % bufferWidth === 0
+          ? bufferHeight / bufferWidth
+          : 1;
+    updateHold({
+      enabled: true,
+      bufferFile: file,
+      bufferPreview: previewUrl,
+      bufferWidth,
+      bufferHeight,
+      bufferWeapRadius: hold.bufferWeapRadius ?? hold.weapRadius ?? 6,
+      bufferWeapRotation: hold.bufferWeapRotation ?? hold.weapRotation ?? 0,
+      bufferScale: hold.bufferScale ?? hold.scale ?? 1,
+      bufferOffsetX: hold.bufferOffsetX ?? hold.offsetX ?? 0,
+      bufferOffsetY: hold.bufferOffsetY ?? hold.offsetY ?? 0,
+      bufferHandRadius: hold.bufferHandRadius ?? hold.handRadius ?? 10,
+      bufferHandRotation: hold.bufferHandRotation ?? hold.handRotation ?? 0,
+      bufferHandScale: hold.bufferHandScale ?? hold.handScale ?? 1,
+      bufferHandOffsetX: hold.bufferHandOffsetX ?? hold.handOffsetX ?? 0,
+      bufferHandOffsetY: hold.bufferHandOffsetY ?? hold.handOffsetY ?? 0,
+      bufferFrames: autoFrames,
+      bufferFps: hold.bufferFps ?? 15,
+      bufferHideMain: hold.bufferHideMain ?? true,
+    });
+  };
+
+  const handleUploadBuffer = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    await applyBufferFile(file);
+  };
+
+  const removeBuffer = () => {
+    if (hold.bufferPreview) URL.revokeObjectURL(hold.bufferPreview);
+    setBufferLoadedImg(null);
+    updateHold({
+      bufferFile: undefined,
+      bufferPreview: undefined,
+      bufferWidth: undefined,
+      bufferHeight: undefined,
+    });
+    if (bufferFileInputRef.current) bufferFileInputRef.current.value = '';
+  };
+
   const applyExtraHandFile = async (file: File) => {
     const previewUrl = URL.createObjectURL(file);
     let sheetWidth: number | undefined;
@@ -2410,14 +2533,23 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         {/* Aim / Firing builder tabs. The canvas below is shared: it shows the
             held art while aiming and the firing sheet on Test fire. */}
         <div
-          className="mb-4 inline-flex rounded-lg border border-stone-200 bg-stone-100/90 p-0.5 dark:border-stone-700 dark:bg-stone-950/60"
+          className="mb-4 inline-flex flex-wrap rounded-lg border border-stone-200 bg-stone-100/90 p-0.5 dark:border-stone-700 dark:bg-stone-950/60"
           role="tablist"
           aria-label="Held art builder"
         >
           {(
             [
               { id: 'aim' as const, label: 'Aim & Swing', hint: 'The held weapon, its offset, the hand and the Space clip' },
-              { id: 'firing' as const, label: 'Firing Frames', hint: "WA's 0x6A/0x6B frames: PX's FAMAS firing sheet" },
+              ...(showBufferTab
+                ? [
+                    {
+                      id: 'buffer' as const,
+                      label: 'While Buffering',
+                      hint: 'Charge / wind-up sprite played during initial buffer before beam or sequenced shot release',
+                    },
+                  ]
+                : []),
+              { id: 'firing' as const, label: 'Firing Frames', hint: "WA's 0x6A/0x6B frames & beam/burst firing strip" },
             ]
           ).map((tab) => (
             <button
@@ -2436,9 +2568,14 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               }`}
             >
               {tab.label}
+              {tab.id === 'buffer' && hold.bufferFile ? (
+                <span className="ml-1 font-mono text-[10px] text-amber-600 dark:text-amber-400">
+                  · {bufferStripFrames}f
+                </span>
+              ) : null}
               {tab.id === 'firing' && hold.flashFile ? (
                 <span className="ml-1 font-mono text-[10px] text-forge-600 dark:text-forge-400">
-                  · 1
+                  · {fireStripFrames}f
                 </span>
               ) : null}
             </button>
@@ -2474,6 +2611,23 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     type="checkbox"
                     checked={hold.drawHand !== false}
                     onChange={(e) => updateHold({ drawHand: e.target.checked })}
+                    className="rounded text-forge-600 focus:ring-forge-500 w-4 h-4 cursor-pointer"
+                  />
+                </label>
+              ) : aimTab === 'buffer' ? (
+                <label
+                  htmlFor="hold-buffer-draw-hand"
+                  title="Show the hand while buffering/charging, or hide it for this sheet only. Unset follows the aiming hand."
+                  className="h-10 flex items-center justify-between px-3 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 cursor-pointer shadow-2xs hover:bg-stone-50 dark:hover:bg-stone-750 transition-colors"
+                >
+                  <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 select-none">
+                    Draw Hand
+                  </span>
+                  <input
+                    id="hold-buffer-draw-hand"
+                    type="checkbox"
+                    checked={(hold.bufferDrawHand ?? hold.drawHand) !== false}
+                    onChange={(e) => updateHold({ bufferDrawHand: e.target.checked })}
                     className="rounded text-forge-600 focus:ring-forge-500 w-4 h-4 cursor-pointer"
                   />
                 </label>
@@ -2784,6 +2938,79 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 </>
               )}
             </div>
+              </>
+            ) : aimTab === 'buffer' ? (
+              <>
+                <HoldDial
+                  id="hold-buffer-hand-scale"
+                  label="Buffer Hand Scale"
+                  value={hold.bufferHandScale ?? hold.handScale ?? 1}
+                  onChange={(value) => updateHold({ bufferHandScale: value })}
+                  min={0.5}
+                  max={2}
+                  step={0.05}
+                  unit="x"
+                  title="Multiplies the hand's cell while buffering."
+                />
+                <HoldDial
+                  id="hold-buffer-hand-radius"
+                  label="Buffer Hand Radius"
+                  value={hold.bufferHandRadius ?? hold.handRadius ?? 10}
+                  onChange={(value) => updateHold({ bufferHandRadius: value })}
+                  min={-35}
+                  max={35}
+                  step={1}
+                  unit="px"
+                  title="The hand's distance from the worm's centre while buffering."
+                />
+                <HoldDial
+                  id="hold-buffer-hand-rotation"
+                  label="Buffer Hand Rotation"
+                  value={hold.bufferHandRotation ?? hold.handRotation ?? 0}
+                  onChange={(value) => updateHold({ bufferHandRotation: value })}
+                  min={-180}
+                  max={180}
+                  step={5}
+                  unit="°"
+                  title="Extra hand rotation while buffering."
+                />
+
+                <div
+                  className="space-y-1.5 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-800"
+                  title="Moves the hand art inside its own cell while buffering."
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-stone-700 dark:text-stone-300">
+                      Hand Offset
+                    </span>
+                    <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+                      {(hold.bufferHandOffsetX ?? 0)}, {hold.bufferHandOffsetY ?? 0} px
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <HoldDial
+                      id="hold-buffer-hand-offset-x"
+                      label="X"
+                      value={hold.bufferHandOffsetX ?? 0}
+                      onChange={(value) => updateHold({ bufferHandOffsetX: value })}
+                      min={-32}
+                      max={32}
+                      step={1}
+                    />
+                    <HoldDial
+                      id="hold-buffer-hand-offset-y"
+                      label="Y"
+                      value={hold.bufferHandOffsetY ?? 0}
+                      onChange={(value) => updateHold({ bufferHandOffsetY: value })}
+                      min={-32}
+                      max={32}
+                      step={1}
+                    />
+                  </div>
+                  <p className="text-[10px] leading-snug text-stone-500 dark:text-stone-400">
+                    Unset values follow the aiming hand so charge animations align cleanly.
+                  </p>
+                </div>
               </>
             ) : (
               <>
@@ -3119,7 +3346,11 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               <div className="flex min-w-0 items-center gap-2">
                 <Upload className="h-4 w-4 shrink-0 text-forge-600 dark:text-forge-400" />
                 <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-stone-900 dark:text-stone-100">
-                  {aimTab === 'firing' ? 'Firing Sprite Sheet' : 'Held Sprite Sheet'}
+                  {aimTab === 'firing'
+                    ? 'Firing Sprite Sheet'
+                    : aimTab === 'buffer'
+                      ? 'Buffering Sprite Sheet'
+                      : 'Held Sprite Sheet'}
                 </span>
                 {aimTab === 'firing' ? (
                   hold.flashFile ? (
@@ -3132,6 +3363,19 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   ) : (
                     <span className="truncate text-xs text-stone-500 dark:text-stone-400">
                       None: the held art keeps drawing on those frames
+                    </span>
+                  )
+                ) : aimTab === 'buffer' ? (
+                  hold.bufferFile ? (
+                    <span
+                      className="truncate font-mono text-xs font-medium text-amber-600 dark:text-amber-400"
+                      title={`${hold.bufferFile.name} (${(hold.bufferFile.size / 1024).toFixed(1)} KB)`}
+                    >
+                      {hold.bufferFile.name}
+                    </span>
+                  ) : (
+                    <span className="truncate text-xs text-stone-500 dark:text-stone-400">
+                      None: the aiming art stays up during charge/buffer
                     </span>
                   )
                 ) : hold.sheetFile ? (
@@ -3159,17 +3403,43 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       : 'one frame'}
                   </span>
                 )}
+                {aimTab === 'buffer' && (
+                  <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+                    {bufferStripFrames > 1
+                      ? `${bufferStripFrames} x ${bufferCellWidth}x${bufferCellHeight} px`
+                      : 'one frame'}
+                  </span>
+                )}
                 <input
-                  key={aimTab === 'firing' ? 'flash-file' : 'sheet-file'}
-                  ref={aimTab === 'firing' ? flashFileInputRef : fileInputRef}
+                  key={aimTab === 'firing' ? 'flash-file' : aimTab === 'buffer' ? 'buffer-file' : 'sheet-file'}
+                  ref={
+                    aimTab === 'firing'
+                      ? flashFileInputRef
+                      : aimTab === 'buffer'
+                        ? bufferFileInputRef
+                        : fileInputRef
+                  }
                   type="file"
                   accept="image/png,image/gif"
-                  onChange={aimTab === 'firing' ? handleUploadFlash : handleUploadSheet}
+                  onChange={
+                    aimTab === 'firing'
+                      ? handleUploadFlash
+                      : aimTab === 'buffer'
+                        ? handleUploadBuffer
+                        : handleUploadSheet
+                  }
                   className="hidden"
                 />
                 <button
                   type="button"
-                  onClick={() => (aimTab === 'firing' ? flashFileInputRef : fileInputRef).current?.click()}
+                  onClick={() =>
+                    (aimTab === 'firing'
+                      ? flashFileInputRef
+                      : aimTab === 'buffer'
+                        ? bufferFileInputRef
+                        : fileInputRef
+                    ).current?.click()
+                  }
                   className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-800 shadow-2xs transition-colors hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
                 >
                   <Upload className="h-3.5 w-3.5 text-forge-600 dark:text-forge-400" />
@@ -3177,23 +3447,44 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     ? hold.flashFile
                       ? 'Change PNG'
                       : 'Upload PNG'
-                    : hold.sheetFile
-                      ? 'Change PNG Sheet'
-                      : 'Upload PNG'}
+                    : aimTab === 'buffer'
+                      ? hold.bufferFile
+                        ? 'Change PNG'
+                        : 'Upload PNG'
+                      : hold.sheetFile
+                        ? 'Change PNG Sheet'
+                        : 'Upload PNG'}
                 </button>
                 <SpritePickButton
                   accept="image"
-                  label={aimTab === 'firing' ? 'Pick Firing Sheet' : 'Pick Hold Sheet'}
+                  label={
+                    aimTab === 'firing'
+                      ? 'Pick Firing Sheet'
+                      : aimTab === 'buffer'
+                        ? 'Pick Buffer Sheet'
+                        : 'Pick Hold Sheet'
+                  }
                   onPick={(file, framesHint) =>
                     aimTab === 'firing'
                       ? void applyFlashFile(file, framesHint)
-                      : void applyHoldSheetFile(file, framesHint)
+                      : aimTab === 'buffer'
+                        ? void applyBufferFile(file, framesHint)
+                        : void applyHoldSheetFile(file, framesHint)
                   }
                 />
                 {aimTab === 'firing' && hold.flashPreview && (
                   <button
                     type="button"
                     onClick={removeFlash}
+                    className="text-xs font-medium text-rose-500 hover:text-rose-600"
+                  >
+                    Remove
+                  </button>
+                )}
+                {aimTab === 'buffer' && hold.bufferPreview && (
+                  <button
+                    type="button"
+                    onClick={removeBuffer}
                     className="text-xs font-medium text-rose-500 hover:text-rose-600"
                   >
                     Remove
@@ -3215,7 +3506,11 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             <div className="space-y-2.5 rounded-xl border border-stone-200 bg-stone-50/50 p-3.5 dark:border-stone-800 dark:bg-stone-800/30">
               <div className="text-center">
                 <span className="text-xs font-bold uppercase tracking-wider text-stone-900 dark:text-stone-100">
-                  {aimTab === 'firing' ? 'Firing Animation' : 'Hold Animation'}
+                  {aimTab === 'firing'
+                    ? 'Firing Animation'
+                    : aimTab === 'buffer'
+                      ? 'Buffering Animation'
+                      : 'Hold Animation'}
                 </span>
               </div>
               {aimTab === 'firing' ? (
@@ -3272,6 +3567,60 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     </div>
                   </div>
                 </div>
+              ) : aimTab === 'buffer' ? (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1 text-center">
+                    <label
+                      htmlFor="hold-buffer-frames"
+                      className="block text-xs font-medium text-stone-600 dark:text-stone-400"
+                    >
+                      Total Frames
+                    </label>
+                    <NumberInput
+                      id="hold-buffer-frames"
+                      min={1}
+                      max={32}
+                      value={bufferStripFrames}
+                      title="Frames in the buffering/wind-up sheet."
+                      onChange={(e) =>
+                        updateHold({
+                          bufferFrames: Math.min(32, Math.max(1, Number(e.target.value) || 1)),
+                        })
+                      }
+                      className="w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-center font-mono text-xs text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="space-y-1 text-center">
+                    <label
+                      htmlFor="hold-buffer-fps"
+                      className="block text-xs font-medium text-stone-600 dark:text-stone-400"
+                      title="Frames per second for the buffering strip."
+                    >
+                      FPS
+                    </label>
+                    <NumberInput
+                      id="hold-buffer-fps"
+                      min={1}
+                      max={30}
+                      value={bufferFps}
+                      title="Frames per second for the buffering strip."
+                      onChange={(e) =>
+                        updateHold({
+                          bufferFps: Math.min(30, Math.max(1, Number(e.target.value) || 1)),
+                        })
+                      }
+                      className="w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-center font-mono text-xs text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="space-y-1 text-center">
+                    <span className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+                      Current
+                    </span>
+                    <div className="w-full rounded-lg border border-stone-200 bg-stone-100 px-2 py-1.5 text-center font-mono text-xs font-semibold text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300">
+                      {bufferPreviewFrame + 1} / {bufferStripFrames}
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1 text-center">
@@ -3318,14 +3667,19 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   </div>
                 </div>
               )}
-              {/* The engine slices the sheet by `frames` too, so the same
-                  divisibility rule applies to either role. */}
               {aimTab === 'firing' ? (
                 <SheetFrameWarning
                   preview={hold.flashPreview}
                   width={hold.flashWidth}
                   height={hold.flashHeight}
                   frames={fireStripFrames}
+                />
+              ) : aimTab === 'buffer' ? (
+                <SheetFrameWarning
+                  preview={hold.bufferPreview}
+                  width={hold.bufferWidth}
+                  height={hold.bufferHeight}
+                  frames={bufferStripFrames}
                 />
               ) : (
                 <SheetFrameWarning
@@ -3335,11 +3689,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   frames={hold.sheetFrames ?? hold.frames}
                 />
               )}
-              {/* A picture with more cells than the hold plays: an imported strip
-                  (PX's buffalo is 20 cells held on frame 0). The cell count is what
-                  `mod.toml` declares and what slices the PNG, so saying so here is
-                  the difference between "my sheet lost its frames" and the truth. */}
-              {aimTab !== 'firing' && (hold.sheetFrames ?? 1) > (hold.frames ?? 1) && (
+              {aimTab === 'aim' && (hold.sheetFrames ?? 1) > (hold.frames ?? 1) && (
                 <p className="text-[10px] leading-relaxed text-stone-500 dark:text-stone-400">
                   The picture holds {hold.sheetFrames} cells and this hold plays{' '}
                   {hold.frames === 1 ? 'frame 0 of them' : `the first ${hold.frames}`}: the engine
@@ -3384,6 +3734,42 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   step={0.05}
                   unit="x"
                   title="Scales the firing sheet, the role's own multiplier on top of the sheet's cell."
+                />
+              </>
+            ) : aimTab === 'buffer' ? (
+              <>
+                <HoldDial
+                  id="hold-buffer-radius"
+                  label="Buffer Radius"
+                  value={hold.bufferWeapRadius ?? hold.weapRadius ?? 6}
+                  onChange={(value) => updateHold({ bufferWeapRadius: value })}
+                  min={-35}
+                  max={35}
+                  step={1}
+                  unit="px"
+                  title="Distance of the buffering sheet from the worm's centre during charge/wind-up."
+                />
+                <HoldDial
+                  id="hold-buffer-rotation"
+                  label="Buffer Rotation"
+                  value={hold.bufferWeapRotation ?? hold.weapRotation ?? 0}
+                  onChange={(value) => updateHold({ bufferWeapRotation: value })}
+                  min={-180}
+                  max={180}
+                  step={5}
+                  unit="°"
+                  title="Rotation of the buffering sheet about its own centre."
+                />
+                <HoldDial
+                  id="hold-buffer-scale"
+                  label="Buffer Scale"
+                  value={hold.bufferScale ?? hold.scale ?? 1}
+                  onChange={(value) => updateHold({ bufferScale: value })}
+                  min={0.5}
+                  max={2.5}
+                  step={0.05}
+                  unit="x"
+                  title="Scales the buffering sheet."
                 />
               </>
             ) : (
@@ -3446,7 +3832,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               </>
             )}
 
-            {/* 4. Its offset: the same channel in both roles, so art whose
+            {/* 4. Its offset: the same channel in all roles, so art whose
                 centre is not its grip lines up at every aim. */}
             <div
               className="space-y-1.5 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-800"
@@ -3456,14 +3842,16 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 <span className="font-semibold text-stone-700 dark:text-stone-300">Offset</span>
                 <span
                   className={`font-mono font-bold ${
-                    aimTab === 'firing'
+                    aimTab === 'firing' || aimTab === 'buffer'
                       ? 'text-amber-600 dark:text-amber-400'
                       : 'text-forge-600 dark:text-forge-400'
                   }`}
                 >
                   {aimTab === 'firing'
                     ? `${hold.fireOffsetX ?? 0}, ${hold.fireOffsetY ?? 0} px`
-                    : `${hold.offsetX ?? 0}, ${hold.offsetY ?? 0} px`}
+                    : aimTab === 'buffer'
+                      ? `${hold.bufferOffsetX ?? 0}, ${hold.bufferOffsetY ?? 0} px`
+                      : `${hold.offsetX ?? 0}, ${hold.offsetY ?? 0} px`}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -3483,6 +3871,27 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       label="Y"
                       value={hold.fireOffsetY ?? 0}
                       onChange={(value) => updateHold({ fireOffsetY: value })}
+                      min={-32}
+                      max={32}
+                      step={1}
+                    />
+                  </>
+                ) : aimTab === 'buffer' ? (
+                  <>
+                    <HoldDial
+                      id="hold-buffer-offset-x"
+                      label="X"
+                      value={hold.bufferOffsetX ?? 0}
+                      onChange={(value) => updateHold({ bufferOffsetX: value })}
+                      min={-32}
+                      max={32}
+                      step={1}
+                    />
+                    <HoldDial
+                      id="hold-buffer-offset-y"
+                      label="Y"
+                      value={hold.bufferOffsetY ?? 0}
+                      onChange={(value) => updateHold({ bufferOffsetY: value })}
                       min={-32}
                       max={32}
                       step={1}
@@ -3519,6 +3928,14 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     </span>
                     : the firing sheet is a quad, so its offset needs no extra layer. Positive Y is
                     toward the grip, and the hand keeps its own placement.
+                  </>
+                ) : aimTab === 'buffer' ? (
+                  <>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                      WFWS buffer role
+                    </span>
+                    : played automatically during Beam charge buffers and Timed Sequencer opening
+                    wind-ups via <code className="font-mono">sb.hold_trigger</code>.
                   </>
                 ) : aimLayerOn ? (
                   <>
@@ -3620,6 +4037,82 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                             fireHandScale: undefined,
                             fireHandOffsetX: undefined,
                             fireHandOffsetY: undefined,
+                          })
+                        }
+                        title="Go back to following the aiming parameters"
+                        className="font-medium text-forge-600 hover:text-forge-700 dark:text-forge-400"
+                      >
+                        Follow the aim
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : aimTab === 'buffer' ? (
+              <>
+                <div className="grid grid-cols-1 gap-3">
+                  <label
+                    htmlFor="hold-buffer-hide-main"
+                    title="Hide the held weapon while the buffering/charge strip plays. Uncheck to layer a glowing charge effect directly over the aiming weapon."
+                    className="flex h-10 cursor-pointer items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-3 dark:border-stone-700 dark:bg-stone-800"
+                  >
+                    <span className="min-w-0 text-xs font-semibold text-stone-800 dark:text-stone-200">
+                      Hide Main Weapon While Buffering
+                    </span>
+                    <input
+                      id="hold-buffer-hide-main"
+                      type="checkbox"
+                      checked={!!hold.bufferHideMain}
+                      onChange={(e) => updateHold({ bufferHideMain: e.target.checked })}
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-stone-200 bg-white/70 px-2.5 py-2 text-[11px] text-stone-600 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400">
+                  <p>
+                    Duration follows your Beam Charge Buffer or Timed Sequencer Initial Buffer
+                    automatically, then switches cleanly to Firing Frames on shot release.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!hold.bufferFile}
+                      onClick={() =>
+                        updateHold({
+                          bufferWeapRadius: hold.weapRadius ?? 6,
+                          bufferWeapRotation: hold.weapRotation ?? 0,
+                          bufferScale: hold.scale ?? 1,
+                          bufferOffsetX: hold.offsetX ?? 0,
+                          bufferOffsetY: hold.offsetY ?? 0,
+                          bufferHandRadius: hold.handRadius ?? 10,
+                          bufferHandRotation: hold.handRotation ?? 0,
+                          bufferHandScale: hold.handScale ?? 1,
+                          bufferHandOffsetX: hold.handOffsetX ?? 0,
+                          bufferHandOffsetY: hold.handOffsetY ?? 0,
+                        })
+                      }
+                      title="Copy aiming geometry into the buffering sheet"
+                      className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Copy aiming parameters
+                    </button>
+                    {hasBufferGeometry && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateHold({
+                            bufferWeapRadius: undefined,
+                            bufferWeapRotation: undefined,
+                            bufferScale: undefined,
+                            bufferOffsetX: undefined,
+                            bufferOffsetY: undefined,
+                            bufferHandRadius: undefined,
+                            bufferHandRotation: undefined,
+                            bufferHandScale: undefined,
+                            bufferHandOffsetX: undefined,
+                            bufferHandOffsetY: undefined,
                           })
                         }
                         title="Go back to following the aiming parameters"

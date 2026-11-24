@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
 import type {
+  BurstGlowConfig,
   CustomSoundAsset,
   CustomSoundsConfig,
   ExplosionEffectConfig,
+  ExplosionFireSpawnConfig,
   ExplosionPreset,
   RibbonTrailConfig,
   WeaponProject,
 } from '../types/weapon';
 import { DEFAULT_EXPLOSION_EFFECT, EXPLOSION_PRESETS } from '../data/explosionPresets';
+import { DEFAULT_BURST_GLOW } from '../data/beam';
 import { takeoverMissileActive } from '../data/airstrike';
 import { fireSequenceMissileActive } from '../data/fireSequence';
 import { bitBuilderMode } from '../data/spriteBuilder';
@@ -38,11 +41,11 @@ const RIBBON_DEFAULT: RibbonTrailConfig = {
   target: 'main',
 };
 
-/** A missile family has rounds for `wa.on.missile_frame` to sample. */
+/** A missile or placed mine family has entities for `wa.on.missile_frame` or `fx.tracker` to sample. */
 export function supportsRibbonTrail(project: WeaponProject): boolean {
   return (
     project.fireType === 'power' ||
-    (project.fireType === 'drop' && !!project.body.fuse) ||
+    project.fireType === 'drop' ||
     takeoverMissileActive(project) ||
     fireSequenceMissileActive(project)
   );
@@ -311,6 +314,69 @@ export function RibbonTrailCard({ project, onChange }: CardProps) {
                 onChange={(e) => update({ noise: Number(e.target.value) })}
                 unit="px"
               />
+            </div>
+          </div>
+
+          {/* Texture Style & Trail Algorithm */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <TooltipLabel
+                label="Texture Style"
+                code="style"
+                desc="Shared effects.sdk beam and glow texture family."
+              />
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                {(
+                  [
+                    { id: 'classic', label: 'Classic' },
+                    { id: 'soft', label: 'Soft' },
+                    { id: 'plasma', label: 'Plasma' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => update({ style: opt.id })}
+                    className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                      (ribbon.style ?? 'classic') === opt.id
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <TooltipLabel
+                label="Trail Algorithm"
+                code="mode"
+                desc="Electric jitters per point, Straight is clean, Wavy ripples a sine wave, Helix weaves twin strands."
+              />
+              <div className="grid grid-cols-4 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                {(
+                  [
+                    { id: 'electric', label: 'Electric' },
+                    { id: 'straight', label: 'Straight' },
+                    { id: 'wavy', label: 'Wavy' },
+                    { id: 'helix', label: 'Helix' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => update({ mode: opt.id })}
+                    className={`rounded-lg px-1.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                      (ribbon.mode ?? 'electric') === opt.id
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -747,8 +813,222 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
             />
           </div>
 
-          {/* Flags */}
-          <div className="flex flex-wrap gap-4 pt-1">
+          {/* Texture Style & Burst Shape */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <TooltipLabel
+                label="Texture Style"
+                code="style"
+                desc="Shared effects.sdk ribbon texture family."
+              />
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                {(
+                  [
+                    { id: 'classic', label: 'Classic' },
+                    { id: 'soft', label: 'Soft' },
+                    { id: 'plasma', label: 'Plasma' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => update({ style: opt.id, preset: 'custom' })}
+                    className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                      (fx.style ?? 'classic') === opt.id
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <TooltipLabel
+                label="Burst Shape"
+                code="shape"
+                desc="Ring is the classic PX shockwave; Star and Spin Star draw spiked energy bursts; Glow Only omits the texbeam ribbons so only the center glow renders."
+              />
+              <div className="grid grid-cols-4 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                {(
+                  [
+                    { id: 'ring', label: 'Ring' },
+                    { id: 'star', label: 'Star' },
+                    { id: 'spin_star', label: 'Spin Star' },
+                    { id: 'none', label: 'Glow Only' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => update({ shape: opt.id, preset: 'custom' })}
+                    className={`rounded-lg px-1.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                      (fx.shape ?? 'ring') === opt.id
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {(fx.shape === 'star' || fx.shape === 'spin_star') && (
+            <div className="grid grid-cols-2 gap-3">
+              <BurstNumField
+                id="explosion-star-points"
+                label="Star Points"
+                code="points"
+                hint="Number of star spikes around the burst (3 to 12)."
+                value={fx.starPoints ?? 5}
+                min={3}
+                max={12}
+                step={1}
+                onChange={(starPoints) => update({ starPoints, preset: 'custom' })}
+              />
+              {fx.shape === 'spin_star' && (
+                <BurstNumField
+                  id="explosion-spin"
+                  label="Spin Speed"
+                  code="spin"
+                  hint="Angular rotation speed in radians per 50 Hz tick."
+                  value={fx.spin ?? 0.16}
+                  min={-1}
+                  max={1}
+                  step={0.02}
+                  unit="rad/f"
+                  onChange={(spin) => update({ spin, preset: 'custom' })}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Independent Center Glow / Core Flare */}
+          {(() => {
+            const glow: BurstGlowConfig = fx.centerGlow ?? {
+              shape:
+                fx.shape === 'star' || fx.shape === 'spin_star' ? fx.shape : 'none',
+              scale: DEFAULT_BURST_GLOW.scale,
+              expand: DEFAULT_BURST_GLOW.expand,
+              spin: fx.spin ?? DEFAULT_BURST_GLOW.spin,
+              inner: DEFAULT_BURST_GLOW.inner,
+            };
+            const updateGlow = (patch: Partial<BurstGlowConfig>) =>
+              update({ centerGlow: { ...glow, ...patch }, preset: 'custom' });
+            return (
+              <div className="space-y-2.5 rounded-xl border border-stone-200/80 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-950/40">
+                <TooltipLabel
+                  label="Center Glow & Core Flare"
+                  code="glow = { shape, scale, expand, spin, inner }"
+                  desc="Independent center orb or star sprite rendered at the blast core. Can run with Ring, Star, or Glow Only."
+                />
+                <div className="grid grid-cols-4 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                  {(
+                    [
+                      { id: 'none', label: 'Off' },
+                      { id: 'orb', label: 'Orb' },
+                      { id: 'star', label: 'Star' },
+                      { id: 'spin_star', label: 'Spin Star' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => updateGlow({ shape: opt.id })}
+                      className={`rounded-lg px-1.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                        glow.shape === opt.id
+                          ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                          : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {glow.shape !== 'none' && (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      <BurstNumField
+                        id="explosion-glow-scale"
+                        label="Glow Scale"
+                        code="glow.scale"
+                        hint="Sprite size multiplier relative to blast radius."
+                        value={glow.scale}
+                        min={0.2}
+                        max={6}
+                        step={0.1}
+                        unit="x"
+                        onChange={(scale) => updateGlow({ scale })}
+                      />
+                      <BurstNumField
+                        id="explosion-glow-expand"
+                        label="Expand Factor"
+                        code="glow.expand"
+                        hint="How much the glow grows along the blast expansion curve (0 stays fixed size)."
+                        value={glow.expand}
+                        min={0}
+                        max={3}
+                        step={0.1}
+                        unit="x"
+                        onChange={(expand) => updateGlow({ expand })}
+                      />
+                      {glow.shape === 'spin_star' && (
+                        <BurstNumField
+                          id="explosion-glow-spin"
+                          label="Glow Spin"
+                          code="glow.spin"
+                          hint="Rotation speed in radians per 50 Hz tick."
+                          value={glow.spin}
+                          min={-1}
+                          max={1}
+                          step={0.02}
+                          unit="rad/f"
+                          onChange={(spin) => updateGlow({ spin })}
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
+                        <input
+                          type="checkbox"
+                          checked={glow.inner}
+                          onChange={(e) => updateGlow({ inner: e.target.checked })}
+                          className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                        />
+                        <span>White Hot Inner Core</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-stone-600 dark:text-stone-400">
+                          Glow Color:
+                        </span>
+                        <input
+                          type="color"
+                          value={glow.color && glow.color.trim() ? glow.color : fx.color}
+                          onChange={(e) => updateGlow({ color: e.target.value })}
+                          className="h-6 w-8 cursor-pointer rounded border border-stone-300 bg-transparent p-0.5 dark:border-stone-700"
+                        />
+                        {glow.color && (
+                          <button
+                            type="button"
+                            onClick={() => updateGlow({ color: undefined })}
+                            className="text-[11px] font-semibold text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white cursor-pointer"
+                          >
+                            Inherit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Flags & Customizable Rebuffer */}
+          <div className="space-y-2.5 pt-1">
             <label
               title={buildTooltip('Spawns tinted smoke puffs underneath the shockwave ring.', 'fx.SMOKE')}
               className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"
@@ -761,18 +1041,62 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
               />
               <span>Add Smoke Cloud</span>
             </label>
-            <label
-              title={buildTooltip('Re-noises and reverses fade envelope at frame 16 (electric mine flash).', 'rebuffer')}
-              className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"
-            >
-              <input
-                type="checkbox"
-                checked={fx.rebuffer}
-                onChange={(e) => update({ rebuffer: e.target.checked, preset: 'custom' })}
-                className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
-              />
-              <span>Frame-16 Second Pulse</span>
-            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+              <div className="sm:col-span-2">
+                <TooltipLabel
+                  label="Rebuffer Algorithm"
+                  code="rebuffer.mode"
+                  desc="PX Rewind reverses fade back inward; Pulse launches a clean second expanding wave; Flash adds a smooth brightness surge without snapping."
+                />
+                <div className="grid grid-cols-4 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                  {(
+                    [
+                      { id: 'px', label: 'PX Rewind' },
+                      { id: 'pulse', label: 'Pulse' },
+                      { id: 'flash', label: 'Flash' },
+                      { id: 'none', label: 'Off' },
+                    ] as const
+                  ).map((opt) => {
+                    const current = fx.rebuffer ? (fx.rebufferMode ?? 'px') : 'none';
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          update({
+                            rebuffer: opt.id !== 'none',
+                            rebufferMode: opt.id,
+                            preset: 'custom',
+                          })
+                        }
+                        className={`rounded-lg px-1.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                          current === opt.id
+                            ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                            : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {fx.rebuffer && (fx.rebufferMode ?? 'px') !== 'none' && (
+                <BurstNumField
+                  id="explosion-rebuffer-at"
+                  label="At Frame"
+                  code="rebuffer.at"
+                  hint="Game frame (50 Hz) when the rebuffer triggers (was hardcoded to 16)."
+                  value={fx.rebufferAt ?? 16}
+                  min={2}
+                  max={60}
+                  step={1}
+                  unit="f"
+                  onChange={(rebufferAt) => update({ rebufferAt, preset: 'custom' })}
+                />
+              )}
+            </div>
           </div>
 
           {/* Damage and crater are the replacement blast's own numbers, so they
@@ -891,7 +1215,118 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
                   </button>
                 ))}
               </div>
+              {fx.damageType === 'electric' && (
+                <label
+                  title={buildTooltip(
+                    'Electrify nearby mines into electric mines instead of blowing them up on blast.',
+                    'wf-lib/electric/taze_mine',
+                  )}
+                  className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!project.electricTazeMines}
+                    onChange={(e) => onChange({ electricTazeMines: e.target.checked })}
+                    className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                  />
+                  <span>Taze Mines Instead of Detonating (px.electric)</span>
+                </label>
+              )}
             </div>
+
+            {/* Secondary fire burst (`wa.fire.spawn`) on detonation */}
+            {(() => {
+              const fire: ExplosionFireSpawnConfig = fx.fireSpawn ?? {
+                enabled: false,
+                count: 6,
+                durationMs: 2500,
+                damage: 1,
+                upPower: 4,
+                vy: -3,
+              };
+              const updateFire = (patch: Partial<ExplosionFireSpawnConfig>) =>
+                update({ fireSpawn: { ...fire, ...patch } });
+              return (
+                <div className="space-y-2.5 border-t border-stone-200/80 pt-3 dark:border-stone-800/80">
+                  <label
+                    title={buildTooltip(
+                      'Scatter engine flame particles when this round or mine detonates.',
+                      'wa.fire.spawn',
+                    )}
+                    className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={fire.enabled}
+                      onChange={(e) => updateFire({ enabled: e.target.checked })}
+                      className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                    />
+                    <span>Spawn Fire Particles on Detonation (wa.fire.spawn)</span>
+                  </label>
+                  {fire.enabled && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      <BurstNumField
+                        id="explosion-fire-count"
+                        label="Flame Count"
+                        code="count"
+                        hint="Number of flames spawned at impact."
+                        value={fire.count}
+                        min={1}
+                        max={30}
+                        step={1}
+                        onChange={(count) => updateFire({ count })}
+                      />
+                      <BurstNumField
+                        id="explosion-fire-duration"
+                        label="Flame Lifetime"
+                        code="durationMs"
+                        hint="How long spawned flames burn in milliseconds."
+                        value={fire.durationMs}
+                        min={200}
+                        max={15000}
+                        step={100}
+                        unit="ms"
+                        onChange={(durationMs) => updateFire({ durationMs })}
+                      />
+                      <BurstNumField
+                        id="explosion-fire-damage"
+                        label="Flame Damage"
+                        code="damage"
+                        hint="Damage dealt by each flame touch."
+                        value={fire.damage}
+                        min={0}
+                        max={25}
+                        step={1}
+                        onChange={(damage) => updateFire({ damage })}
+                      />
+                      <BurstNumField
+                        id="explosion-fire-uppower"
+                        label="Upward Scatter"
+                        code="upPower"
+                        hint="Random upward/sideways spread multiplier passed to wa.fire.spawn."
+                        value={fire.upPower}
+                        min={0}
+                        max={20}
+                        step={0.5}
+                        onChange={(upPower) => updateFire({ upPower })}
+                      />
+                      <BurstNumField
+                        id="explosion-fire-vy"
+                        label="Vertical Launch"
+                        code="vy"
+                        hint="Initial vertical flame velocity in px/f (negative shoots upward)."
+                        value={fire.vy}
+                        min={-20}
+                        max={10}
+                        step={0.5}
+                        unit="px/f"
+                        onChange={(vy) => updateFire({ vy })}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

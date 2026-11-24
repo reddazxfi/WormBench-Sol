@@ -6,7 +6,9 @@ local fx = {}
 
 fx.SPARK = "wf-lib/effects/sprites/px_effects/spark"
 fx.BLOB = "wf-lib/effects/sprites/px_effects/glow.png"
+fx.STAR = "wf-lib/effects/sprites/px_effects/star.png"
 fx.SMOKE = "wf-lib/effects/sprites/px_effects/cloud.png"
+fx.STYLES = trail.STYLES
 
 fx.PRESETS = {
   electric = {
@@ -48,22 +50,24 @@ local clock = 0
 local SPARK_KEYS = { "sprite", "cell", "frames", "size", "rate", "pause",
   "r", "g", "b", "depth", "rainbow" }
 local GLOW_KEYS = { "sprite", "cell", "size", "passes", "r", "g", "b",
-  "depth", "life", "rainbow" }
+  "depth", "life", "rainbow", "shape", "spin", "angle" }
 local REACH_KEYS = { "from", "sky", "sky_side", "down", "down_side", "hold", "fade",
   "direction", "spread", "count", "first", "stagger", "cooldown", "distance",
   "speed", "bulge", "curve", "terrain", "noise", "segments", "core_w",
-  "glow_w", "core_dome", "glow_dome", "r", "g", "b", "depth", "rainbow" }
+  "glow_w", "core_dome", "glow_dome", "r", "g", "b", "depth", "rainbow", "style" }
 local TRAIL_KEYS = { "every", "max", "vanish", "core_w", "glow_w", "noise",
-  "rainbow", "r", "g", "b", "depth", "beam", "glow" }
+  "rainbow", "r", "g", "b", "depth", "beam", "glow", "style", "mode",
+  "wave_freq", "wave_speed" }
 local BURST_KEYS = { "r", "g", "b", "noise", "duration", "fade", "grow",
   "live", "segments", "thickness", "core", "ellipse", "rebuffer", "smoke",
-  "depth", "rainbow" }
+  "depth", "rainbow", "style", "shape", "points", "spin", "glow", "ring" }
+local BURST_GLOW_KEYS = { "shape", "scale", "expand", "spin", "inner", "r", "g", "b" }
 local SMOKE_KEYS = { "count", "kinds", "r", "g", "b", "spread", "up", "life",
   "drag", "size", "depth", "sprite" }
 local RING_KEYS = { "radius", "segments", "noise", "r", "g", "b", "depth",
   "speed", "angle", "core_w", "glow_w", "thin", "follow", "owner",
-  "ellipse", "rainbow", "track" }
-local REBUFFER_KEYS = { "at", "noise", "r", "g", "b", "fade", "segments" }
+  "ellipse", "rainbow", "track", "shape", "star_points", "style" }
+local REBUFFER_KEYS = { "at", "noise", "r", "g", "b", "fade", "segments", "mode" }
 
 -- `src` is an overrides table, so `fx.emitter{ spark = true }` means "on with
 -- the preset's own numbers". It used to index the boolean and throw, which takes
@@ -270,6 +274,7 @@ local function make_arc(o)
     noise = o.noise or 4.0,
     segments = math.min(255, math.max(1, math.floor(o.segments or 16))),
     core_w = o.core_w or 8.0, glow_w = o.glow_w or 13.0,
+    style = o.style,
     r = o.r or 130, g = o.g or 180, b = o.b or 255,
     rainbow = rainbow_of(o.rainbow),
     depth = o.depth, persist = o.persist or false,
@@ -321,6 +326,12 @@ local function rgb(r, g, b, f)
   return (255 << 24) | (rr << 16) | (gg << 8) | bb
 end
 
+local function style_sheets(style)
+  local st = style and fx.STYLES and fx.STYLES[style]
+  if st then return st.beam, st.glow end
+  return settings.beam, settings.glow
+end
+
 local function draw_arc(st)
   if st.degenerate or st.progress <= 0 then return end
   local function pass(sprite, width, dome)
@@ -350,8 +361,9 @@ local function draw_arc(st)
     end
     wa.draw.ribbon(RIBBON)
   end
-  pass(settings.beam, st.core_w, st.core_dome)
-  if st.glow_w > 0 then pass(settings.glow, st.glow_w, st.glow_dome) end
+  local beam_spr, glow_spr = style_sheets(st.style)
+  pass(beam_spr, st.core_w, st.core_dome)
+  if st.glow_w > 0 then pass(glow_spr, st.glow_w, st.glow_dome) end
 end
 
 local QUAD = { blend = "add", points = { {}, {}, {}, {} } }
@@ -363,6 +375,24 @@ local function draw_quad_at(sprite, x, y, size, color, depth, frame)
   p[2].x, p[2].y = x + h, y - h
   p[3].x, p[3].y = x + h, y + h
   p[4].x, p[4].y = x - h, y + h
+  QUAD.sprite, QUAD.color, QUAD.depth, QUAD.frame = sprite, color, depth, frame or 0
+  wa.draw.quad(QUAD)
+end
+
+local function draw_quad_rot(sprite, x, y, size, angle, color, depth, frame)
+  if not sprite or not x or not y then return end
+  if not angle or angle == 0 then
+    draw_quad_at(sprite, x, y, size, color, depth, frame)
+    return
+  end
+  local h = size * 0.5
+  local ca, sa = wa.math.cos(angle), wa.math.sin(angle)
+  local ch, sh = ca * h, sa * h
+  local p = QUAD.points
+  p[1].x, p[1].y = x - ch + sh, y - sh - ch
+  p[2].x, p[2].y = x + ch + sh, y + sh - ch
+  p[3].x, p[3].y = x + ch - sh, y + sh + ch
+  p[4].x, p[4].y = x - ch - sh, y - sh + ch
   QUAD.sprite, QUAD.color, QUAD.depth, QUAD.frame = sprite, color, depth, frame or 0
   wa.draw.quad(QUAD)
 end
@@ -385,8 +415,14 @@ local function draw_glow(g)
   local size = g.cell * g.size
   local r, gg, b = colour_of(g, clock)
   local color = rgb(r, gg, b, 1)
+  local is_star = (g.shape == "star" or g.shape == "spin_star")
+  local spr = g.sprite
+  if is_star and (spr == nil or spr == settings.blob or spr == fx.BLOB) then
+    spr = fx.STAR
+  end
+  local angle = (g.angle or 0) + (g.shape == "spin_star" and (clock * (g.spin or 0.14)) or 0)
   for _ = 1, g.passes do
-    draw_quad_at(g.sprite, g.x, g.y, size, color,
+    draw_quad_rot(spr, g.x, g.y, size, angle, color,
       g.depth or settings.depth.glow, 0)
   end
 end
@@ -419,15 +455,57 @@ local function burst_state(o)
     thickness = o.thickness or 15, core = o.core,
     ellipse = o.ellipse or { 1.25, 0.45 },
     rebuffer = o.rebuffer, depth = o.depth, done = false,
-    rainbow = rainbow_of(o.rainbow),
+    rainbow = o.rainbow == true and { speed = 0.045, offset = 0 } or rainbow_of(o.rainbow),
+    style = o.style,
+    shape = o.shape or "ring",
+    ring = (o.ring ~= false) and ((o.shape or "ring") ~= "none"),
+    points = math.max(3, math.min(12, math.floor(o.points or 5))),
+    spin = o.spin ~= nil and o.spin or 0.16,
+    glow = false,
+    flash_boost = 0,
     rng = new_rng(o), noise_vals = {},
   }
+  if o.glow == false then
+    b.glow = false
+  elseif type(o.glow) == "table" then
+    local g = copy({}, o.glow, BURST_GLOW_KEYS)
+    g.shape = g.shape or (b.shape == "star" and "star" or "spin_star")
+    if g.shape ~= "none" then
+      b.glow = {
+        shape = g.shape,
+        scale = tonumber(g.scale) or 2.1,
+        expand = g.expand ~= nil and tonumber(g.expand) or 1.0,
+        spin = g.spin ~= nil and tonumber(g.spin) or b.spin,
+        inner = g.inner ~= false,
+        r = g.r,
+        g = g.g,
+        b = g.b,
+      }
+    end
+  elseif o.glow == true then
+    b.glow = {
+      shape = (b.shape == "star") and "star" or "spin_star",
+      scale = 2.1,
+      expand = 1.0,
+      spin = b.spin,
+      inner = true,
+    }
+  elseif b.shape == "star" or b.shape == "spin_star" then
+    b.glow = {
+      shape = b.shape,
+      scale = 2.1,
+      expand = 1.0,
+      spin = b.spin,
+      inner = true,
+    }
+  end
   if b.rebuffer == nil then
-    b.rebuffer = { at = 16, noise = 1.8, r = 120, g = 170, b = 240,
+    b.rebuffer = { at = 16, mode = "px", noise = 1.8, r = 120, g = 170, b = 240,
       fade = -0.85, segments = 1.30 }
   end
   if b.rebuffer then
     b.rebuffer.at = b.rebuffer.at or 16
+    b.rebuffer.mode = b.rebuffer.mode or "px"
     b.rebuffer.segments = seg_count(b.rebuffer.segments, radius, 1.3)
   end
   fill_burst_noise(b)
@@ -437,12 +515,28 @@ end
 local function update_burst(b)
   b.age = b.age + 1
   b.timer = b.timer + b.fade
-  if b.rebuffer and b.age == b.rebuffer.at then
+  if (b.flash_boost or 0) > 0 then
+    b.flash_boost = math.max(0, b.flash_boost - 0.1)
+  end
+  if b.rebuffer and b.rebuffer.mode ~= "none" and b.age == b.rebuffer.at then
+    local mode = b.rebuffer.mode or "px"
     b.noise = b.rebuffer.noise or b.noise
     b.r, b.g, b.b = b.rebuffer.r or b.r, b.rebuffer.g or b.g,
       b.rebuffer.b or b.b
-    b.fade = b.rebuffer.fade or b.fade
     b.segments = b.rebuffer.segments or b.segments
+    if mode == "pulse" then
+      -- Clean second expanding pulse without rewinding backwards.
+      b.timer = 0
+      b.fade = math.abs(b.rebuffer.fade or b.fade)
+      if b.fade < 0.1 then b.fade = 0.65 end
+      b.flash_boost = 0.45
+    elseif mode == "flash" then
+      -- Smooth forward expansion with an additive colour/crackle flare.
+      b.flash_boost = 0.65
+    else
+      -- Classic PX reversal.
+      b.fade = b.rebuffer.fade or b.fade
+    end
     fill_burst_noise(b)
   elseif b.age % 3 == 0 then
     fill_burst_noise(b)
@@ -454,37 +548,71 @@ local function draw_burst(b)
   if b.done or b.age > b.live then return end
   local p = clamp01(b.timer / b.duration)
   local env = 1 - p
+  local env_draw = clamp01(env + (b.flash_boost or 0))
   local radius = b.radius * (1 + b.grow * p)
   local br, bg, bb = colour_of(b, b.age)
   local n = b.segments
+  local is_star = (b.shape == "star" or b.shape == "spin_star")
+  if is_star and n < b.points * 4 then
+    n = math.min(255, b.points * 4)
+  end
   local angle_step = 2 * math.pi / n
+  local rot = (b.shape == "spin_star") and (b.age * b.spin) or 0
+  local beam_spr, glow_spr = style_sheets(b.style)
   local function pass(sprite, width, lens)
     local pts = RIBBON.points
     for i = 1, n + 1 do pts[i] = POINTS[i] end
     for i = n + 2, #pts do pts[i] = nil end
     RIBBON.sprite, RIBBON.depth = sprite, b.depth or settings.depth.burst
+    local r_rot = lens and -rot or rot
     for i = 1, n + 1 do
       local a = angle_step * (i - 1)
       local j = (b.noise_vals[((i - 1) % #b.noise_vals) + 1] or 0)
         * radius * 0.08 * b.noise
-      local rx, ry = radius + j, radius + j
-      if lens then rx, ry = radius * b.ellipse[1] + j, radius * b.ellipse[2] + j end
+      local star_mul = is_star and (1 + 0.38 * wa.math.cos(a * b.points)) or 1
+      local rx, ry = radius * star_mul + j, radius * star_mul + j
+      if lens then
+        if is_star then
+          rx, ry = radius * 0.68 * star_mul + j, radius * 0.68 * star_mul + j
+        else
+          rx, ry = radius * b.ellipse[1] + j, radius * b.ellipse[2] + j
+        end
+      end
+      local aa = a + r_rot
       local q = POINTS[i]
-      q.x = b.x + wa.math.cos(a) * rx
-      q.y = b.y + wa.math.sin(a) * ry
+      q.x = b.x + wa.math.cos(aa) * rx
+      q.y = b.y + wa.math.sin(aa) * ry
       q.width, q.u = width, (i - 1) / n
-      q.color = rgb(br, bg, bb, env)
+      q.color = rgb(br, bg, bb, env_draw)
     end
     wa.draw.ribbon(RIBBON)
   end
-  -- `core` is the sharp pass's half-width; without it, PX's 0.9x/1x thickness.
-  local glow_w = 2 * b.thickness * env
-  local core = b.core
-  local core_half = (core and core > 0) and math.max(core * env, 1.25) or nil
-  pass(settings.beam, 2 * (core_half or math.max(0.90 * b.thickness * env, 1.8)), false)
-  pass(settings.glow, glow_w, false)
-  pass(settings.beam, 2 * (core_half or math.max(b.thickness * env, 1.4)), true)
-  pass(settings.glow, glow_w, true)
+  if b.ring ~= false and b.shape ~= "none" then
+    local glow_w = 2 * b.thickness * env
+    local core = b.core
+    local core_half = (core and core > 0) and math.max(core * env, 1.25) or nil
+    pass(beam_spr, 2 * (core_half or math.max(0.90 * b.thickness * env, 1.8)), false)
+    pass(glow_spr, glow_w, false)
+    pass(beam_spr, 2 * (core_half or math.max(b.thickness * env, 1.4)), true)
+    pass(glow_spr, glow_w, true)
+  end
+  if b.glow and b.glow.shape ~= "none" and wa.draw and wa.draw.quad then
+    local g = b.glow
+    local depth = b.depth or settings.depth.burst
+    local g_expand = g.expand ~= nil and g.expand or 1.0
+    local g_rad = b.radius * (1 + b.grow * g_expand * p)
+    local g_size = g_rad * (g.scale or 2.1)
+    local g_rot = (g.shape == "spin_star") and (b.age * (g.spin ~= nil and g.spin or b.spin or 0.16)) or 0
+    local g_spr = (g.shape == "orb") and fx.BLOB or fx.STAR
+    local gr, gg, gb = br, bg, bb
+    if not b.rainbow and g.r ~= nil and g.g ~= nil and g.b ~= nil then
+      gr, gg, gb = g.r, g.g, g.b
+    end
+    draw_quad_rot(g_spr, b.x, b.y, g_size, g_rot, rgb(gr, gg, gb, env_draw * 0.9), depth, 0)
+    if g.inner ~= false then
+      draw_quad_rot(g_spr, b.x, b.y, g_size * 0.5, -g_rot * 1.3, rgb(255, 255, 255, env_draw * 0.8), depth, 0)
+    end
+  end
 end
 
 local function update_spark(s)
@@ -540,6 +668,9 @@ local function draw_ring(st)
   end
   local cr, cg, cb = colour_of(st, st.age)
   local cos_rot, sin_rot = wa.math.cos(st.angle), wa.math.sin(st.angle)
+  local is_star = (st.shape == "star")
+  local star_pts = math.max(3, math.min(12, math.floor(st.star_points or 5)))
+  local beam_spr, glow_spr = style_sheets(st.style)
   local function pass(sprite, width, scale, color, noise_scale)
     local pts = RIBBON.points
     for i = 1, n + 1 do pts[i] = POINTS[i] end
@@ -549,8 +680,9 @@ local function draw_ring(st)
       local j = (st.noise_vals[((i - 1) % #st.noise_vals) + 1] or 0)
         * st.noise * (noise_scale or 1)
       local a = (i - 1) * (2 * math.pi / n)
-      local ux = wa.math.cos(a) * ex
-      local uy = wa.math.sin(a) * ey
+      local star_mul = is_star and (1 + 0.34 * wa.math.cos(a * star_pts)) or 1
+      local ux = wa.math.cos(a) * ex * star_mul
+      local uy = wa.math.sin(a) * ey * star_mul
       local rx = ux * cos_rot - uy * sin_rot
       local ry = ux * sin_rot + uy * cos_rot
       local rr = (st.radius + j) * (scale or 1)
@@ -572,9 +704,9 @@ local function draw_ring(st)
   end
   local core = rgb(cr, cg, cb, 1)
   local glow = rgb(cr * 0.72, cg * 0.72, cb * 0.72, 1)
-  if not st.thin then pass(settings.beam, st.core_w, 0.85, glow, 0.5) end
-  pass(settings.beam, st.core_w, 1, core)
-  if st.glow_w > 0 and not st.thin then pass(settings.glow, st.glow_w, 1, glow) end
+  if not st.thin then pass(beam_spr, st.core_w, 0.85, glow, 0.5) end
+  pass(beam_spr, st.core_w, 1, core)
+  if st.glow_w > 0 and not st.thin then pass(glow_spr, st.glow_w, 1, glow) end
 end
 
 local function update_smoke(sm)
@@ -740,7 +872,7 @@ local function start_ray(e, i)
     bulge = rand_int(e, r.bulge[1], r.bulge[2]),
     speed = rand_float(e, r.speed[1], r.speed[2]),
     noise = r.noise, segments = r.segments,
-    core_w = r.core_w, glow_w = r.glow_w,
+    core_w = r.core_w, glow_w = r.glow_w, style = r.style,
     core_dome = r.core_dome, glow_dome = r.glow_dome,
     r = r.r, g = r.g, b = r.b, rainbow = r.rainbow,
     depth = r.depth, owner = e.owner, rng = e,
@@ -915,6 +1047,10 @@ function fx.emitter(o)
   if o.reach == false then reach.count = 0 end
   local tro = copy({}, preset.trail, TRAIL_KEYS)
   copy(tro, o.trail, TRAIL_KEYS)
+  if o.style ~= nil then
+    if reach.style == nil then reach.style = o.style end
+    if tro.style == nil then tro.style = o.style end
+  end
   if type(o.color) == "table" then
     local has_reach_rgb = type(o.reach) == "table" and (o.reach.r ~= nil or o.reach.g ~= nil or o.reach.b ~= nil)
     local has_trail_rgb = type(o.trail) == "table" and (o.trail.r ~= nil or o.trail.g ~= nil or o.trail.b ~= nil)
@@ -985,6 +1121,7 @@ function fx.emitter(o)
       end
     end
     if e.rainbow and ro.rainbow == nil then ro.rainbow = e.rainbow end
+    if o.style ~= nil and ro.style == nil then ro.style = o.style end
     e.ring = fx.ring(ro)
   end
   e.move_to = function(self, x, y) self.x, self.y = x, y end
@@ -1234,6 +1371,7 @@ function fx.mine(o)
     owner = o.owner, x = o.x, y = o.y, vx = o.vx, vy = o.vy,
     follow = t, preset = o.preset, random = o.random, seed = o.seed,
     spark = o.spark, glow = o.glow, reach = o.reach, trail = o.trail,
+    ring = o.ring, color = o.color, rainbow = o.rainbow, style = o.style,
     ready = false,
   }
   local e = fx.emitter(opts)

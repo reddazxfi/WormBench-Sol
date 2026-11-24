@@ -14,7 +14,8 @@ local M = {}
 
 local EFFECT_KEYS = { "radius", "r", "g", "b", "noise", "duration", "fade",
   "grow", "live", "segments", "thickness", "core", "ellipse", "rebuffer",
-  "smoke", "depth", "preset", "owner", "seed", "random", "rainbow" }
+  "smoke", "depth", "preset", "owner", "seed", "random", "rainbow",
+  "style", "shape", "points", "spin", "glow", "ring" }
 
 local function numbers(o)
   local damage = math.floor(o.damage or o.power or 0)
@@ -49,6 +50,15 @@ function M.explode(o)
   play_sound(o)
 
   if damage > 0 and radius > 0 then
+    if type(o.on_taze_mine) == "function" and wa.mines and wa.mines.all then
+      local r2_mine = radius * radius
+      for _, m in ipairs(wa.mines.all()) do
+        local dx, dy = (m.x or 0) - x, (m.y or 0) - y
+        if dx * dx + dy * dy <= r2_mine then
+          pcall(o.on_taze_mine, m, o.owner)
+        end
+      end
+    end
     -- The engine's blast leaves out a worm already at 0 HP that WA has not
     -- started killing; PX's object loop does not, and such a worm still
     -- launches. Remember those before the blast, or a worm the blast kills

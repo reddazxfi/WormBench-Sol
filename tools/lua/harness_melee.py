@@ -126,6 +126,9 @@ wa.world.keys = lambda: lua.table_from(WORLD["keys"])
 wa.world.set_turn_clock = lambda ms: EVENTS.append(("turn_clock", ms))
 wa.worms = lua.table()
 wa.worms.all = all_worms
+MINES = []
+wa.mines = lua.table()
+wa.mines.all = lambda: lua.table_from(MINES)
 wa.math = lua.table()
 wa.math.sin = math.sin
 wa.math.cos = math.cos
@@ -828,6 +831,33 @@ check(
 )
 WORM["weapon"] = "test.bat"
 WORM["aim"] = 0.5
+
+# ---- Melee on_taze_mine scans wa.mines.all() inside rotated box with per-swing dedup ----
+EVENTS.clear()
+LOG.clear()
+tazed_melee_mines = []
+lua.globals()["_rec_melee_mine"] = lambda m: tazed_melee_mines.append(int(m["id"]))
+taze_spec = build_spec(
+    weapon="test.taze_bat",
+    hits=[{"frame": 2, "damage": 20}, {"frame": 4, "damage": 20}],
+)
+taze_spec["melee"]["on_taze_mine"] = lua.eval("function(m) _rec_melee_mine(m) end")
+sb.hold(ctx, taze_spec)
+MINES.append(lua.table_from({"id": 8801, "x": 1024, "y": 1000}))
+WORM["weapon"] = "test.taze_bat"
+WORM["aim"] = 0.5
+WORLD["frame"] = 1000
+step(1000)
+step(1001, space=True)
+for n in range(1002, 1008):
+    step(n, space=True)
+check(
+    "melee.on_taze_mine catches mines in rotated box once per swing",
+    tazed_melee_mines == [8801],
+    f"tazed_melee_mines={tazed_melee_mines}",
+)
+MINES.clear()
+WORM["weapon"] = "test.bat"
 
 print()
 for line in LOG:

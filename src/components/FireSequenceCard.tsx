@@ -1,4 +1,5 @@
 import type {
+  BeamConfig,
   CustomSoundsConfig,
   FireSequenceConfig,
   FireSequenceEngine,
@@ -6,8 +7,11 @@ import type {
   FireSequenceHoming,
   WeaponProject,
 } from '../types/weapon';
+import { DEFAULT_BEAM, mergeBeamConfig } from '../data/beam';
 import { DEFAULT_CUSTOM_SOUNDS, SOUND_PRIORITIES } from '../data/soundPresets';
 import {
+  BEAM_SEQUENCE_PRESETS,
+  computeBeamSequenceSchedule,
   DEFAULT_FIRE_SEQUENCE,
   DEFAULT_FIRE_SEQUENCE_HOMING,
   FIRE_SEQUENCE_PRESETS,
@@ -26,7 +30,7 @@ import {
   UnitNumberInput,
 } from './RecordEditor';
 import { NumberInput } from './NumberInput';
-import { Clock, Crosshair, ListOrdered, Sparkles, Target } from 'lucide-react';
+import { Clock, Crosshair, ListOrdered, Sparkles, Target, Zap } from 'lucide-react';
 
 interface Props {
   project: WeaponProject;
@@ -41,18 +45,30 @@ const selectClass =
 const MISSILE_DONORS = STOCK_WEAPONS.filter((w) => w.family === 'missile');
 
 export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
+  const isBeam = project.fireType === 'beam';
+  const beam = isBeam ? mergeBeamConfig(project.beam) : null;
   const seq = mergeFireSequenceConfig(project.fireSequence);
   const sounds: CustomSoundsConfig = project.customSounds ?? DEFAULT_CUSTOM_SOUNDS;
 
-  const update = (patch: Partial<FireSequenceConfig>) =>
-    onChange({
-      fireSequence: {
-        ...DEFAULT_FIRE_SEQUENCE,
-        ...(project.fireSequence ?? {}),
-        ...seq,
-        ...patch,
-      },
-    });
+  const update = (patch: Partial<FireSequenceConfig>, beamPatch?: Partial<BeamConfig>) => {
+    const nextSeq: FireSequenceConfig = {
+      ...DEFAULT_FIRE_SEQUENCE,
+      ...(project.fireSequence ?? {}),
+      ...seq,
+      ...(isBeam ? { engine: 'timed' as const } : {}),
+      ...patch,
+    };
+    const nextPayload: Partial<WeaponProject> = { fireSequence: nextSeq };
+    if (isBeam && beam && beamPatch) {
+      nextPayload.beam = {
+        ...DEFAULT_BEAM,
+        ...beam,
+        enabled: true,
+        ...beamPatch,
+      };
+    }
+    onChange(nextPayload);
+  };
 
   const updateHoming = (patch: Partial<FireSequenceHoming>) =>
     update({
@@ -67,16 +83,20 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
     onChange({ customSounds: { ...sounds, ...patch } });
 
   const supported = supportsFireSequence(project);
-  const usesNestedProjectile = fireSequenceUsesNestedProjectile({
-    ...project,
-    fireSequence: { ...seq, enabled: true },
-  });
+  const usesNestedProjectile =
+    !isBeam &&
+    fireSequenceUsesNestedProjectile({
+      ...project,
+      fireSequence: { ...seq, enabled: true },
+    });
   const parsedSchedule = parseCustomIntervalsMs(seq.customIntervalsMs);
+  const beamSched = isBeam && beam ? computeBeamSequenceSchedule(beam, seq) : null;
   const recordFuse = Math.max(
     0,
     Math.round(Number(recordField(project, 'missile.fuse', project.body.fuse_time_ms ?? 0)) || 0),
   );
   const autoAimFuse =
+    !isBeam &&
     seq.enabled &&
     seq.mode !== 'actors' &&
     seq.fuseMode === 'record' &&
@@ -106,7 +126,11 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
           const v = Number(e.target.value);
           const extra: Partial<FireSequenceConfig> =
             key === 'intervalMs' ? { delay: Math.max(1, Math.round(v / 20)) } : {};
-          update({ [key]: v, ...extra } as Partial<FireSequenceConfig>);
+          const beamSync: Partial<BeamConfig> | undefined =
+            isBeam && key === 'firstDelayMs'
+              ? { bufferFrames: Math.max(0, Math.round(v / 20)) }
+              : undefined;
+          update({ [key]: v, ...extra } as Partial<FireSequenceConfig>, beamSync);
         }}
         unit={opts.unit}
       />
@@ -118,10 +142,20 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Firing Engine & Burst"
-        code="wf-lib/wfws_firing (wfws.sdk)"
-        icon={<ListOrdered className="h-4 w-4 text-forge-500" aria-hidden="true" />}
-        desc="First-party lockstep firing engine in wfws.sdk. Run WA's native gun timing with a custom projectile payload, or use the custom sequencer for animation buffers, spin-up ramps, and per-shot cooldowns."
+        title={isBeam ? 'Beam Burst & Wind-Up Sequencer' : 'Firing Engine & Burst'}
+        code={isBeam ? 'firing.sequence + firing.beam' : 'wf-lib/wfws_firing (wfws.sdk)'}
+        icon={
+          isBeam ? (
+            <Zap className="h-4 w-4 text-forge-500" aria-hidden="true" />
+          ) : (
+            <ListOrdered className="h-4 w-4 text-forge-500" aria-hidden="true" />
+          )
+        }
+        desc={
+          isBeam
+            ? 'Synced directly with your Beam tab. Fire overlapping multi-beam salvos, wind-up gatling ramps, or spread prism fans -- previewed live at 50 Hz on the Beam page.'
+            : 'First-party lockstep firing engine in wfws.sdk. Run WA native gun timing with a custom projectile payload, or use the custom sequencer for animation buffers, spin-up ramps, and per-shot cooldowns.'
+        }
         right={
           <label
             className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
@@ -135,7 +169,16 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
               type="checkbox"
               checked={seq.enabled}
               disabled={!supported}
-              onChange={(e) => update({ enabled: e.target.checked })}
+              onChange={(e) => {
+                const on = e.target.checked;
+                update({
+                  enabled: on,
+                  ...(isBeam ? { engine: 'timed' as const } : {}),
+                  ...(isBeam && on && seq.firstDelayMs === 0 && beam && beam.bufferFrames > 0
+                    ? { firstDelayMs: beam.bufferFrames * 20 }
+                    : {}),
+                });
+              }}
               className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
             />
             <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">
@@ -156,7 +199,260 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
           Your custom Lua defines <code className="font-mono">on_fire</code>, which already owns the
           trigger. Remove it to emit <code className="font-mono">wf-lib/wfws_firing</code>.
         </p>
+      ) : isBeam && beam ? (
+        /* ================= DEDICATED BEAM SEQUENCER VIEW ================= */
+        <div className="space-y-5">
+          {/* Beam Sequence Presets */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
+              <Sparkles className="h-3 w-3 text-forge-500" aria-hidden="true" />
+              <span>Beam Burst Presets</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {BEAM_SEQUENCE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    const nextDelay = preset.patch.firstDelayMs ?? seq.firstDelayMs;
+                    update(
+                      {
+                        enabled: true,
+                        engine: 'timed',
+                        ...preset.patch,
+                      },
+                      !preset.patch.customIntervalsMs
+                        ? { bufferFrames: Math.max(0, Math.round(nextDelay / 20)) }
+                        : undefined,
+                    );
+                  }}
+                  className="group rounded-lg border border-stone-200/90 bg-stone-50/60 px-3 py-2 text-left transition-colors hover:border-forge-400 hover:bg-forge-50/50 dark:border-stone-800 dark:bg-stone-950/40 dark:hover:border-forge-600/70 dark:hover:bg-forge-950/25 cursor-pointer"
+                >
+                  <div className="text-xs font-semibold text-stone-900 group-hover:text-forge-700 dark:text-stone-100 dark:group-hover:text-forge-300">
+                    {preset.name}
+                  </div>
+                  <div className="mt-0.5 text-[11px] leading-snug text-stone-500 dark:text-stone-400">
+                    {preset.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Beam Cadence & Overlap */}
+          <div className="space-y-3.5 border-t border-stone-200/80 pt-4 dark:border-stone-800">
+            <SubSectionTitle
+              title="Beam Cadence, Overlap & Spread"
+              code="SEQ + fire_fn → firing.beam"
+              desc="Muzzle standoff, offsets, damage, and beam lifetime stay owned by your Beam tab -- no duplicated fields."
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {seqNum(
+                'seq-count',
+                'Total Beam Shots',
+                'count',
+                'Number of beam discharges fired per trigger pull.',
+                'count',
+                { min: 1, max: 60 },
+              )}
+
+              {seqNum(
+                'seq-burst-size',
+                'Beams / Shot',
+                'burst_size',
+                'Simultaneous rays per discharge (e.g. 5 for a prism fan).',
+                'burstSize',
+                { min: 1, max: 16 },
+              )}
+
+              {seqNum(
+                'seq-spread-deg',
+                'Spread Fan / Jitter',
+                'spread_deg',
+                'When Beams/Shot > 1, rays fan evenly across this angle. When 1, applies lockstep per-shot jitter.',
+                'spreadDeg',
+                { min: 0, max: 160, step: 1, unit: '°' },
+              )}
+
+              {seqNum(
+                'seq-first-delay',
+                'Initial Charge Buffer',
+                'first_delay_ms',
+                'Opening animation/charge delay before shot 1 fires (synced with Beam Charge Buffer & While Buffering sprite).',
+                'firstDelayMs',
+                { min: 0, max: 5000, step: 20, unit: 'ms' },
+              )}
+
+              {seqNum(
+                'seq-interval-ms',
+                'Next-Shot Interval',
+                'interval_ms',
+                'Delay before each subsequent beam shot, measured from the Timing Anchor.',
+                'intervalMs',
+                { min: 20, max: 5000, step: 20, unit: 'ms' },
+              )}
+
+              <div>
+                <TooltipLabel
+                  label="Next-Shot Timing Anchor"
+                  desc="On Ray Dispatch starts the next cooldown as soon as the ray leaves (worm is free immediately, beams can overlap). After Beam Hold waits for grow + hold to finish before counting the next interval."
+                  htmlFor="seq-beam-anchor"
+                />
+                <select
+                  id="seq-beam-anchor"
+                  value={seq.beamSequenceAnchor ?? 'on_dispatch'}
+                  onChange={(e) =>
+                    update({
+                      beamSequenceAnchor: e.target.value as 'on_dispatch' | 'after_hold',
+                    })
+                  }
+                  className={selectClass}
+                >
+                  <option value="on_dispatch">On Ray Dispatch (Overlap / Instant Re-Anim)</option>
+                  <option value="after_hold">
+                    After Beam Hold (+{(beam.growFrames + beam.holdFrames) * 20}ms)
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {/* Custom Wind-Up Cooldown Schedule */}
+            <div className="rounded-xl border border-stone-200/80 bg-stone-50/70 p-3.5 dark:border-stone-800 dark:bg-stone-950/40 space-y-2.5">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+                <div className="lg:col-span-2">
+                  <TooltipLabel
+                    label="Manual Per-Shot Cooldowns (Wind-Up Ramp)"
+                    code="intervals_ms"
+                    desc="Comma-separated millisecond delays before each shot (e.g. 300, 200, 120, 60, 40 for a spin-up laser gatling). Entry 1 is the opening buffer; the last value repeats for remaining shots."
+                    htmlFor="seq-custom-intervals"
+                  />
+                  <input
+                    id="seq-custom-intervals"
+                    type="text"
+                    value={seq.customIntervalsMs}
+                    placeholder="e.g. 300, 180, 100, 60, 40"
+                    onChange={(e) => update({ customIntervalsMs: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 lg:pt-5">
+                  {beamSched && (
+                    <div className="rounded-lg border border-forge-200/80 bg-forge-50/60 px-2.5 py-1.5 font-mono text-[11px] text-forge-800 dark:border-forge-800/60 dark:bg-forge-950/40 dark:text-forge-300">
+                      50 Hz dispatch:{' '}
+                      {beamSched.dispatchFrames
+                        .slice(0, 6)
+                        .map((f) => `${f}f`)
+                        .join(' → ')}
+                      {beamSched.dispatchFrames.length > 6 ? ' → …' : ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-0.5">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  <input
+                    id="seq-live-aim"
+                    type="checkbox"
+                    checked={seq.liveAim}
+                    onChange={(e) => update({ liveAim: e.target.checked })}
+                    className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                  />
+                  <span title="Reads the worm aim angle on every shot so you can sweep your aim mid-burst.">
+                    Track Live Aim Between Shots
+                  </span>
+                </label>
+
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  <input
+                    id="seq-cancel"
+                    type="checkbox"
+                    checked={seq.cancelOnWeaponChange}
+                    onChange={(e) => update({ cancelOnWeaponChange: e.target.checked })}
+                    className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                  />
+                  <span title="Stops the remaining burst immediately if the worm swaps weapons or takes knockback.">
+                    Stop if Weapon Switched
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-Shot Audio */}
+          <div className="space-y-3 border-t border-stone-200/80 pt-4 dark:border-stone-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SubSectionTitle
+                title="Extra Per-Shot Sequence WAV (Optional)"
+                code="sound = { path, every, priority }"
+                desc="Optional extra sound played every Nth shot in addition to your Beam Fire Sound."
+              />
+              <label className="flex cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={sounds.shotEnabled}
+                  onChange={(e) => updateSounds({ shotEnabled: e.target.checked })}
+                  className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                />
+                <span className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Enable
+                </span>
+              </label>
+            </div>
+
+            {sounds.shotEnabled && (
+              <div className="space-y-3 rounded-xl bg-stone-50/70 p-3.5 dark:bg-stone-950/40">
+                <SoundUpload
+                  id="sound-shot"
+                  asset={sounds.shot}
+                  onPick={(asset) => updateSounds({ shot: asset, shotEnabled: true })}
+                  onRemove={() => updateSounds({ shot: undefined, shotEnabled: false })}
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <TooltipLabel
+                      label="Play Every N Shots"
+                      code="sound.every"
+                      desc="Play the WAV on every Nth shot (1 = every shot; 3 plays once per 3-round burst)."
+                      htmlFor="sound-shot-every"
+                    />
+                    <NumberInput
+                      id="sound-shot-every"
+                      min={1}
+                      max={50}
+                      value={sounds.shotEvery}
+                      onChange={(e) => updateSounds({ shotEvery: Number(e.target.value) })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <TooltipLabel
+                      label="Voice Priority"
+                      code="sound.priority"
+                      desc="Higher priorities override lower-priority sounds when voices are busy."
+                      htmlFor="sound-shot-priority"
+                    />
+                    <select
+                      id="sound-shot-priority"
+                      value={sounds.shotPriority}
+                      onChange={(e) => updateSounds({ shotPriority: Number(e.target.value) })}
+                      className={selectClass}
+                    >
+                      {SOUND_PRIORITIES.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       ) : (
+        /* ================= STANDARD PROJECTILE / GUN SEQUENCER VIEW ================= */
         <div className="space-y-5">
           {/* Quick Presets */}
           <div className="space-y-2">
@@ -235,8 +531,8 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                 </span>
               </div>
               <p className="mt-1 text-[11px] leading-relaxed text-stone-600 dark:text-stone-400">
-                Full lockstep timeline: initial animation buffer before shot 1 (e.g. 300 ms → 20 ms),
-                custom per-shot cooldown ramps, and power-bar velocity scaling.
+                Full lockstep timeline: initial animation buffer before shot 1 (plays Sprite Builder&apos;s
+                While Buffering art), custom per-shot cooldown ramps, and power-bar velocity scaling.
               </p>
             </button>
           </div>
@@ -304,7 +600,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                   'seq-first-delay',
                   'Initial Buffer',
                   'first_delay_ms',
-                  'Animation / charge windup delay before shot 1 fires (e.g. 300 ms = 15 frames at 50 Hz).',
+                  'Animation / charge windup delay before shot 1 fires (e.g. 300 ms = 15 frames at 50 Hz). Plays While Buffering sprite.',
                   'firstDelayMs',
                   { min: 0, max: 5000, step: 20, unit: 'ms' },
                 )}
@@ -610,32 +906,15 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                         min={0.01}
                         max={2}
                         step={0.02}
-                        unit="rad"
                         value={seq.homing.turn}
                         onChange={(e) => updateHoming({ turn: Number(e.target.value) })}
                       />
                     </div>
                     <div>
                       <TooltipLabel
-                        label="Duration"
-                        code="homing.frames"
-                        desc="Active homing ticks at 50 Hz (180 = 3.6 seconds)."
-                        htmlFor="seq-homing-frames"
-                      />
-                      <UnitNumberInput
-                        id="seq-homing-frames"
-                        min={1}
-                        max={1000}
-                        unit="f"
-                        value={seq.homing.frames}
-                        onChange={(e) => updateHoming({ frames: Number(e.target.value) })}
-                      />
-                    </div>
-                    <div>
-                      <TooltipLabel
-                        label="Arm Delay"
+                        label="Lock Delay"
                         code="homing.delay"
-                        desc="Ballistic flight ticks before guidance locks on (10 = 0.2 seconds)."
+                        desc="Frames before steering engages (lets rounds clear the shooter)."
                         htmlFor="seq-homing-delay"
                       />
                       <UnitNumberInput
@@ -649,22 +928,37 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                     </div>
                     <div>
                       <TooltipLabel
+                        label="Steering Budget"
+                        code="homing.frames"
+                        desc="Total 50 Hz frames the seeker actively steers (250 f = 5 seconds)."
+                        htmlFor="seq-homing-frames"
+                      />
+                      <UnitNumberInput
+                        id="seq-homing-frames"
+                        min={10}
+                        max={1000}
+                        unit="f"
+                        value={seq.homing.frames}
+                        onChange={(e) => updateHoming({ frames: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div>
+                      <TooltipLabel
                         label="Lock Sound ID"
                         code="homing.sound"
-                        desc="Optional WA sound bank ID played when guidance engages (0 = silent)."
+                        desc="Optional WA sound ID played when steering engages (0 = silent)."
                         htmlFor="seq-homing-sound"
                       />
                       <NumberInput
                         id="seq-homing-sound"
                         min={0}
-                        max={255}
+                        max={512}
                         value={seq.homing.sound}
                         onChange={(e) => updateHoming({ sound: Number(e.target.value) })}
                         className={inputClass}
                       />
                     </div>
                   </div>
-
                   <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
                     <input
                       id="seq-homing-pershot"
@@ -673,8 +967,8 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
                       onChange={(e) => updateHoming({ perShotTarget: e.target.checked })}
                       className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
                     />
-                    <span title="Reads wa.world.target() freshly on each shot instead of locking the target once at burst start.">
-                      Re-read Cursor Target Every Shot
+                    <span title="Requires a fresh target mark before every shot instead of reusing one target across the whole burst.">
+                      Require Fresh Target Click Per Shot
                     </span>
                   </label>
                 </div>
@@ -682,67 +976,71 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
             </div>
           )}
 
-          {/* Actor Settings */}
+          {/* Custom Lua Actor Settings */}
           {seq.mode === 'actors' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl bg-stone-50/70 p-3.5 dark:bg-stone-950/40">
-              <div>
-                <TooltipLabel
-                  label="Actor Sprite Path"
-                  code="actor.sprite"
-                  desc="Bundle-relative path (e.g. sprites/<mod>/bullet.png) for Lua-driven actors."
-                  htmlFor="seq-actor-sprite"
-                />
-                <input
-                  id="seq-actor-sprite"
-                  type="text"
-                  value={seq.actorSprite}
-                  placeholder="sprites/<mod>/bullet.png"
-                  onChange={(e) => update({ actorSprite: e.target.value })}
-                  className={inputClass}
-                />
+            <div className="space-y-3 border-t border-stone-200/80 pt-4 dark:border-stone-800">
+              <SubSectionTitle
+                title="Custom Lua Actor Settings"
+                code="actor = { sprite, gravity, collide, persist }"
+                desc="Spawns lightweight Lua actors instead of WA projectiles. Ideal for laser bolts, drones, or custom-rendered rounds."
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <TooltipLabel
+                    label="Actor Sprite Path (Optional)"
+                    code="actor.sprite"
+                    desc="Pack sprite path (e.g. sprites/my_mod/bolt.png). Leave blank for an invisible driver actor."
+                    htmlFor="seq-actor-sprite"
+                  />
+                  <input
+                    id="seq-actor-sprite"
+                    type="text"
+                    value={seq.actorSprite}
+                    placeholder="sprites/mod/bolt.png (optional)"
+                    onChange={(e) => update({ actorSprite: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
               </div>
-              <div className="flex flex-wrap items-end gap-5 pb-1">
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
                 <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
                   <input
-                    id="seq-actor-gravity"
                     type="checkbox"
                     checked={seq.actorGravity}
                     onChange={(e) => update({ actorGravity: e.target.checked })}
                     className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
                   />
-                  <span>Gravity</span>
+                  <span>Apply Gravity</span>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
                   <input
-                    id="seq-actor-collide"
                     type="checkbox"
                     checked={seq.actorCollide}
                     onChange={(e) => update({ actorCollide: e.target.checked })}
                     className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
                   />
-                  <span>Collide Terrain</span>
+                  <span>Collide with Land &amp; Worms</span>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300">
                   <input
-                    id="seq-actor-persist"
                     type="checkbox"
                     checked={seq.actorPersist}
                     onChange={(e) => update({ actorPersist: e.target.checked })}
                     className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
                   />
-                  <span>Persist Past Blasts</span>
+                  <span>Persist Across Turns</span>
                 </label>
               </div>
             </div>
           )}
 
-          {/* Per-Shot WAV Audio */}
+          {/* Per-Shot Audio */}
           <div className="space-y-3 border-t border-stone-200/80 pt-4 dark:border-stone-800">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <SubSectionTitle
-                title="Per-Shot Audio"
+                title="Per-Shot Audio (Optional)"
                 code="sound = { path, every, priority }"
-                desc="Optional custom WAV triggered by wfws_firing on every shot or every N shots in the burst."
+                desc="Play a custom WAV on every shot (or every Nth shot) directly from wfws_firing."
               />
               <label className="flex cursor-pointer items-center gap-1.5">
                 <input

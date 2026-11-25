@@ -40,8 +40,12 @@ local launch_failed_once = {} -- weapon_id -> true (log launch errors once)
 local seq_running = {}
 local seq_settled = {}
 local seq_cancelled = {}
--- Active pre-fire beam buffer guard keyed by worm.id (swallows WA repeat-fire frames)
-local beam_buffering = {}
+-- Active beam + drain re-fire guard keyed by worm.id -> beam.id (swallows WA repeat-fire frames)
+local beam_guard = {}
+local BEAMS = {}      -- [beam_id] = beam
+local BEAM_ORDER = {} -- deterministic array of live beam_ids
+local beam_release_guard
+local beam_remove_entry
 
 -- Non-firing WA worm states that should interrupt a timed sequence (`verbs.md` readable names)
 local NOT_FIRING = {
@@ -650,7 +654,14 @@ function M.reset(worm_id)
   seq_running[worm_id] = nil
   seq_settled[worm_id] = nil
   seq_cancelled[worm_id] = nil
-  beam_buffering[worm_id] = nil
+  beam_guard[worm_id] = nil
+  for i = #BEAM_ORDER, 1, -1 do
+    local b = BEAMS[BEAM_ORDER[i]]
+    if b and b.owner_id == worm_id then
+      beam_release_guard(b)
+      beam_remove_entry(b)
+    end
+  end
   clear_chain(worm_id)
 end
 
@@ -771,8 +782,10 @@ function M.sequence(ev, spec)
     end
   end
 
-  -- Fast path: single immediate shot with no buffer and no chain
-  if count == 1 and first_wait == 0 and not spec.chain then
+  local tail_frames = math.max(0, math.floor(tonumber(spec.tail_frames) or 0))
+
+  -- Fast path: single immediate shot with no buffer, no tail hold, and no chain
+  if count == 1 and first_wait == 0 and tail_frames == 0 and not spec.chain then
     fire_one(1)
     if spec.on_done then spec.on_done(worm, 1) end
     return nil
@@ -806,19 +819,23 @@ function M.sequence(ev, spec)
   if id ~= nil then seq_running[id] = true end
 
   local fired = 0
+  local in_tail = false
   local next_wait = first_wait
   if first_wait == 0 then
     fired = 1
     fire_one(1)
     if fired < count then
       next_wait = schedule_frames_for(spec, 2)
+    elseif tail_frames > 0 then
+      in_tail = true
+      next_wait = tail_frames
     end
   elseif type(spec.on_buffer) == "function" then
     spec.on_buffer(worm, first_wait)
   end
 
   local drain_frames = math.max(0, math.floor(tonumber(spec.drain) or DRAIN_DEFAULT))
-  local drain = (fired >= count) and drain_frames or 0
+  local drain = (fired >= count and not in_tail) and drain_frames or 0
   if drain > 0 then
     if id ~= nil then seq_settled[id] = true end
     end_fire()
@@ -828,7 +845,7 @@ function M.sequence(ev, spec)
   end
 
   -- Safety backstop so a stuck state can never freeze a turn forever
-  local max_ticks = first_wait + drain_frames + 60
+  local max_ticks = first_wait + tail_frames + drain_frames + 60
   for i = 2, count do
     max_ticks = max_ticks + schedule_frames_for(spec, i)
   end
@@ -878,6 +895,19 @@ function M.sequence(ev, spec)
         return
       end
 
+      if in_tail then
+        if id ~= nil then seq_settled[id] = true end
+        end_fire()
+        if spec.on_done then spec.on_done(worm, fired) end
+        if drain_frames > 0 then
+          drain = drain_frames
+        else
+          release()
+          a:remove()
+        end
+        return
+      end
+
       fired = fired + 1
       fire_one(fired)
 
@@ -892,6 +922,10 @@ function M.sequence(ev, spec)
 
       if fired < count then
         next_wait = schedule_frames_for(spec, fired + 1)
+        hold_pose()
+      elseif tail_frames > 0 then
+        in_tail = true
+        next_wait = tail_frames
         hold_pose()
       else
         if id ~= nil then seq_settled[id] = true end
@@ -915,8 +949,6 @@ end
 
 local MAX_BEAMS = 64
 local BEAM_SAMPLE_STEP = 20
-local BEAMS = {}      -- [beam_id] = beam
-local BEAM_ORDER = {} -- deterministic array of live beam_ids
 local NEXT_BEAM = 0
 local BEAM_DRAW_INSTALLED = false
 local BEAM_DEAD_LOGGED = {}
@@ -928,6 +960,7 @@ local BEAM_KEYS = {
   weapon = true,
   reach = true,
   buffer = true,
+  pre_buffer = true,
   live_aim = true,
   grow = true,
   grow_ease = true,
@@ -968,6 +1001,7 @@ local BEAM_KEYS = {
   taze_mines = true,
   on_taze_mine = true,
   cut = true,
+  cut_shape = true,
   impact_radius = true,
   fire = true,
   sparks = true,
@@ -993,6 +1027,7 @@ local BEAM_KEYS = {
   on_buffer = true,
   on_discharge = true,
   on_impact = true,
+  on_end = true,
   log = true,
 }
 
@@ -1180,13 +1215,18 @@ local function beam_half_width_at(b, along)
   return b.width
 end
 
-local function beam_remove_entry(b)
+beam_release_guard = function(b)
+  if b and b._guard and b.owner_id ~= nil then
+    if beam_guard[b.owner_id] == b.id then
+      beam_guard[b.owner_id] = nil
+    end
+    b._guard = nil
+  end
+end
+
+beam_remove_entry = function(b)
   if b.done then return end
   b.done = true
-  if b._buffering_guard and b.owner_id ~= nil then
-    beam_buffering[b.owner_id] = nil
-    b._buffering_guard = nil
-  end
   BEAMS[b.id] = nil
   for i = #BEAM_ORDER, 1, -1 do
     if BEAM_ORDER[i] == b.id then
@@ -1404,17 +1444,58 @@ local function beam_mark_hit(b, key, frame)
   b.hit[key] = (b.hit_cooldown > 0) and frame or true
 end
 
-local function beam_apply_cut(b)
-  if b.cut_done or b.cut <= 0 then return end
+local function beam_apply_cut(b, cur_frame)
+  if not b.cut_enabled then return end
   if not (wa.land and wa.land.cut) then return end
-  b.cut_done = true
-  local rad = math.max(1, math.min(200, math.floor(b.cut + 0.5)))
-  pcall(wa.land.cut, {
-    x = b.ex,
-    y = b.ey,
-    shape = "circle",
-    radius = rad,
-  })
+  if not b.live_aim then
+    if b.cut_done then return end
+    b.cut_done = true
+  else
+    local cur = cur_frame or now_frame()
+    local cut_interval = math.max(3, b.hit_cooldown > 0 and b.hit_cooldown or 4)
+    if b.last_cut_frame ~= nil and (cur - b.last_cut_frame) < cut_interval then
+      return
+    end
+    b.last_cut_frame = cur
+    b.cut_done = true
+  end
+  if b.cut_shape == "drill" then
+    pcall(wa.land.cut, {
+      x = b.ex,
+      y = b.ey,
+      shape = "drill",
+    })
+  elseif b.cut_shape == "torch" then
+    local cf = (b.dx < -1e-4 or (math.abs(b.dx) <= 1e-4 and (b.facing or 1) < 0)) and -1 or 1
+    local ca = math.max(-1, math.min(1, tonumber(b.dy) or 0))
+    pcall(wa.land.cut, {
+      x = b.ex,
+      y = b.ey,
+      shape = "torch",
+      facing = cf,
+      angle = ca,
+    })
+  else
+    local rad = math.max(1, math.min(200, math.floor(b.cut + 0.5)))
+    pcall(wa.land.cut, {
+      x = b.ex,
+      y = b.ey,
+      shape = "circle",
+      radius = rad,
+    })
+  end
+end
+
+local function beam_update_live_aim(b, owner)
+  if not b.live_aim or not worm_alive(owner) then return end
+  if owner.facing ~= nil then
+    b.facing = owner.facing
+  end
+  local ndx, ndy = aim_dir(owner, b.aim_clamp)
+  b.dx, b.dy = ndx, ndy
+  local so = b.base_standoff ~= nil and b.base_standoff or (b.standoff > 0 and b.standoff or 4)
+  b.x0 = (owner.x or b.x0) + b.off_x + so * b.dx
+  b.y0 = (owner.y or b.y0) + b.off_y + so * b.dy
 end
 
 local function beam_add_candidate(list, seen, body, targets_mode, spare_shooter, owner_id)
@@ -1684,6 +1765,83 @@ local function beam_resolve_endpoint(b)
   b.first_dist = len
 end
 
+local function parse_pre_buffer(pb_spec, b_r, b_g, b_b, b_range, b_stop)
+  if type(pb_spec) ~= "table" or pb_spec.enabled == false then
+    return nil
+  end
+  local col_int = pb_spec.color ~= nil and tonumber(pb_spec.color) or nil
+  local r_c = pb_spec.r ~= nil and tonumber(pb_spec.r) or (col_int and ((col_int >> 16) & 0xFF) or b_r)
+  local g_c = pb_spec.g ~= nil and tonumber(pb_spec.g) or (col_int and ((col_int >> 8) & 0xFF) or b_g)
+  local b_c = pb_spec.b ~= nil and tonumber(pb_spec.b) or (col_int and (col_int & 0xFF) or b_b)
+  local raw_range = tonumber(pb_spec.range)
+  local pb_range = (raw_range ~= nil and raw_range > 0) and math.max(1, raw_range) or b_range
+  local stop_t = pb_spec.stop_on_terrain == nil and b_stop or (pb_spec.stop_on_terrain == true)
+  local reach = "grow"
+  if pb_spec.reach == "full" or pb_spec.reach == "converge" then
+    reach = pb_spec.reach
+  end
+  local path = "straight"
+  if pb_spec.path == "arc" or pb_spec.path == "jagged" then
+    path = pb_spec.path
+  end
+  local bulge = tonumber(pb_spec.bulge) or 0
+  if path == "arc" and bulge == 0 then
+    path = "straight"
+  end
+  return {
+    show_beam = pb_spec.show_beam ~= false,
+    show_orb = pb_spec.show_orb ~= false,
+    orb_scale = pb_spec.orb_scale ~= nil and math.max(0.1, tonumber(pb_spec.orb_scale) or 1) or 1,
+    orb_motes = pb_spec.orb_motes ~= nil and math.max(0, math.min(12, math.floor((tonumber(pb_spec.orb_motes) or 0) + 0.5))) or 6,
+    range = pb_range,
+    stop_on_terrain = stop_t,
+    reach = reach,
+    converge_spread = pb_spec.converge_spread ~= nil and math.max(2, tonumber(pb_spec.converge_spread) or 36) or 36,
+    path = path,
+    bulge = bulge,
+    noise_px = pb_spec.noise ~= nil and math.max(0, tonumber(pb_spec.noise) or 0) or 10,
+    points = pb_spec.points ~= nil and math.max(2, math.min(32, math.floor((tonumber(pb_spec.points) or 12) + 0.5))) or 12,
+    core0 = pb_spec.core_width ~= nil and math.max(0, tonumber(pb_spec.core_width) or 0) or 4,
+    core1 = pb_spec.tip_width ~= nil and math.max(0, tonumber(pb_spec.tip_width) or 0) or 1.5,
+    glow0 = pb_spec.glow_width ~= nil and math.max(0, tonumber(pb_spec.glow_width) or 0) or 12,
+    end_width_scale = pb_spec.end_width_scale ~= nil and math.max(0.1, tonumber(pb_spec.end_width_scale) or 1.4) or 1.4,
+    r = r_c,
+    g = g_c,
+    b = b_c,
+    rainbow = pb_spec.rainbow == true,
+    alpha0 = pb_spec.alpha_start ~= nil and math.max(0, math.min(1, tonumber(pb_spec.alpha_start) or 0.35)) or 0.35,
+    alpha1 = pb_spec.alpha_end ~= nil and math.max(0, math.min(1, tonumber(pb_spec.alpha_end) or 0.9)) or 0.9,
+    pulse = pb_spec.pulse ~= nil and math.max(0, math.min(1, tonumber(pb_spec.pulse) or 0.2)) or 0.2,
+    flicker = pb_spec.flicker ~= nil and math.max(0, math.min(1, tonumber(pb_spec.flicker) or 0)) or 0,
+    sprite = pb_spec.sprite,
+    glow_sprite = pb_spec.glow_sprite,
+    orb_sprite = pb_spec.orb_sprite,
+    depth = pb_spec.depth,
+    len = 0,
+  }
+end
+
+local function beam_resolve_buffer_len(b)
+  local pb = b.pre_buffer
+  if not pb then return end
+  if pb.stop_on_terrain and wa.land and wa.land.trace then
+    local far_x = b.x0 + b.dx * pb.range
+    local far_y = b.y0 + b.dy * pb.range
+    local ok, h = pcall(wa.land.trace, b.x0, b.y0, far_x, far_y)
+    if ok and h then
+      if h.starts_solid then
+        pb.len = 0
+        return
+      elseif h.x ~= nil and h.y ~= nil then
+        local lx, ly = h.x - b.x0, h.y - b.y0
+        pb.len = math.sqrt(lx * lx + ly * ly)
+        return
+      end
+    end
+  end
+  pb.len = pb.range
+end
+
 -- Reusable ribbon buffers for `look = "ribbon"` (no per-frame table garbage)
 local RIBS = nil
 
@@ -1732,17 +1890,19 @@ local function ensure_beam_renderer()
     return ok and res ~= false
   end
 
-  local function draw_orb_quad_any(b, x, y, size, color)
-    if b.orb_sprite and not ORB_BROKEN[b.orb_sprite] then
-      if draw_quad_orb(b.orb_sprite, x, y, size, color, b.depth, b.visibility) then
-        return b.orb_sprite
+  local function draw_orb_quad_any(b, x, y, size, color, orb_spr_override, depth_override)
+    local d = depth_override or b.depth
+    local primary_orb = orb_spr_override or b.orb_sprite
+    if primary_orb and not ORB_BROKEN[primary_orb] then
+      if draw_quad_orb(primary_orb, x, y, size, color, d, b.visibility) then
+        return primary_orb
       end
-      ORB_BROKEN[b.orb_sprite] = true
+      ORB_BROKEN[primary_orb] = true
     end
     for i = 1, 2 do
       local spr = ORB_FALLBACKS[i]
       if spr and not ORB_BROKEN[spr] then
-        if draw_quad_orb(spr, x, y, size, color, b.depth, b.visibility) then
+        if draw_quad_orb(spr, x, y, size, color, d, b.visibility) then
           return spr
         end
         ORB_BROKEN[spr] = true
@@ -1784,22 +1944,26 @@ local function ensure_beam_renderer()
     pcall(wa.draw.ribbon, r)
   end
 
-  local function draw_buffer_orb(b, p_charge, r_c, g_c, b_c)
+  local function draw_buffer_orb(b, p_charge, r_c, g_c, b_c, orb_scale, orb_motes, orb_spr_override, depth_override)
+    local sc = orb_scale ~= nil and math.max(0.1, orb_scale) or 1
+    local motes = orb_motes ~= nil and math.max(0, math.min(12, math.floor(orb_motes + 0.5))) or 6
+    local d = depth_override or b.depth
     local pulse = 0.85 + 0.15 * wa.math.sin((b.age or 0) * 0.65)
-    local base_r = (4 + p_charge * math.min(20, math.max(4, b.core0) * 0.35 + 6)) * pulse
+    local base_r = (4 + p_charge * math.min(20, math.max(4, b.core0) * 0.35 + 6)) * pulse * sc
     local halo_col = beam_tint(0.55 + 0.35 * p_charge, r_c, g_c, b_c)
     local core_col = beam_tint(0.75 + 0.25 * p_charge, 255, 255, 255)
     local mini_col = beam_tint(0.85, 255, 255, 255)
-    local orb_spr = draw_orb_quad_any(b, b.x0, b.y0, base_r * 3.6, halo_col)
+    local orb_spr = draw_orb_quad_any(b, b.x0, b.y0, base_r * 3.6, halo_col, orb_spr_override, d)
     if orb_spr then
-      draw_quad_orb(orb_spr, b.x0, b.y0, base_r * 1.8, core_col, b.depth, b.visibility)
-      -- 6 mini-orbs spiraling inward into the muzzle orb (matches BeamPreview)
-      local orbit_r = (1 - p_charge) * 26 + 3
-      for oi = 0, 5 do
-        local ang = (oi / 6) * (2 * PI) + (b.age or 0) * 0.28
-        local mx = b.x0 + wa.math.cos(ang) * orbit_r
-        local my = b.y0 + wa.math.sin(ang) * orbit_r
-        draw_quad_orb(orb_spr, mx, my, 9, mini_col, b.depth, b.visibility)
+      draw_quad_orb(orb_spr, b.x0, b.y0, base_r * 1.8, core_col, d, b.visibility)
+      if motes > 0 then
+        local orbit_r = (1 - p_charge) * 26 * sc + 3 * sc
+        for oi = 0, motes - 1 do
+          local ang = (oi / motes) * (2 * PI) + (b.age or 0) * 0.28
+          local mx = b.x0 + wa.math.cos(ang) * orbit_r
+          local my = b.y0 + wa.math.sin(ang) * orbit_r
+          draw_quad_orb(orb_spr, mx, my, 9 * sc, mini_col, d, b.visibility)
+        end
       end
       return
     end
@@ -1809,7 +1973,7 @@ local function ensure_beam_renderer()
       local p1, p2 = RIBS.core[1], RIBS.core[2]
       p1.x, p1.y, p1.width, p1.u, p1.color = b.x0 - b.dx * base_r, b.y0 - b.dy * base_r, base_r * 2.0, 0, halo_col
       p2.x, p2.y, p2.width, p2.u, p2.color = b.x0 + b.dx * base_r, b.y0 + b.dy * base_r, base_r * 2.0, 1, core_col
-      emit_ribbon(RIBS.core, 2, fallback_spr, b.depth, b.visibility)
+      emit_ribbon(RIBS.core, 2, fallback_spr, d, b.visibility)
     end
   end
 
@@ -1884,19 +2048,108 @@ local function ensure_beam_renderer()
         end
 
         if b.phase == "buffer" then
-          -- Charging muzzle orb + soft aim sight line during pre-fire buffer
           local p_charge = b.buffer > 0 and math.min(1, b.age / b.buffer) or 1
-          local sight_spr = b.glow_sprite or b.sprite
-          local sight_len = math.min(b.len > 0 and b.len or b.range, 56 + 180 * p_charge)
-          if sight_spr and sight_len >= 2 then
-            local p1, p2 = RIBS.core[1], RIBS.core[2]
-            local w = 1.5 + 3.0 * p_charge
-            local c = beam_tint(0.30 + 0.45 * p_charge, r_c, g_c, b_c)
-            p1.x, p1.y, p1.width, p1.u, p1.color = b.x0, b.y0, w * 1.4, 0, c
-            p2.x, p2.y, p2.width, p2.u, p2.color = b.x0 + b.dx * sight_len, b.y0 + b.dy * sight_len, 1.0, 1, beam_tint(0.10 * p_charge, r_c, g_c, b_c)
-            emit_ribbon(RIBS.core, 2, sight_spr, b.depth, b.visibility)
+          local pb = b.pre_buffer
+          if pb == nil then
+            -- Default charging muzzle orb + soft aim sight line during pre-fire buffer
+            local sight_spr = b.glow_sprite or b.sprite
+            local sight_len = math.min(b.len > 0 and b.len or b.range, 56 + 180 * p_charge)
+            if sight_spr and sight_len >= 2 then
+              local p1, p2 = RIBS.core[1], RIBS.core[2]
+              local w = 1.5 + 3.0 * p_charge
+              local c = beam_tint(0.30 + 0.45 * p_charge, r_c, g_c, b_c)
+              p1.x, p1.y, p1.width, p1.u, p1.color = b.x0, b.y0, w * 1.4, 0, c
+              p2.x, p2.y, p2.width, p2.u, p2.color = b.x0 + b.dx * sight_len, b.y0 + b.dy * sight_len, 1.0, 1, beam_tint(0.10 * p_charge, r_c, g_c, b_c)
+              emit_ribbon(RIBS.core, 2, sight_spr, b.depth, b.visibility)
+            end
+            draw_buffer_orb(b, p_charge, r_c, g_c, b_c)
+          else
+            local pr, pg, pb_c = pb.r, pb.g, pb.b
+            if pb.rainbow then
+              pr, pg, pb_c = beam_rainbow_rgb((b.age * 0.04) % 1)
+            end
+            local p_alpha = pb.alpha0 + (pb.alpha1 - pb.alpha0) * p_charge
+            if pb.pulse > 0 then
+              p_alpha = p_alpha * (1 - pb.pulse * 0.45 + pb.pulse * 0.45 * wa.math.sin((b.age or 0) * 0.55))
+            end
+            if pb.flicker > 0 and wa.draw.random then
+              p_alpha = p_alpha * (1 - pb.flicker * 0.5 + wa.draw.random() * pb.flicker)
+            end
+            if p_alpha < 0 then p_alpha = 0 elseif p_alpha > 1 then p_alpha = 1 end
+
+            local max_len = (pb.len and pb.len > 0) and pb.len or pb.range
+            local draw_len = (pb.reach == "grow") and (max_len * p_charge) or max_len
+            local spr = pb.sprite or b.sprite
+            local gspr = pb.glow_sprite or b.glow_sprite or spr
+            local ospr = pb.orb_sprite or b.orb_sprite
+            local pdepth = pb.depth or b.depth
+            local w_scale = 1 + (pb.end_width_scale - 1) * p_charge
+
+            if pb.show_beam and draw_len >= 2 and p_alpha > 0.005 then
+              if pb.path == "jagged" then
+                beam_ensure_shape(b, math.floor((b.age or 0) / 2))
+              end
+              local n = math.min(64, math.max(2, pb.points * 2))
+              local denom = n - 1
+              local nx, ny = -b.dy, b.dx
+              local glow_w1 = pb.core1 > 0 and math.max(pb.glow0, pb.core1 * 1.6) or pb.glow0
+
+              local function draw_prebuffer_strip(lat0, lat1)
+                local draw_hot = (pb.core0 * w_scale >= 3) and (spr ~= nil)
+                for i = 1, n do
+                  local t = (i - 1) / denom
+                  local d = draw_len * t
+                  local lat = lat0 + (lat1 - lat0) * t
+                  if pb.path == "arc" and pb.bulge ~= 0 then
+                    lat = lat - pb.bulge * wa.math.sin(t * PI)
+                  elseif pb.path == "jagged" and pb.noise_px > 0 and t > 0 and t < 1 then
+                    lat = lat + beam_kink_at(b.jag_vals, t) * wa.math.sin(t * PI) * pb.noise_px
+                  end
+                  local px = b.x0 + b.dx * d + nx * lat
+                  local py = b.y0 + b.dy * d + ny * lat
+                  local cw = math.max(0.5, (pb.core0 + (pb.core1 - pb.core0) * t) * w_scale)
+                  local gw = math.max(1, (pb.glow0 + (glow_w1 - pb.glow0) * t) * w_scale)
+
+                  if pb.glow0 > 0 and gspr then
+                    local gp = RIBS.halo[i]
+                    gp.x, gp.y, gp.width, gp.u = px, py, gw, t
+                    gp.color = beam_tint(p_alpha * 0.55 * (1 - 0.35 * t), pr, pg, pb_c)
+                  end
+                  if pb.core0 > 0 and spr then
+                    local cp = RIBS.core[i]
+                    cp.x, cp.y, cp.width, cp.u = px, py, cw, t
+                    cp.color = beam_tint(p_alpha * (1 - 0.25 * t), pr, pg, pb_c)
+                  end
+                  if draw_hot then
+                    local hp = RIBS.hot[i]
+                    hp.x, hp.y, hp.width, hp.u = px, py, math.max(0.5, cw * 0.42), t
+                    hp.color = beam_tint(p_alpha * 0.78 * (1 - 0.2 * t), 255, 255, 255)
+                  end
+                end
+                if pb.glow0 > 0 and gspr then
+                  emit_ribbon(RIBS.halo, n, gspr, pdepth, b.visibility)
+                end
+                if pb.core0 > 0 and spr then
+                  emit_ribbon(RIBS.core, n, spr, pdepth, b.visibility)
+                  if draw_hot then
+                    emit_ribbon(RIBS.hot, n, spr, pdepth, b.visibility)
+                  end
+                end
+              end
+
+              if pb.reach == "converge" then
+                local spread = pb.converge_spread * (1 - p_charge)
+                draw_prebuffer_strip(spread * 0.25, spread)
+                draw_prebuffer_strip(-spread * 0.25, -spread)
+              else
+                draw_prebuffer_strip(0, 0)
+              end
+            end
+
+            if pb.show_orb then
+              draw_buffer_orb(b, p_charge, pr, pg, pb_c, pb.orb_scale, pb.orb_motes, ospr, pdepth)
+            end
           end
-          draw_buffer_orb(b, p_charge, r_c, g_c, b_c)
         elseif b.head > 1 then
           -- Three times the path resolution. `points` is how many kinks the
           -- bolt has, and on a long beam 16 of them are ~29 px apart: too
@@ -2101,6 +2354,15 @@ function M.beam(ev, spec)
     error("wfws_firing.beam: interact must be 'hit' or 'burn'")
   end
 
+  local cut_shape = spec.cut_shape or "circle"
+  if cut_shape ~= "circle" and cut_shape ~= "drill" and cut_shape ~= "torch" then
+    error("wfws_firing.beam: cut_shape must be 'circle', 'drill', or 'torch'")
+  end
+  local cut_rad = math.max(0, tonumber(spec.cut) or 0)
+  local cut_enabled =
+    (cut_shape == "circle" and cut_rad > 0)
+    or (cut_shape ~= "circle" and spec.cut ~= false and (cut_rad > 0 or spec.cut == true or spec.cut_shape ~= nil))
+
   local look = spec.look or "ribbon"
   if look ~= "ribbon" and look ~= "trail" then
     error("wfws_firing.beam: look must be 'ribbon' or 'trail'")
@@ -2130,8 +2392,9 @@ function M.beam(ev, spec)
     return nil
   end
   local owner_id = owner.id
-  -- Re-fire guard: swallows WA repeat-fire frames while a buffered beam winds up.
-  if owner_id ~= nil and beam_buffering[owner_id] then
+  local owned_by_seq = owner_id ~= nil and seq_running[owner_id] == true
+  -- Re-fire guard: swallows WA repeat-fire frames while a beam holds the worm or drains.
+  if not owned_by_seq and owner_id ~= nil and beam_guard[owner_id] then
     return nil
   end
 
@@ -2141,6 +2404,7 @@ function M.beam(ev, spec)
     for i = 1, #BEAM_ORDER do
       local old = BEAMS[BEAM_ORDER[i]]
       if old and (old.done or old.phase == "end") then
+        beam_release_guard(old)
         beam_remove_entry(old)
         dropped = true
         break
@@ -2203,12 +2467,13 @@ function M.beam(ev, spec)
 
   local dx, dy = unit_dir_from_ev(ev, spec.aim_clamp)
   local x0, y0 = ev.x, ev.y
+  local base_standoff = (x0 == nil or y0 == nil) and (standoff > 0 and standoff or 4) or standoff
   if x0 == nil or y0 == nil then
-    x0 = (owner.x or 0) + off_x + (standoff > 0 and standoff or 4) * dx
-    y0 = (owner.y or 0) + off_y + (standoff > 0 and standoff or 4) * dy
+    x0 = (owner.x or 0) + off_x + base_standoff * dx
+    y0 = (owner.y or 0) + off_y + base_standoff * dy
   else
-    x0 = x0 + off_x + standoff * dx
-    y0 = y0 + off_y + standoff * dy
+    x0 = x0 + off_x + base_standoff * dx
+    y0 = y0 + off_y + base_standoff * dy
   end
 
   local depth = spec.depth
@@ -2237,11 +2502,13 @@ function M.beam(ev, spec)
     phase = buffer > 0 and "buffer" or (grow > 0 and "grow" or (hold > 0 and "hold" or "end")),
     reach = reach,
     buffer = buffer,
+    pre_buffer = parse_pre_buffer(spec.pre_buffer, r_c, g_c, b_c, range, stop_on_terrain),
     live_aim = spec.live_aim ~= false,
     aim_clamp = spec.aim_clamp,
     off_x = off_x,
     off_y = off_y,
     standoff = standoff,
+    base_standoff = base_standoff,
     grow = grow,
     grow_ease = spec.grow_ease or "linear",
     hold = hold,
@@ -2287,7 +2554,9 @@ function M.beam(ev, spec)
     spare_shooter = spec.spare_shooter ~= false,
     taze_mines = spec.taze_mines == true,
     on_taze_mine = type(spec.on_taze_mine) == "function" and spec.on_taze_mine or nil,
-    cut = math.max(0, tonumber(spec.cut) or 0),
+    cut = cut_rad,
+    cut_shape = cut_shape,
+    cut_enabled = cut_enabled,
     impact_radius = math.max(0, tonumber(spec.impact_radius) or 0),
     fire = type(spec.fire) == "table" and spec.fire or nil,
     fire_sampled_upto = 0,
@@ -2302,6 +2571,9 @@ function M.beam(ev, spec)
     on_buffer = type(spec.on_buffer) == "function" and spec.on_buffer or nil,
     on_discharge = type(spec.on_discharge) == "function" and spec.on_discharge or nil,
     on_impact = type(spec.on_impact) == "function" and spec.on_impact or nil,
+    on_end = type(spec.on_end) == "function" and spec.on_end or nil,
+    holds_worm = (not owned_by_seq) and owner_id ~= nil and (buffer + grow + hold > 0),
+    last_cut_frame = nil,
     impact_fired = false,
     log = spec.log == true,
     hit = {},
@@ -2342,15 +2614,23 @@ function M.beam(ev, spec)
     end
   end
 
+  local function release_worm_hold(interrupted)
+    if b._worm_released then return end
+    b._worm_released = true
+    b._release_frame = now_frame()
+    if b.holds_worm and owner and owner.shots_to_fire ~= nil then
+      owner.shots_fired = owner.shots_to_fire
+    end
+    if b.on_end then
+      pcall(b.on_end, owner, b, interrupted == true)
+    end
+  end
+
   local function discharge_now(cur_frame)
     if b.discharged then return end
     b.discharged = true
-    if b._buffering_guard and owner_id ~= nil then
-      beam_buffering[owner_id] = nil
-      b._buffering_guard = nil
-    end
-    if b.buffer > 0 and owner and not (owner_id ~= nil and seq_running[owner_id]) and owner.shots_to_fire ~= nil then
-      owner.shots_fired = owner.shots_to_fire
+    if (b.grow + b.hold) <= 0 then
+      release_worm_hold(false)
     end
     beam_resolve_endpoint(b)
     bump_shot_counter(owner, 60)
@@ -2371,8 +2651,8 @@ function M.beam(ev, spec)
       b.head = b.len
       beam_run_hits(b, cur_frame)
       beam_step_trajectory_fire(b)
-      if b.cut > 0 and (b.hit_terrain or not b.stop_on_terrain) then
-        beam_apply_cut(b)
+      if b.cut_enabled and (b.hit_terrain or not b.stop_on_terrain) then
+        beam_apply_cut(b, cur_frame)
       end
       beam_fire_impact(b)
     else
@@ -2385,15 +2665,17 @@ function M.beam(ev, spec)
   BEAMS[b.id] = b
   BEAM_ORDER[#BEAM_ORDER + 1] = b.id
 
-  if buffer > 0 then
-    if owner_id ~= nil then
-      beam_buffering[owner_id] = true
-      b._buffering_guard = true
-    end
-    if not (owner_id ~= nil and seq_running[owner_id]) and owner.shots_to_fire ~= nil then
+  if b.holds_worm then
+    beam_guard[owner_id] = b.id
+    b._guard = true
+    if owner.shots_to_fire ~= nil then
       owner.shots_fired = 0
       owner.shots_to_fire = 1
     end
+  end
+
+  if buffer > 0 then
+    beam_resolve_buffer_len(b)
     if b.on_buffer then
       b.on_buffer(owner, buffer)
     end
@@ -2410,11 +2692,15 @@ function M.beam(ev, spec)
 
   local total_frames = buffer + grow + hold + fade
   if total_frames <= 0 then
+    release_worm_hold(false)
+    beam_release_guard(b)
     beam_remove_entry(b)
     return nil
   end
 
   if not (wa.actors and wa.actors.spawn) then
+    release_worm_hold(false)
+    beam_release_guard(b)
     beam_remove_entry(b)
     return nil
   end
@@ -2433,35 +2719,61 @@ function M.beam(ev, spec)
       if age < 0 then age = 0 end
       b.age = age
 
-      if b.done or age >= total_frames then
-        beam_remove_entry(b)
+      if b.done then
+        if b._guard and b._release_frame ~= nil and (cur - b._release_frame) < DRAIN_DEFAULT
+            and worm_alive(owner) and owner.turn ~= false
+            and (b.weapon == "" or owner.weapon == b.weapon)
+            and not (owner.state and NOT_FIRING[owner.state] == true) then
+          return
+        end
+        beam_release_guard(b)
         a:remove()
         return
+      end
+
+      if age >= total_frames then
+        release_worm_hold(false)
+        beam_remove_entry(b)
+        if b._guard and b._release_frame ~= nil and (cur - b._release_frame) < DRAIN_DEFAULT
+            and worm_alive(owner) and owner.turn ~= false
+            and (b.weapon == "" or owner.weapon == b.weapon)
+            and not (owner.state and NOT_FIRING[owner.state] == true) then
+          return
+        end
+        beam_release_guard(b)
+        a:remove()
+        return
+      end
+
+      local function beam_interrupted()
+        return not worm_alive(owner)
+          or owner.turn == false
+          or (b.weapon ~= "" and owner.weapon ~= b.weapon)
+          or (owner.state and NOT_FIRING[owner.state] == true)
       end
 
       -- Buffer / charge windup phase
       if age < b.buffer then
         b.phase = "buffer"
-        local cancelled =
-          not worm_alive(owner)
-          or owner.turn == false
-          or (b.weapon ~= "" and owner.weapon ~= b.weapon)
-          or (owner.state and NOT_FIRING[owner.state] == true)
-        if cancelled then
+        if beam_interrupted() then
+          release_worm_hold(true)
+          beam_release_guard(b)
           beam_remove_entry(b)
           a:remove()
           return
         end
-        if age < b.buffer - 1 and not (owner_id ~= nil and seq_running[owner_id]) and owner.shots_to_fire ~= nil then
+        if b.holds_worm and owner.shots_to_fire ~= nil then
           owner.shots_fired = 0
           owner.shots_to_fire = 1
         end
         if b.live_aim then
-          local ndx, ndy = aim_dir(owner, b.aim_clamp)
-          b.dx, b.dy = ndx, ndy
+          beam_update_live_aim(b, owner)
+        else
+          local so = b.base_standoff ~= nil and b.base_standoff or (b.standoff > 0 and b.standoff or 4)
+          b.x0 = (owner.x or b.x0) + b.off_x + so * b.dx
+          b.y0 = (owner.y or b.y0) + b.off_y + so * b.dy
         end
-        b.x0 = (owner.x or b.x0) + b.off_x + (b.standoff > 0 and b.standoff or 4) * b.dx
-        b.y0 = (owner.y or b.y0) + b.off_y + (b.standoff > 0 and b.standoff or 4) * b.dy
+        beam_resolve_buffer_len(b)
         return
       end
 
@@ -2471,32 +2783,54 @@ function M.beam(ev, spec)
       end
 
       local active_age = age - b.buffer
-      if active_age < b.grow then
-        b.phase = "grow"
-        local frac = beam_ease(b.grow_ease, active_age / b.grow)
-        b.head = b.len * frac
-      elseif active_age < b.grow + b.hold then
-        b.phase = "hold"
-        b.head = b.len
+      if active_age < b.grow + b.hold then
+        if b.holds_worm then
+          if beam_interrupted() then
+            release_worm_hold(true)
+            beam_release_guard(b)
+            beam_remove_entry(b)
+            a:remove()
+            return
+          end
+          if owner.shots_to_fire ~= nil then
+            owner.shots_fired = 0
+            owner.shots_to_fire = 1
+          end
+        end
+
+        if b.live_aim then
+          beam_update_live_aim(b, owner)
+          beam_resolve_endpoint(b)
+          if b.hits == "first" then
+            b.first_done = false
+          end
+        end
+
+        if active_age < b.grow then
+          b.phase = "grow"
+          local frac = beam_ease(b.grow_ease, active_age / b.grow)
+          b.head = b.len * frac
+        else
+          b.phase = "hold"
+          b.head = b.len
+        end
+
+        beam_run_hits(b, cur)
+        beam_step_trajectory_fire(b)
+        if b.head + 2 >= b.len then
+          if b.cut_enabled and (b.hit_terrain or not b.stop_on_terrain) then
+            beam_apply_cut(b, cur)
+          end
+          beam_fire_impact(b)
+        end
       else
         b.phase = "end"
+        release_worm_hold(false)
         if b.dissipate == "retract" and b.fade > 0 then
           local k = math.min(1, math.max(0, (active_age - b.grow - b.hold) / b.fade))
           b.head = b.len * (1 - k)
         else
           b.head = b.len
-        end
-      end
-
-      -- Run hit pass for exposed length (never during fade/end)
-      if b.phase ~= "end" then
-        beam_run_hits(b, cur)
-        beam_step_trajectory_fire(b)
-        if b.head + 2 >= b.len then
-          if b.cut > 0 and not b.cut_done and (b.hit_terrain or not b.stop_on_terrain) then
-            beam_apply_cut(b)
-          end
-          beam_fire_impact(b)
         end
       end
     end,
@@ -2526,6 +2860,8 @@ function M.beam_buffer(owner, ticks, spec)
 
   ensure_beam_renderer()
   NEXT_BEAM = NEXT_BEAM + 1
+  local pb_stop = spec.stop_on_terrain ~= false
+  local pb_range = spec.range ~= nil and math.max(1, tonumber(spec.range) or 350) or 350
   local b = {
     id = NEXT_BEAM,
     owner_handle = owner,
@@ -2542,7 +2878,7 @@ function M.beam_buffer(owner, ticks, spec)
     look = "ribbon",
     buffer = dur,
     core0 = spec.core0 ~= nil and math.max(0, tonumber(spec.core0) or 0) or 7,
-    range = spec.range ~= nil and math.max(1, tonumber(spec.range) or 350) or 350,
+    range = pb_range,
     r = r_c,
     g = g_c,
     b = b_c,
@@ -2557,8 +2893,13 @@ function M.beam_buffer(owner, ticks, spec)
     standoff = standoff,
     aim_clamp = spec.aim_clamp,
     live_aim = spec.live_aim ~= false,
+    pre_buffer = parse_pre_buffer(spec.pre_buffer, r_c, g_c, b_c, pb_range, pb_stop),
+    jag1 = (wa.random(0, 1000000) / 1000000) * (2 * PI),
+    jag2 = (wa.random(0, 1000000) / 1000000) * (2 * PI),
     done = false,
   }
+  beam_seed_shape(b)
+  beam_resolve_buffer_len(b)
   BEAMS[b.id] = b
   BEAM_ORDER[#BEAM_ORDER + 1] = b.id
 
@@ -2591,6 +2932,7 @@ function M.beam_buffer(owner, ticks, spec)
       end
       b.x0 = (owner.x or b.x0) + b.off_x + (b.standoff > 0 and b.standoff or 4) * b.dx
       b.y0 = (owner.y or b.y0) + b.off_y + (b.standoff > 0 and b.standoff or 4) * b.dy
+      beam_resolve_buffer_len(b)
     end,
   })
   return nil

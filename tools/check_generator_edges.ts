@@ -2187,6 +2187,63 @@ local afterHook = 42`;
     burnTazeLua,
   );
 
+  // Sustained beam hold duration + live_aim + gun.shot_interval_ms = 0 + on_buffer/on_discharge/on_end
+  const sustainedBeam = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      followAim: true,
+      bufferFrames: 12,
+      growFrames: 10,
+      holdFrames: 40,
+      fadeFrames: 8,
+    },
+    hold: {
+      enabled: true,
+      sheet: '',
+      sheetFile: new File(['h'], 'hold.png'),
+      frames: 4,
+      sheetFrames: 4,
+      fps: 15,
+      animate: true,
+      handType: 'mid',
+      handRadius: 10,
+      weapRadius: 8,
+      scale: 1,
+      handScale: 1,
+      drawHand: true,
+      thrown: false,
+      putAway: true,
+      keepWhileFiring: true,
+      flashFile: new File(['f'], 'flash.png'),
+      fireFrames: 4,
+      fireFps: 15,
+      fireHideMain: false,
+    } as WeaponProject['hold'],
+  });
+  const sustainedBeamLua = generateLuaCode(sustainedBeam);
+  check(
+    'sustained beam emits gun.shot_interval_ms = 0, on_buffer (even without buffer sheet), on_discharge for >= grow+hold (50 ticks), and on_end stop trigger',
+    sustainedBeamLua.includes('shot_interval_ms = 0,') &&
+      sustainedBeamLua.includes('on_buffer = function(w, t) sb.hold_trigger(w, "buffer", t) end,') &&
+      sustainedBeamLua.includes('on_discharge = function(w) sb.hold_trigger(w, "fire", 50) end,') &&
+      sustainedBeamLua.includes(
+        'on_end = function(w, _, interrupted) if interrupted then sb.hold_trigger(w, "stop") end end,',
+      ),
+    sustainedBeamLua,
+  );
+
+  check(
+    'sequenced beam emits tail_frames matching grow + hold',
+    beamSeqLua.includes(`tail_frames = ${DEFAULT_BEAM.growFrames + DEFAULT_BEAM.holdFrames},`),
+    beamSeqLua,
+  );
+
   // 2) Glow-only mine explosion (`shape = "none"`, independent `centerGlow`, `fireSpawn`, `electricTazeMines`) + placed mine emitter & ribbon
   const glowMine = makeProject({
     customSprites: {},
@@ -2471,6 +2528,220 @@ local afterHook = 42`;
       poisonPresetParsed.project.explosionEffect?.centerGlow?.shape === 'spin_star' &&
       poisonPresetParsed.project.explosionEffect?.centerGlow?.color === '#133b02',
     JSON.stringify(poisonPresetParsed.project.explosionEffect),
+  );
+
+  // Beam cut_shape presets: torch, drill, and circle default
+  const torchCutLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'handgun',
+      based_on: 'stock.handgun',
+      donorBaseline: stockDonorBaseline('handgun'),
+      fireType: 'beam',
+      beam: { ...DEFAULT_BEAM, enabled: true, terrainCut: true, cutShape: 'torch', cutRadius: 16 },
+    }),
+  );
+  const drillCutLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'handgun',
+      based_on: 'stock.handgun',
+      donorBaseline: stockDonorBaseline('handgun'),
+      fireType: 'beam',
+      beam: { ...DEFAULT_BEAM, enabled: true, terrainCut: true, cutShape: 'drill', cutRadius: 16 },
+    }),
+  );
+  const circleCutLua = generateLuaCode(
+    makeProject({
+      customSprites: {},
+      slot: 'handgun',
+      based_on: 'stock.handgun',
+      donorBaseline: stockDonorBaseline('handgun'),
+      fireType: 'beam',
+      beam: { ...DEFAULT_BEAM, enabled: true, terrainCut: true, cutShape: 'circle', cutRadius: 18 },
+    }),
+  );
+  const torchCutParsed = await parseFeatures(torchCutLua);
+  check(
+    'beam cutShape="torch" emits cut_shape="torch" without cut= and round-trips; drill emits cut_shape="drill"; circle emits cut=18 without cut_shape',
+    torchCutLua.includes('cut_shape = "torch",') &&
+      !torchCutLua.includes('      cut = ') &&
+      torchCutParsed.project.beam?.terrainCut === true &&
+      torchCutParsed.project.beam?.cutShape === 'torch' &&
+      drillCutLua.includes('cut_shape = "drill",') &&
+      !drillCutLua.includes('      cut = ') &&
+      circleCutLua.includes('      cut = 18,') &&
+      !circleCutLua.includes('cut_shape ='),
+    `${torchCutLua}\n---\n${drillCutLua}\n---\n${circleCutLua}`,
+  );
+
+  // Beam Pre-Buffer Beam (converge + jagged + custom color + artStyle + depth) + round-trip
+  const preBufBeamProj = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    beam: {
+      ...DEFAULT_BEAM,
+      enabled: true,
+      bufferFrames: 25,
+      preBuffer: {
+        enabled: true,
+        showBeam: true,
+        showOrb: false,
+        orbScale: 1.5,
+        orbMotes: 4,
+        range: 260,
+        stopOnTerrain: false,
+        reach: 'converge',
+        convergeSpread: 44,
+        path: 'jagged',
+        bulge: 16,
+        noise: 12,
+        points: 10,
+        coreWidth: 5,
+        tipWidth: 2,
+        glowWidth: 14,
+        endWidthScale: 1.6,
+        color: '#ff3b30',
+        rainbow: true,
+        alphaStart: 0.25,
+        alphaEnd: 0.95,
+        pulse: 0.3,
+        flicker: 0.15,
+        artStyle: 'plasma',
+        depth: 'EFFECTS',
+      },
+    },
+  });
+  const preBufLua = generateLuaCode(preBufBeamProj);
+  const preBufParsed = await parseFeatures(preBufLua);
+  check(
+    'beam preBuffer emits pre_buffer table + extra artStyle sheets and round-trips all fields',
+    preBufLua.includes('pre_buffer = {') &&
+      preBufLua.includes('reach = "converge"') &&
+      preBufLua.includes('converge_spread = 44') &&
+      preBufLua.includes('path = "jagged"') &&
+      preBufLua.includes('beam_plasma.png') &&
+      preBufLua.includes('depth = wa.depth.EFFECTS') &&
+      preBufParsed.project.beam?.preBuffer?.enabled === true &&
+      preBufParsed.project.beam?.preBuffer?.showOrb === false &&
+      preBufParsed.project.beam?.preBuffer?.reach === 'converge' &&
+      preBufParsed.project.beam?.preBuffer?.convergeSpread === 44 &&
+      preBufParsed.project.beam?.preBuffer?.path === 'jagged' &&
+      preBufParsed.project.beam?.preBuffer?.noise === 12 &&
+      preBufParsed.project.beam?.preBuffer?.color === '#ff3b30' &&
+      preBufParsed.project.beam?.preBuffer?.rainbow === true &&
+      preBufParsed.project.beam?.preBuffer?.artStyle === 'plasma' &&
+      preBufParsed.project.beam?.preBuffer?.depth === 'EFFECTS',
+    `${preBufLua}\n---\n${JSON.stringify(preBufParsed.project.beam?.preBuffer)}`,
+  );
+
+  // Full Effect Manager Explosion Spawner on beam: mode='effect' (fx.burst + fireSpawn)
+  const beamFxBurstProj = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    beam: { ...DEFAULT_BEAM, enabled: true },
+    explosionEffect: {
+      ...DEFAULT_EXPLOSION_EFFECT,
+      enabled: true,
+      mode: 'effect',
+      radius: 46,
+      color: '#ff9900',
+      thickness: 6,
+      noise: 1.4,
+      duration: 24,
+      live: 30,
+      shape: 'star',
+      starPoints: 6,
+      style: 'soft',
+      centerGlow: { shape: 'orb', scale: 2.4, expand: 0.9, spin: 0.16, inner: false, color: '#fff0aa' },
+      rebuffer: true,
+      rebufferMode: 'flash',
+      rebufferAt: 14,
+      fireSpawn: { enabled: true, count: 6, durationMs: 3000, damage: 4, upPower: 75, vy: -3.5 },
+    },
+  });
+  const beamFxBurstLua = generateLuaCode(beamFxBurstProj);
+  const beamFxBurstDeps = autoDependenciesForProject(beamFxBurstProj).map((d) => d.id);
+  const beamFxBurstParsed = await parseFeatures(beamFxBurstLua);
+  check(
+    'beam explosionEffect mode="effect" emits full fx.burst + wa.fire.spawn, claims fx.STAR + effects.sdk, and round-trips into project.explosionEffect',
+    beamFxBurstLua.includes('fx.burst{') &&
+      beamFxBurstLua.includes('thickness = 6,') &&
+      beamFxBurstLua.includes('duration = 24,') &&
+      beamFxBurstLua.includes('wa.fire.spawn(') &&
+      beamFxBurstLua.includes('fx.STAR') &&
+      !beamFxBurstLua.includes('custom_explosion') &&
+      beamFxBurstDeps.includes('effects.sdk') &&
+      beamFxBurstParsed.project.explosionEffect?.enabled === true &&
+      beamFxBurstParsed.project.explosionEffect?.mode === 'effect' &&
+      beamFxBurstParsed.project.explosionEffect?.radius === 46 &&
+      beamFxBurstParsed.project.explosionEffect?.thickness === 6 &&
+      beamFxBurstParsed.project.explosionEffect?.duration === 24 &&
+      beamFxBurstParsed.project.explosionEffect?.shape === 'star' &&
+      beamFxBurstParsed.project.explosionEffect?.starPoints === 6 &&
+      beamFxBurstParsed.project.explosionEffect?.style === 'soft' &&
+      beamFxBurstParsed.project.explosionEffect?.centerGlow?.shape === 'orb' &&
+      beamFxBurstParsed.project.explosionEffect?.fireSpawn?.enabled === true &&
+      beamFxBurstParsed.project.explosionEffect?.fireSpawn?.count === 6 &&
+      !beamFxBurstParsed.project.beam?.impactBurst?.enabled,
+    `${beamFxBurstLua}\n---\n${JSON.stringify(beamFxBurstParsed.project.explosionEffect)}`,
+  );
+
+  // Full Effect Manager Explosion Spawner on beam: mode='blast' (blast.explode + electric + taze_mine + poison)
+  const beamFxBlastProj = makeProject({
+    customSprites: {},
+    slot: 'handgun',
+    based_on: 'stock.handgun',
+    donorBaseline: stockDonorBaseline('handgun'),
+    fireType: 'beam',
+    electricTazeMines: true,
+    beam: { ...DEFAULT_BEAM, enabled: true },
+    explosionEffect: {
+      ...DEFAULT_EXPLOSION_EFFECT,
+      enabled: true,
+      mode: 'blast',
+      radius: 58,
+      damage: 42,
+      push: 8,
+      hole: 34,
+      damageType: 'electric',
+      poisonPower: 3,
+      sound: 'default',
+      color: '#38bdf8',
+      shape: 'spin_star',
+      starPoints: 5,
+      spin: 0.22,
+    },
+  });
+  const beamFxBlastLua = generateLuaCode(beamFxBlastProj);
+  const beamFxBlastDeps = autoDependenciesForProject(beamFxBlastProj).map((d) => d.id);
+  const beamFxBlastParsed = await parseFeatures(beamFxBlastLua);
+  check(
+    'beam explosionEffect mode="blast" emits blast.explode + zap + taze_mine + poison + px.electric + effects.sdk and round-trips',
+    beamFxBlastLua.includes('local blast = require("wf-lib/effects/custom_explosion")') &&
+      beamFxBlastLua.includes('blast.explode{') &&
+      beamFxBlastLua.includes('damage = 42,') &&
+      beamFxBlastLua.includes('hole = 34,') &&
+      beamFxBlastLua.includes('kind = "taze",') &&
+      beamFxBlastLua.includes('poison = 3,') &&
+      beamFxBlastLua.includes('zap.set_message_electric(') &&
+      beamFxBlastLua.includes('on_taze_mine = function(m, w) taze_mine.taze(') &&
+      beamFxBlastDeps.includes('effects.sdk') &&
+      beamFxBlastDeps.includes('px.electric') &&
+      beamFxBlastParsed.project.explosionEffect?.enabled === true &&
+      beamFxBlastParsed.project.explosionEffect?.mode === 'blast' &&
+      beamFxBlastParsed.project.explosionEffect?.damage === 42 &&
+      beamFxBlastParsed.project.explosionEffect?.hole === 34 &&
+      beamFxBlastParsed.project.explosionEffect?.damageType === 'electric' &&
+      beamFxBlastParsed.project.explosionEffect?.poisonPower === 3 &&
+      beamFxBlastParsed.project.explosionEffect?.shape === 'spin_star',
+    `${beamFxBlastLua}\n---\n${JSON.stringify(beamFxBlastParsed.project.explosionEffect)}`,
   );
 }
 

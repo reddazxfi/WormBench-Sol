@@ -5,6 +5,7 @@ import {
   WORM_HURT_URL,
   WORM_IDLE_URL,
 } from '../data/beamAssets';
+import { mergeBeamPreBufferConfig } from '../data/beam';
 import { DEFAULT_AIM_CLIP, evalClip } from '../data/aimClip';
 import {
   computeBeamSequenceSchedule,
@@ -251,6 +252,9 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
   const beamGlowRef = useRef<HTMLImageElement | null>(null);
   const beamEndRef = useRef<HTMLImageElement | null>(null);
   const beamOrbRef = useRef<HTMLImageElement | null>(null);
+  const pbCoreRef = useRef<HTMLImageElement | null>(null);
+  const pbGlowRef = useRef<HTMLImageElement | null>(null);
+  const pbOrbRef = useRef<HTMLImageElement | null>(null);
   const tintCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const [assetEpoch, setAssetEpoch] = useState(0);
 
@@ -273,6 +277,21 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
     beamEndRef.current = loadImg(urls.end, bump);
     beamOrbRef.current = loadImg(urls.orb, bump);
   }, [artStyle]);
+
+  const pbArtStyle = beam.preBuffer?.enabled ? beam.preBuffer.artStyle : 'inherit';
+  useEffect(() => {
+    if (pbArtStyle === 'inherit') {
+      pbCoreRef.current = null;
+      pbGlowRef.current = null;
+      pbOrbRef.current = null;
+      return;
+    }
+    const bump = () => setAssetEpoch((n) => n + 1);
+    const urls = BEAM_ART_STYLE_URLS[pbArtStyle] ?? BEAM_ART_STYLE_URLS.classic;
+    pbCoreRef.current = loadImg(urls.core, bump);
+    pbGlowRef.current = loadImg(urls.glow, bump);
+    pbOrbRef.current = loadImg(urls.orb, bump);
+  }, [pbArtStyle]);
 
   const defaultHoldSrc = useMemo(() => defaultArtFor(project).url, [project]);
   useEffect(() => {
@@ -354,8 +373,10 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
     const hold = project.hold;
     const holdFireFrames = Math.max(1, Math.round(hold?.fireFrames ?? 1));
     const holdFireFps = Math.max(1, Number(hold?.fireFps) || 15);
+    const activeDur = beam.growFrames + beam.holdFrames;
     const fireTicks = Math.max(
       4,
+      activeDur,
       Math.round(hold?.fireTicks ?? Math.ceil((holdFireFrames * 50) / holdFireFps)),
     );
 
@@ -380,7 +401,6 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
     const poseRole: HoldPoseRole = isBuffering ? 'buffer' : isFiringPose ? 'firing' : 'aim';
 
     const tanHalfCone = Math.tan((beam.coneAngleDeg * Math.PI) / 180);
-    const activeDur = beam.growFrames + beam.holdFrames;
 
     const computeRay = (shotIdx: number, pelletIdx: number) => {
       let angOffsetDeg = 0;
@@ -461,7 +481,7 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
     // Simulate all beams dispatched up to bf, accumulating target hits & collecting active beams now
     const hits = new Map<number, { count: number; lastHitBf: number; lastDmg: number }>();
     const activeBeams: BeamInstanceSim[] = [];
-    const craters: { x: number; y: number }[] = [];
+    const craters: { x: number; y: number; dy: number }[] = [];
 
     if (!isReady) {
       for (let s = 0; s < schedule.dispatchFrames.length; s += 1) {
@@ -521,7 +541,11 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
                   const tipReach = Math.max(
                     halfW,
                     beam.terrainCut ? beam.cutRadius : 0,
-                    beam.impactBurst?.enabled ? beam.impactBurst.radius * 0.5 : 0,
+                    project.explosionEffect?.enabled
+                      ? project.explosionEffect.radius * 0.5
+                      : beam.impactBurst?.enabled
+                        ? beam.impactBurst.radius * 0.5
+                        : 0,
                   );
                   if (Math.hypot(t.x - tipX, t.y - tipY) <= tipReach + bodyR) {
                     hit = true;
@@ -560,15 +584,17 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
           }
 
           // Crater persists once beam reaches wall
+          const cutShape = beam.cutShape ?? 'circle';
           if (
             beam.terrainCut &&
-            beam.cutRadius > 0 &&
+            (cutShape !== 'circle' || beam.cutRadius > 0) &&
             ray.hitWall &&
             headAtAge(Math.min(age, activeDur), ray.effectiveMaxDist) >= ray.effectiveMaxDist - 4
           ) {
             craters.push({
               x: ray.ox + ray.dx * ray.effectiveMaxDist,
               y: ray.oy + ray.dy * ray.effectiveMaxDist,
+              dy: ray.dy,
             });
           }
 
@@ -626,6 +652,27 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
     // Baseline ray for aim laser / hurt-zone guide when idle or buffering
     const guideRay = computeRay(0, 0);
 
+    const pbCfg = mergeBeamPreBufferConfig(beam.preBuffer);
+    let preBufferDist = pbCfg.range > 0 ? pbCfg.range : beam.range;
+    if (showWall && pbCfg.stopOnTerrain) {
+      const groundY = wormY + 18;
+      const wallTopY = 24;
+      if (guideRay.dx > 0.001) {
+        const distToWall = (wallX - guideRay.ox) / guideRay.dx;
+        const wallHitY = guideRay.oy + guideRay.dy * distToWall;
+        if (distToWall > 0 && wallHitY >= wallTopY && wallHitY <= groundY && distToWall < preBufferDist) {
+          preBufferDist = distToWall;
+        }
+      }
+      if (guideRay.dy > 0.001) {
+        const distToFloor = (groundY - guideRay.oy) / guideRay.dy;
+        if (distToFloor > 0 && distToFloor < preBufferDist) {
+          preBufferDist = distToFloor;
+        }
+      }
+    }
+    preBufferDist = Math.min(preBufferDist, 360);
+
     return {
       wormX,
       wormY,
@@ -647,9 +694,10 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
       activeBeams,
       craters,
       guideRay,
+      preBufferDist,
       tanHalfCone,
     };
-  }, [aimDeg, beam, project.hold, schedule, showWall, tick]);
+  }, [aimDeg, beam, project.hold, project.explosionEffect, schedule, showWall, tick]);
 
   // Draw 50 Hz frame
   useEffect(() => {
@@ -712,11 +760,19 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
       ctx.fillStyle = '#475569';
       ctx.fillRect(wx, 24, 3, groundY - 24);
 
-      if (simState.craters.length > 0 && beam.cutRadius > 0) {
+      const cutShape = beam.cutShape ?? 'circle';
+      if (simState.craters.length > 0 && (cutShape !== 'circle' || beam.cutRadius > 0)) {
         ctx.save();
         for (const c of simState.craters) {
           ctx.beginPath();
-          ctx.arc(c.x, c.y, beam.cutRadius, 0, Math.PI * 2);
+          if (cutShape === 'drill') {
+            ctx.ellipse(c.x, c.y, 9, 17, 0, 0, Math.PI * 2);
+          } else if (cutShape === 'torch') {
+            const tilt = c.dy < -0.1 ? -0.35 : c.dy > 0.1 ? 0.35 : 0;
+            ctx.ellipse(c.x + 4, c.y, 16, 10, tilt, 0, Math.PI * 2);
+          } else {
+            ctx.arc(c.x, c.y, beam.cutRadius, 0, Math.PI * 2);
+          }
           ctx.fillStyle = '#141a28';
           ctx.fill();
           ctx.lineWidth = 1.5;
@@ -1029,45 +1085,10 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
       ctx.restore();
     }
 
-    // 5. Charge / Buffer Animation at Muzzle
     const activeColorHex = beam.rainbow
       ? hslToHex((tick * 14.4) % 360)
       : normalizeTintHex(beam.color);
 
-    if (simState.isBuffering && schedule.firstWaitFrames > 0) {
-      const p = (simState.bf + 1) / Math.max(1, schedule.firstWaitFrames);
-      const { ox, oy, dx, dy, effectiveMaxDist } = simState.guideRay;
-      ctx.save();
-      ctx.setLineDash([3, 5]);
-      ctx.strokeStyle = `${activeColorHex}66`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(ox, oy);
-      ctx.lineTo(ox + dx * effectiveMaxDist, oy + dy * effectiveMaxDist);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.globalCompositeOperation = 'lighter';
-      const orbR = 4 + p * Math.min(20, beam.coreWidth * 0.35 + 6);
-      const grad = ctx.createRadialGradient(ox, oy, 1, ox, oy, orbR * 1.8);
-      grad.addColorStop(0, '#ffffff');
-      grad.addColorStop(0.45, activeColorHex);
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(ox, oy, orbR * 1.8, 0, Math.PI * 2);
-      ctx.fill();
-
-      for (let i = 0; i < 6; i += 1) {
-        const ang = (i / 6) * Math.PI * 2 + simState.bf * 0.28;
-        const r = (1 - p) * 26 + 3;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(ox + Math.cos(ang) * r - 1, oy + Math.sin(ang) * r - 1, 2.5, 2.5);
-      }
-      ctx.restore();
-    }
-
-    // 6. Active Beam Render (supports simultaneous overlapping beams in a sequence!)
     const smooth = (t: number) => t * t * (3 - 2 * t);
     const drawRibbonStrip = (
       points: { x: number; y: number; frac: number; d?: number }[],
@@ -1096,24 +1117,16 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
         if (len < 0.2) continue;
         const ang = Math.atan2(sdy, sdx);
         const midFrac = (a.frac + b.frac) * 0.5;
-        // The same end ramp `wfws_firing` applies: both ends dissolve inside
-        // the band so the core converges instead of ending square.
         const midD = ((a.d ?? 0) + (b.d ?? 0)) * 0.5;
         const k =
           fadePx > 0
             ? smooth(Math.max(0, Math.min(1, Math.min(midD, headPx - midD) / fadePx)))
             : 1;
         let w = Math.max(0.5, (wStart + (wEnd - wStart) * midFrac) * widthScale);
-        // Brightness fades, width does not go sub-pixel: WormForge samples
-        // point-wise, so a quad under one pixel wide draws as a dotted line.
         if (fadePx > 0) w *= 0.45 + 0.55 * k;
         ctx.globalAlpha = Math.max(0, Math.min(1, passAlpha * (fadePx > 0 ? k : 1)));
 
         if (sheet) {
-          // `uFrom..uTo` spans the whole slice passed to `drawRibbonStrip`
-          // (just as `emit_ribbon_range` spreads `u0..u1` across `from..to` in
-          // Lua), not global `a.frac`: using `a.frac` made the end-cap slices
-          // sample only the dim outer 20% of `endTint` and leave a sharp box seam.
           const span = Math.max(1, points.length - 1);
           const ua = uFrom + (uTo - uFrom) * (i / span);
           const ub = uFrom + (uTo - uFrom) * ((i + 1) / span);
@@ -1125,10 +1138,6 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
           ctx.translate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
           ctx.rotate(ang);
           if (ua > ub) ctx.scale(-1, 1);
-          // No overlap: `wa.draw.ribbon` shares one pair of vertices between two
-          // neighbouring quads, so segments tile edge to edge. A padded quad
-          // (`len * 1.04`) additively double-draws every joint and the beam
-          // beads along its length, which is what this preview used to do.
           ctx.drawImage(sheet, lo, 0, sliceW, sheet.height, -len * 0.5, -w * 0.5, len, w);
           ctx.restore();
         } else {
@@ -1143,6 +1152,159 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
       }
       ctx.restore();
     };
+
+    // 5. Charge / Buffer Animation at Muzzle
+    if (simState.isBuffering && schedule.firstWaitFrames > 0) {
+      const p = (simState.bf + 1) / Math.max(1, schedule.firstWaitFrames);
+      const { ox, oy, dx, dy, effectiveMaxDist } = simState.guideRay;
+      const pbCfg = beam.preBuffer?.enabled ? mergeBeamPreBufferConfig(beam.preBuffer) : null;
+
+      if (!pbCfg) {
+        ctx.save();
+        ctx.setLineDash([3, 5]);
+        ctx.strokeStyle = `${activeColorHex}66`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(ox, oy);
+        ctx.lineTo(ox + dx * effectiveMaxDist, oy + dy * effectiveMaxDist);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.globalCompositeOperation = 'lighter';
+        const orbR = 4 + p * Math.min(20, beam.coreWidth * 0.35 + 6);
+        const grad = ctx.createRadialGradient(ox, oy, 1, ox, oy, orbR * 1.8);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.45, activeColorHex);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(ox, oy, orbR * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let i = 0; i < 6; i += 1) {
+          const ang = (i / 6) * Math.PI * 2 + simState.bf * 0.28;
+          const r = (1 - p) * 26 + 3;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(ox + Math.cos(ang) * r - 1, oy + Math.sin(ang) * r - 1, 2.5, 2.5);
+        }
+        ctx.restore();
+      } else {
+        const pbHex = pbCfg.rainbow
+          ? hslToHex((tick * 14.4) % 360)
+          : pbCfg.color.trim()
+            ? normalizeTintHex(pbCfg.color)
+            : activeColorHex;
+        let pbAlpha = pbCfg.alphaStart + (pbCfg.alphaEnd - pbCfg.alphaStart) * p;
+        if (pbCfg.pulse > 0) {
+          pbAlpha *= 1 - pbCfg.pulse * 0.45 + pbCfg.pulse * 0.45 * Math.sin(simState.bf * 0.55);
+        }
+        if (pbCfg.flicker > 0) {
+          pbAlpha *= 1 - pbCfg.flicker * 0.5 + hash01(tick * 29 + 7) * pbCfg.flicker;
+        }
+        pbAlpha = Math.max(0, Math.min(1, pbAlpha));
+
+        const drawLen = pbCfg.reach === 'grow' ? simState.preBufferDist * p : simState.preBufferDist;
+        const wScale = 1 + (pbCfg.endWidthScale - 1) * p;
+        const rawCoreImg =
+          pbCfg.artStyle !== 'inherit' && pbCoreRef.current ? pbCoreRef.current : beamCoreRef.current;
+        const rawGlowImg =
+          pbCfg.artStyle !== 'inherit' && pbGlowRef.current ? pbGlowRef.current : beamGlowRef.current;
+        const rawOrbImg =
+          pbCfg.artStyle !== 'inherit' && pbOrbRef.current ? pbOrbRef.current : beamOrbRef.current;
+
+        if (pbCfg.showBeam && drawLen >= 2 && pbAlpha > 0.01) {
+          const coreTint = getTinted(rawCoreImg, pbHex);
+          const glowTint = getTinted(rawGlowImg, pbHex);
+          const hotTint = getTinted(rawCoreImg, '#ffffff');
+          const nx = -dy;
+          const ny = dx;
+          const segs = Math.min(64, Math.max(2, pbCfg.points * 2));
+          const jagStep = Math.floor(simState.bf / 2);
+          const jagVals = beamKinks(jagStep * 37 + 131, JAG_N);
+          const glowEnd = pbCfg.tipWidth > 0 ? Math.max(pbCfg.glowWidth, pbCfg.tipWidth * 1.6) : pbCfg.glowWidth;
+
+          const drawPbStrip = (lat0: number, lat1: number) => {
+            const pts: { x: number; y: number; frac: number }[] = [];
+            for (let i = 0; i <= segs; i += 1) {
+              const t = i / segs;
+              const d = drawLen * t;
+              let lat = lat0 + (lat1 - lat0) * t;
+              if (pbCfg.path === 'arc' && pbCfg.bulge !== 0) {
+                lat -= Math.sin(t * Math.PI) * pbCfg.bulge;
+              } else if (pbCfg.path === 'jagged' && pbCfg.noise > 0 && t > 0 && t < 1) {
+                lat += beamKinkAt(jagVals, t) * Math.sin(t * Math.PI) * pbCfg.noise;
+              }
+              pts.push({
+                x: ox + dx * d + nx * lat,
+                y: oy + dy * d + ny * lat,
+                frac: t,
+              });
+            }
+            if (pbCfg.glowWidth > 0) {
+              drawRibbonStrip(pts, pbCfg.glowWidth, glowEnd, wScale, glowTint, pbHex, pbAlpha * 0.55);
+            }
+            if (pbCfg.coreWidth > 0) {
+              drawRibbonStrip(pts, pbCfg.coreWidth, pbCfg.tipWidth, wScale, coreTint, pbHex, pbAlpha);
+              if (pbCfg.coreWidth * wScale >= 3) {
+                drawRibbonStrip(
+                  pts,
+                  Math.max(0.5, pbCfg.coreWidth * 0.42),
+                  Math.max(0.5, pbCfg.tipWidth * 0.42),
+                  wScale,
+                  hotTint,
+                  '#ffffff',
+                  pbAlpha * 0.78,
+                );
+              }
+            }
+          };
+
+          if (pbCfg.reach === 'converge') {
+            const spread = pbCfg.convergeSpread * (1 - p);
+            drawPbStrip(spread * 0.25, spread);
+            drawPbStrip(-spread * 0.25, -spread);
+          } else {
+            drawPbStrip(0, 0);
+          }
+        }
+
+        if (pbCfg.showOrb) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          const sc = Math.max(0.25, pbCfg.orbScale);
+          const pulseScale = 0.85 + 0.15 * Math.sin(simState.bf * 0.65);
+          const orbR = (4 + p * Math.min(20, Math.max(4, beam.coreWidth) * 0.35 + 6)) * pulseScale * sc;
+          const orbHalo = getTinted(rawOrbImg, pbHex);
+          const orbCore = getTinted(rawOrbImg, '#ffffff');
+          if (orbHalo && orbCore) {
+            ctx.globalAlpha = 0.55 + 0.35 * p;
+            ctx.drawImage(orbHalo, ox - orbR * 1.8, oy - orbR * 1.8, orbR * 3.6, orbR * 3.6);
+            ctx.globalAlpha = 0.75 + 0.25 * p;
+            ctx.drawImage(orbCore, ox - orbR * 0.9, oy - orbR * 0.9, orbR * 1.8, orbR * 1.8);
+          } else {
+            const grad = ctx.createRadialGradient(ox, oy, 1, ox, oy, orbR * 1.8);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.45, pbHex);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(ox, oy, orbR * 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          const motes = Math.max(0, Math.min(12, Math.round(pbCfg.orbMotes)));
+          for (let i = 0; i < motes; i += 1) {
+            const ang = (i / Math.max(1, motes)) * Math.PI * 2 + simState.bf * 0.28;
+            const r = (1 - p) * 26 * sc + 3 * sc;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(ox + Math.cos(ang) * r - 1, oy + Math.sin(ang) * r - 1, 2.5 * sc, 2.5 * sc);
+          }
+          ctx.restore();
+        }
+      }
+    }
+
+    // 6. Active Beam Render (supports simultaneous overlapping beams in a sequence!)
 
     const tipW = beam.tipWidth > 0 ? beam.tipWidth : beam.coreWidth;
     const glowEndW =
@@ -1399,8 +1561,21 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
         ctx.fill();
       }
 
-      // Impact burst effect preview (ring / star / spinning star / glow only at beam tip)
-      const ib = beam.impactBurst;
+      // Impact burst effect preview (full Effect Manager explosionEffect or legacy impactBurst at beam tip)
+      const expFx = project.explosionEffect;
+      const ib = expFx?.enabled
+        ? {
+            enabled: true,
+            shape: expFx.shape,
+            radius: Math.min(80, expFx.radius),
+            color: expFx.rainbow ? hslToHex((tick * 14.4) % 360) : expFx.color,
+            rebufferMode: expFx.rebuffer ? (expFx.rebufferMode ?? 'px') : 'none',
+            rebufferAt: expFx.rebufferAt ?? 12,
+            starPoints: expFx.starPoints ?? 5,
+            spin: expFx.spin ?? 0.16,
+            centerGlow: expFx.centerGlow,
+          }
+        : beam.impactBurst;
       if (ib?.enabled && headNow >= inst.effectiveMaxDist - 4) {
         const impactAge = Math.max(0, inst.age - beam.growFrames);
         const live = 24;
@@ -1646,6 +1821,7 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
     project.hold,
     project.aimClip,
     project.wormSprites,
+    project.explosionEffect,
     schedule,
     simState,
     tick,

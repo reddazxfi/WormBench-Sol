@@ -23,6 +23,8 @@ export type RecordTabId =
   | 'callbacks'
   | 'gun'
   | 'beam'
+  | 'beam_prebuffer'
+  | 'beam_explosion'
   | 'strike'
   | 'airstrike'
   | 'gun_mine'
@@ -51,6 +53,8 @@ export const RECORD_TABS: RecordTabDef[] = [
   { id: 'sprite', label: 'Sprites & Trail', hint: 'Missile sprite, smoke trail & sounds', icon: Sliders },
   { id: 'gun', label: 'Firearm Specs', hint: 'Bullets, spread cone, pellets & hits', icon: Crosshair },
   { id: 'beam', label: 'Beam & Cone', hint: 'Hitscan/advancing ray & cone hurt layer, charge buffer & preview', icon: Zap },
+  { id: 'beam_prebuffer', label: 'Pre-Buffer Beam', hint: 'Charge-up beam & muzzle orb', icon: Sparkles },
+  { id: 'beam_explosion', label: 'Impact Explosion', hint: 'Effect manager burst & blast', icon: Flame },
   { id: 'gun_mine', label: 'Tool & Setup', hint: 'Mine, arrow, teleport or special tool', icon: Wrench },
   { id: 'melee', label: 'Melee Strike', hint: 'Scan box, hit frame & how the victim is thrown', icon: Swords },
   { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
@@ -116,6 +120,18 @@ export function visibleRecordTabs(
         label: 'Beam & Cone',
         hint: 'Hitscan or advancing ray/cone hurt layer, charge buffer, visuals & live preview',
         icon: Zap,
+      },
+      {
+        id: 'beam_prebuffer',
+        label: 'Pre-Buffer Beam',
+        hint: 'Custom charge-up ribbon, converging rails, and muzzle orb drawn during buffer',
+        icon: Sparkles,
+      },
+      {
+        id: 'beam_explosion',
+        label: 'Impact Explosion',
+        hint: 'Full effects.sdk burst and custom_explosion blast spawned at beam impact',
+        icon: Flame,
       },
       { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
     ];

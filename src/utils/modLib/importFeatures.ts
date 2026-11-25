@@ -43,6 +43,8 @@ import type {
   BeamHurtMode,
   BeamLookKind,
   BeamPathKind,
+  BeamPreBufferConfig,
+  BeamPreBufferReach,
   BehaviorArtKey,
   BurstGlowConfig,
   BurstGlowShape,
@@ -68,7 +70,13 @@ import type {
 } from '../../types/weapon';
 import { DEFAULT_MELEE } from '../../data/melee';
 import { cloneAirstrikeConfig, DEFAULT_AIRSTRIKE } from '../../data/airstrike';
-import { beamArtStyleFromPath, cloneBeamConfig, DEFAULT_BEAM } from '../../data/beam';
+import {
+  beamArtStyleFromPath,
+  cloneBeamConfig,
+  DEFAULT_BEAM,
+  DEFAULT_BEAM_PRE_BUFFER,
+  mergeBeamPreBufferConfig,
+} from '../../data/beam';
 import { CLAIM_KEYS_CARRIED, CLAIM_KEYS_MODELLED } from '../../data/luaHooks';
 import { NOT_GENERATED_MARKER, maskLuaCode } from '../luaText';
 import type { MeleeHit, MeleeSound } from '../../types/weapon';
@@ -659,14 +667,10 @@ function readBurstRows(table: LuaTable, config: ExplosionEffectConfig): Explosio
  * own emission: a hand-written stamp call is the author's custom Lua, so it is
  * kept (and reported) instead of being silently deleted.
  */
-function extractOnExplodeHookBody(moduleText: string): string {
-  const tableForm = /on_explode\s*=\s*\{\s*on\s*=\s*function\s*\(\s*(\w*)\s*\)/.exec(
-    moduleText,
-  );
-  const callForm = tableForm
-    ? undefined
-    : /on_explode\s*=\s*function\s*\(\s*(\w*)\s*\)/.exec(moduleText);
-  const match = tableForm ?? callForm;
+function extractBalancedLuaBody(
+  moduleText: string,
+  match: RegExpExecArray | null,
+): string {
   if (!match) return '';
 
   const start = match.index + match[0].length;
@@ -690,6 +694,28 @@ function extractOnExplodeHookBody(moduleText: string): string {
     }
   }
   return rest.slice(0, end === -1 ? rest.length : end);
+}
+
+/**
+ * The custom part of `on_explode`, with the features' own calls removed.
+ *
+ * `stripStamp` is set only when `wa.land.stamp` was recognised as this editor's
+ * own emission: a hand-written stamp call is the author's custom Lua, so it is
+ * kept (and reported) instead of being silently deleted.
+ */
+function extractOnExplodeHookBody(moduleText: string): string {
+  const tableForm = /on_explode\s*=\s*\{\s*on\s*=\s*function\s*\(\s*(\w*)\s*\)/.exec(
+    moduleText,
+  );
+  const callForm = tableForm
+    ? undefined
+    : /on_explode\s*=\s*function\s*\(\s*(\w*)\s*\)/.exec(moduleText);
+  return extractBalancedLuaBody(moduleText, tableForm ?? callForm ?? null);
+}
+
+function extractBeamOnImpactBody(moduleText: string): string {
+  const match = /\bon_impact\s*=\s*function\s*\([^)]*\)/.exec(moduleText);
+  return extractBalancedLuaBody(moduleText, match);
 }
 
 function customExplodeBody(
@@ -1909,18 +1935,28 @@ export async function readBundleFeatures(args: {
 
   // ---- explosion burst ----------------------------------------------------
   const blastCall = readCallTable(moduleText, 'blast.explode');
+  const beamOnImpactText = /\bfiring\.beam\s*\(/.test(moduleText)
+    ? extractBeamOnImpactBody(moduleText)
+    : '';
+  const beamBurstCall = beamOnImpactText
+    ? readCallTable(beamOnImpactText, 'fx.burst')
+    : undefined;
+  const beamBurstTbl = beamBurstCall?.table;
   const isBeamImpactBurstOnly =
     /\bfiring\.beam\s*\(/.test(moduleText) &&
-    /\bon_impact\s*=\s*function\([^)]*\)\s*fx\.burst\s*\{/.test(moduleText) &&
-    !blastCall;
+    !blastCall &&
+    !!beamBurstTbl &&
+    num(beamBurstTbl.thickness) === undefined &&
+    num(beamBurstTbl.duration) === undefined;
   const burstCall = isBeamImpactBurstOnly ? undefined : readCallTable(moduleText, 'fx.burst');
   // The Damage Type toggle. A replacement blast names the kind inside its
   // table, but an overlay arms WA's own blast instead (`set_message_electric_
   // missile`) and carries no kind, so the arm itself is the other half of the
   // signal. Either way the module is required only for an electric burst.
   const onExplodeText = extractOnExplodeHookBody(moduleText);
+  const fxContextText = [onExplodeText, beamOnImpactText].filter(Boolean).join('\n');
   const armedElectric =
-    /zap\.set_message_electric(?:_missile)?\(/.test(onExplodeText) &&
+    /zap\.set_message_electric(?:_missile)?\(/.test(fxContextText) &&
     moduleText.includes('wf-lib/electric/damage');
   if (blastCall || burstCall) {
     const isBlast = !!blastCall;
@@ -1954,8 +1990,8 @@ export async function readBundleFeatures(args: {
       effect = { ...effect, poisonPower: 0 };
       if (armedElectric) effect = { ...effect, damageType: 'electric' };
     }
-    const fireCall = readCallTable(onExplodeText, 'wa.fire.spawn');
-    if (fireCall?.table && /^\s*if wa\.fire and wa\.fire\.spawn then /m.test(onExplodeText)) {
+    const fireCall = readCallTable(fxContextText, 'wa.fire.spawn');
+    if (fireCall?.table && /^\s*if wa\.fire and wa\.fire\.spawn then /m.test(fxContextText)) {
       const ft = fireCall.table;
       effect = {
         ...effect,
@@ -2317,11 +2353,17 @@ export async function readBundleFeatures(args: {
       if (bool(bt.spare_shooter) !== undefined) beam.spareShooter = bool(bt.spare_shooter)!;
 
       const cutVal = num(bt.cut);
-      if (cutVal !== undefined && cutVal > 0) {
+      const cutShapeStr = str(bt.cut_shape);
+      if (cutShapeStr === 'drill' || cutShapeStr === 'torch') {
         beam.terrainCut = true;
+        beam.cutShape = cutShapeStr;
+      } else if (cutVal !== undefined && cutVal > 0) {
+        beam.terrainCut = true;
+        beam.cutShape = 'circle';
         beam.cutRadius = Math.round(cutVal);
       } else {
         beam.terrainCut = false;
+        beam.cutShape = 'circle';
       }
       beam.impactSparks = bool(bt.sparks) ?? false;
       beam.hitBranches = bool(bt.hit_branches) ?? false;
@@ -2336,12 +2378,67 @@ export async function readBundleFeatures(args: {
       if (bt.sound !== undefined) beam.launchSound = await loadBeamSound(bt.sound);
       if (bt.impact_sound !== undefined) beam.impactSound = await loadBeamSound(bt.impact_sound);
 
-      const impactMatch = /\bon_impact\s*=\s*function\([^)]*\)\s*(fx\.burst\s*\{[\s\S]*?\})\s*end/.exec(
-        moduleText,
-      );
+      if (isTable(bt.pre_buffer)) {
+        const pb = bt.pre_buffer;
+        const pbRgb = rgbOf(pb);
+        const pbSprite = str(pb.sprite);
+        const pbArtStyle: BeamPreBufferConfig['artStyle'] = pbSprite
+          ? beamArtStyleFromPath(pbSprite)
+          : 'inherit';
+        const pbDepthMatch = /\bpre_buffer\s*=\s*\{[^}]*\bdepth\s*=\s*wa\.depth\.(\w+)/.exec(
+          moduleText,
+        );
+        const pbDepthBand = pbDepthMatch?.[1];
+        const pbDepth: BeamPreBufferConfig['depth'] =
+          pbDepthBand === 'FRONT' || pbDepthBand === 'EFFECTS' || pbDepthBand === 'OBJECTS'
+            ? (pbDepthBand as BeamDepthBand)
+            : pbDepthBand === 'MIDGROUND'
+              ? 'OBJECTS'
+              : 'inherit';
+        const pbReach = str(pb.reach);
+        const pbPath = str(pb.path);
+        beam.preBuffer = mergeBeamPreBufferConfig({
+          ...DEFAULT_BEAM_PRE_BUFFER,
+          enabled: true,
+          showBeam: bool(pb.show_beam) ?? true,
+          showOrb: bool(pb.show_orb) ?? true,
+          orbScale: num(pb.orb_scale) ?? 1,
+          orbMotes: num(pb.orb_motes) ?? 6,
+          range: num(pb.range) ?? 0,
+          stopOnTerrain: bool(pb.stop_on_terrain) ?? beam.stopOnTerrain,
+          reach:
+            pbReach === 'grow' || pbReach === 'full' || pbReach === 'converge'
+              ? (pbReach as BeamPreBufferReach)
+              : 'grow',
+          convergeSpread: num(pb.converge_spread) ?? 36,
+          path:
+            pbPath === 'straight' || pbPath === 'arc' || pbPath === 'jagged'
+              ? (pbPath as BeamPathKind)
+              : 'straight',
+          bulge: num(pb.bulge) ?? DEFAULT_BEAM_PRE_BUFFER.bulge,
+          noise: num(pb.noise) ?? DEFAULT_BEAM_PRE_BUFFER.noise,
+          points: num(pb.points) ?? DEFAULT_BEAM_PRE_BUFFER.points,
+          coreWidth: num(pb.core_width) ?? DEFAULT_BEAM_PRE_BUFFER.coreWidth,
+          tipWidth: num(pb.tip_width) ?? DEFAULT_BEAM_PRE_BUFFER.tipWidth,
+          glowWidth: num(pb.glow_width) ?? DEFAULT_BEAM_PRE_BUFFER.glowWidth,
+          endWidthScale: num(pb.end_width_scale) ?? DEFAULT_BEAM_PRE_BUFFER.endWidthScale,
+          color: pbRgb ? hexColor(pbRgb.r, pbRgb.g, pbRgb.b) : '',
+          rainbow: pb.rainbow === true,
+          alphaStart: num(pb.alpha_start) ?? DEFAULT_BEAM_PRE_BUFFER.alphaStart,
+          alphaEnd: num(pb.alpha_end) ?? DEFAULT_BEAM_PRE_BUFFER.alphaEnd,
+          pulse: num(pb.pulse) ?? DEFAULT_BEAM_PRE_BUFFER.pulse,
+          flicker: num(pb.flicker) ?? DEFAULT_BEAM_PRE_BUFFER.flicker,
+          artStyle: pbArtStyle,
+          depth: pbDepth,
+        });
+      }
+
+      const impactMatch = !project.explosionEffect?.enabled
+        ? /\bon_impact\s*=\s*function\([^)]*\)\s*(fx\.burst\s*\{[\s\S]*?\})\s*end/.exec(moduleText)
+        : null;
       if (impactMatch) {
         const ibTbl = readCallTable(impactMatch[1], 'fx.burst')?.table;
-        if (ibTbl) {
+        if (ibTbl && num(ibTbl.thickness) === undefined && num(ibTbl.duration) === undefined) {
           const ibRgb = rgbOf(ibTbl);
           const ibRb = isTable(ibTbl.rebuffer) ? ibTbl.rebuffer : undefined;
           const ibRbModeRaw = ibRb ? str(ibRb.mode) : undefined;

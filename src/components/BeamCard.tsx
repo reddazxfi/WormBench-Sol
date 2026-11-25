@@ -3,6 +3,7 @@ import type {
   AirstrikeSoundSpec,
   BeamArtStyle,
   BeamConfig,
+  BeamCutShape,
   BeamDepthBand,
   BeamFadeMode,
   BeamFireConfig,
@@ -11,9 +12,7 @@ import type {
   BeamHurtMode,
   BeamLookKind,
   BeamPathKind,
-  BurstGlowConfig,
-  BurstGlowShape,
-  BurstShape,
+  ExplosionEffectConfig,
   FireSequenceConfig,
   WeaponProject,
 } from '../types/weapon';
@@ -23,9 +22,10 @@ import {
   BEAM_PRESETS,
   DEFAULT_BEAM,
   DEFAULT_BEAM_FIRE,
-  DEFAULT_BURST_GLOW,
   mergeBeamConfig,
 } from '../data/beam';
+import { DEFAULT_EXPLOSION_EFFECT } from '../data/explosionPresets';
+import type { RecordTabId } from '../data/recordTabs';
 import {
   computeBeamSequenceSchedule,
   DEFAULT_FIRE_SEQUENCE,
@@ -62,6 +62,7 @@ interface BeamCardProps {
   project: WeaponProject;
   onChange: (updated: Partial<WeaponProject>) => void;
   onOpenHoldBuilder?: () => void;
+  onOpenTab?: (tab: RecordTabId) => void;
 }
 
 const selectClass =
@@ -203,6 +204,7 @@ export const BeamCard: React.FC<BeamCardProps> = ({
   project,
   onChange,
   onOpenHoldBuilder,
+  onOpenTab,
 }) => {
   const [showAdvancedVisuals, setShowAdvancedVisuals] = useState(false);
 
@@ -686,6 +688,18 @@ export const BeamCard: React.FC<BeamCardProps> = ({
                   }}
                   unit="f"
                 />
+                {onOpenTab && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTab('beam_prebuffer')}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-forge-700 hover:underline dark:text-forge-300 cursor-pointer"
+                  >
+                    <Sparkles className="h-3 w-3" aria-hidden="true" />
+                    <span>
+                      {beam.preBuffer?.enabled ? 'Pre-Buffer Beam (On) →' : 'Configure Pre-Buffer Beam →'}
+                    </span>
+                  </button>
+                )}
               </div>
               <div>
                 <TooltipLabel
@@ -1195,265 +1209,140 @@ export const BeamCard: React.FC<BeamCardProps> = ({
                 <span>Carve Terrain at Impact</span>
               </label>
               {beam.terrainCut && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">Cut Radius</span>
-                  <div className="w-24">
-                    <UnitNumberInput
-                      min={2}
-                      max={80}
-                      value={beam.cutRadius}
-                      onChange={(e) => update({ cutRadius: Number(e.target.value) })}
-                      unit="px"
-                    />
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-stone-500 dark:text-stone-400">Cut Shape</span>
+                    <select
+                      value={beam.cutShape ?? 'circle'}
+                      onChange={(e) => update({ cutShape: e.target.value as BeamCutShape })}
+                      className={selectClass}
+                    >
+                      <option value="circle">Circle (Custom Radius)</option>
+                      <option value="torch">Blow Torch (Tunnel)</option>
+                      <option value="drill">Pneumatic Drill (Shaft)</option>
+                    </select>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Impact Burst Effect (effects.sdk) */}
-            <div className="space-y-2.5 border-t border-stone-200/70 pt-3 dark:border-stone-800">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!beam.impactBurst?.enabled}
-                    onChange={(e) =>
-                      update({
-                        impactBurst: {
-                          ...(beam.impactBurst ?? DEFAULT_BEAM.impactBurst!),
-                          enabled: e.target.checked,
-                        },
-                      })
-                    }
-                    className="rounded border-stone-300 text-forge-600 focus:ring-forge-500"
-                  />
-                  <Sparkles className="h-3.5 w-3.5 text-forge-500" aria-hidden="true" />
-                  <span>Impact Burst Effect (Ring / Spinning Star / Glow)</span>
-                </label>
-              </div>
-              {beam.impactBurst?.enabled && (() => {
-                const ib = beam.impactBurst;
-                const glow: BurstGlowConfig = ib.centerGlow ?? {
-                  shape: ib.shape === 'star' || ib.shape === 'spin_star' ? ib.shape : 'none',
-                  scale: DEFAULT_BURST_GLOW.scale,
-                  expand: DEFAULT_BURST_GLOW.expand,
-                  spin: ib.spin ?? DEFAULT_BURST_GLOW.spin,
-                  inner: DEFAULT_BURST_GLOW.inner,
-                };
-                const updateGlow = (patch: Partial<BurstGlowConfig>) =>
-                  update({ impactBurst: { ...ib, centerGlow: { ...glow, ...patch } } });
-                return (
-                  <div className="rounded-lg border border-stone-200/80 bg-stone-50/70 p-3 space-y-2.5 dark:border-stone-800 dark:bg-stone-950/40">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                      <div>
-                        <TooltipLabel label="Burst Shape" code="shape" desc="Ring shockwave, Star, Spin Star, or Glow Only." />
-                        <select
-                          value={ib.shape}
-                          onChange={(e) =>
-                            update({
-                              impactBurst: { ...ib, shape: e.target.value as BurstShape },
-                            })
-                          }
-                          className={selectClass}
-                        >
-                          <option value="spin_star">Spinning Star</option>
-                          <option value="star">Star</option>
-                          <option value="ring">Shockwave Ring</option>
-                          <option value="none">Glow Only</option>
-                        </select>
-                      </div>
-                      <div>
-                        <TooltipLabel label="Texture Set" code="style" desc="Shared effects.sdk ribbon texture family." />
-                        <select
-                          value={ib.style}
-                          onChange={(e) =>
-                            update({
-                              impactBurst: { ...ib, style: e.target.value as BeamArtStyle },
-                            })
-                          }
-                          className={selectClass}
-                        >
-                          <option value="classic">Classic</option>
-                          <option value="soft">Soft (NN)</option>
-                          <option value="plasma">Plasma</option>
-                        </select>
-                      </div>
-                      <div>
-                        <TooltipLabel label="Radius" code="radius" desc="Initial burst radius in px." />
+                  {(beam.cutShape ?? 'circle') === 'circle' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-stone-500 dark:text-stone-400">Cut Radius</span>
+                      <div className="w-24">
                         <UnitNumberInput
-                          min={6}
-                          max={180}
-                          value={ib.radius}
-                          onChange={(e) =>
-                            update({
-                              impactBurst: { ...ib, radius: Number(e.target.value) || 28 },
-                            })
-                          }
+                          min={2}
+                          max={80}
+                          value={beam.cutRadius}
+                          onChange={(e) => update({ cutRadius: Number(e.target.value) })}
                           unit="px"
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div>
-                        <TooltipLabel label="Rebuffer" code="rebuffer.mode" desc="Second-wave algorithm at impact." />
-                        <select
-                          value={ib.rebufferMode}
-                          onChange={(e) =>
-                            update({
-                              impactBurst: {
-                                ...ib,
-                                rebufferMode: e.target.value as 'px' | 'pulse' | 'flash' | 'none',
-                              },
-                            })
-                          }
-                          className={selectClass}
-                        >
-                          <option value="pulse">Pulse</option>
-                          <option value="flash">Flash</option>
-                          <option value="px">PX Rewind</option>
-                          <option value="none">Off</option>
-                        </select>
-                      </div>
-                      {ib.rebufferMode !== 'none' && (
-                        <div>
-                          <TooltipLabel label="At Frame" code="rebuffer.at" desc="50 Hz tick for rebuffer." />
-                          <UnitNumberInput
-                            min={2}
-                            max={60}
-                            value={ib.rebufferAt}
-                            onChange={(e) =>
-                              update({
-                                impactBurst: { ...ib, rebufferAt: Number(e.target.value) || 12 },
-                              })
-                            }
-                            unit="f"
-                          />
-                        </div>
-                      )}
-                      {(ib.shape === 'star' || ib.shape === 'spin_star') && (
-                        <div>
-                          <TooltipLabel label="Points" code="points" desc="Star spike count (3..12)." />
-                          <UnitNumberInput
-                            min={3}
-                            max={12}
-                            value={ib.starPoints}
-                            onChange={(e) =>
-                              update({
-                                impactBurst: { ...ib, starPoints: Number(e.target.value) || 5 },
-                              })
-                            }
-                          />
-                        </div>
-                      )}
-                      {ib.shape === 'spin_star' && (
-                        <div>
-                          <TooltipLabel label="Spin" code="spin" desc="Rotation rad/tick." />
-                          <UnitNumberInput
-                            min={-1}
-                            max={1}
-                            step={0.02}
-                            value={ib.spin}
-                            onChange={(e) =>
-                              update({
-                                impactBurst: { ...ib, spin: Number(e.target.value) || 0 },
-                              })
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Center Glow controls inside beam impactBurst */}
-                    <div className="space-y-2 border-t border-stone-200/70 pt-2.5 dark:border-stone-800">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <div>
-                          <TooltipLabel label="Center Glow" code="glow.shape" desc="Independent core flare at the burst center." />
-                          <select
-                            value={glow.shape}
-                            onChange={(e) => updateGlow({ shape: e.target.value as BurstGlowShape })}
-                            className={selectClass}
-                          >
-                            <option value="none">Off</option>
-                            <option value="orb">Orb</option>
-                            <option value="star">Star</option>
-                            <option value="spin_star">Spin Star</option>
-                          </select>
-                        </div>
-                        {glow.shape !== 'none' && (
-                          <>
-                            <div>
-                              <TooltipLabel label="Glow Scale" code="glow.scale" desc="Sprite size relative to radius." />
-                              <UnitNumberInput
-                                min={0.2}
-                                max={6}
-                                step={0.1}
-                                value={glow.scale}
-                                onChange={(e) => updateGlow({ scale: Number(e.target.value) || 1 })}
-                                unit="x"
-                              />
-                            </div>
-                            <div>
-                              <TooltipLabel label="Expand" code="glow.expand" desc="Growth multiplier with blast." />
-                              <UnitNumberInput
-                                min={0}
-                                max={3}
-                                step={0.1}
-                                value={glow.expand}
-                                onChange={(e) => updateGlow({ expand: Math.max(0, Number(e.target.value) || 0) })}
-                                unit="x"
-                              />
-                            </div>
-                            {glow.shape === 'spin_star' && (
-                              <div>
-                                <TooltipLabel label="Glow Spin" code="glow.spin" desc="Rotation rad/tick." />
-                                <UnitNumberInput
-                                  min={-1}
-                                  max={1}
-                                  step={0.02}
-                                  value={glow.spin}
-                                  onChange={(e) => updateGlow({ spin: Number(e.target.value) || 0 })}
-                                />
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      {glow.shape !== 'none' && (
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={glow.inner}
-                              onChange={(e) => updateGlow({ inner: e.target.checked })}
-                              className="rounded border-stone-300 text-forge-600 focus:ring-forge-500"
-                            />
-                            <span>White Hot Inner Core</span>
-                          </label>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-stone-500 dark:text-stone-400">Tint:</span>
-                            <input
-                              type="color"
-                              value={glow.color && glow.color.trim() ? glow.color : beam.color}
-                              onChange={(e) => updateGlow({ color: e.target.value })}
-                              className="h-5 w-7 cursor-pointer rounded border border-stone-300 bg-transparent p-0.5 dark:border-stone-700"
-                            />
-                            {glow.color && (
-                              <button
-                                type="button"
-                                onClick={() => updateGlow({ color: undefined })}
-                                className="text-[11px] font-semibold text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white cursor-pointer"
-                              >
-                                Inherit
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Impact Explosion Spawner (`effects.sdk` / `custom_explosion`) */}
+            {(() => {
+              const expFx: ExplosionEffectConfig =
+                project.explosionEffect ?? DEFAULT_EXPLOSION_EFFECT;
+              const legacyIb = beam.impactBurst;
+              const hasLegacyIb = !!legacyIb?.enabled && !expFx.enabled;
+              const upgradeLegacyToEffectManager = () => {
+                if (!legacyIb) return;
+                onChange({
+                  explosionEffect: {
+                    ...DEFAULT_EXPLOSION_EFFECT,
+                    ...expFx,
+                    enabled: true,
+                    mode: 'effect',
+                    preset: 'custom',
+                    style: legacyIb.style,
+                    shape: legacyIb.shape,
+                    radius: legacyIb.radius,
+                    color: legacyIb.color?.trim() ? legacyIb.color : beam.color,
+                    rebuffer: legacyIb.rebufferMode !== 'none',
+                    rebufferMode: legacyIb.rebufferMode,
+                    rebufferAt: legacyIb.rebufferAt,
+                    starPoints: legacyIb.starPoints,
+                    spin: legacyIb.spin,
+                    ...(legacyIb.centerGlow ? { centerGlow: { ...legacyIb.centerGlow } } : {}),
+                  },
+                  beam: {
+                    ...DEFAULT_BEAM,
+                    ...beam,
+                    impactBurst: { ...legacyIb, enabled: false },
+                  },
+                });
+                onOpenTab?.('beam_explosion');
+              };
+              return (
+                <div className="space-y-2.5 border-t border-stone-200/70 pt-3 dark:border-stone-800">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-stone-200/80 bg-stone-50/70 p-3 dark:border-stone-800 dark:bg-stone-950/40">
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-3.5 w-3.5 text-forge-500" aria-hidden="true" />
+                        <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                          Impact Explosion (Effect Manager)
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            expFx.enabled
+                              ? 'bg-forge-100 text-forge-800 dark:bg-forge-900/50 dark:text-forge-200'
+                              : 'bg-stone-200/80 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                          }`}
+                        >
+                          {expFx.enabled
+                            ? expFx.mode === 'blast'
+                              ? 'Full Blast'
+                              : 'Visual Burst'
+                            : 'Off'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                        {expFx.enabled ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className="inline-block h-2.5 w-2.5 rounded-full border border-white/40"
+                              style={{ backgroundColor: expFx.color }}
+                            />
+                            <span>
+                              Radius {expFx.radius}px · {expFx.shape} · {expFx.style}
+                              {expFx.mode === 'blast'
+                                ? ` · ${expFx.damage} dmg / ${expFx.hole}px hole`
+                                : ''}
+                            </span>
+                          </span>
+                        ) : (
+                          'Spawn a full px_effects ring/star burst or custom_explosion blast at beam impact.'
+                        )}
+                      </p>
+                    </div>
+                    {onOpenTab && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenTab('beam_explosion')}
+                        className="shrink-0 cursor-pointer rounded-lg border border-forge-300 bg-white px-3 py-1.5 text-xs font-semibold text-forge-700 transition-colors hover:bg-forge-50 dark:border-forge-700 dark:bg-stone-900 dark:text-forge-300 dark:hover:bg-forge-950/40"
+                      >
+                        {expFx.enabled ? 'Edit Impact Explosion' : 'Configure Impact Explosion'}
+                      </button>
+                    )}
+                  </div>
+                  {hasLegacyIb && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50/75 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/35 dark:text-amber-200">
+                      <span>
+                        Legacy <code className="font-mono">impactBurst</code> is active (still exported until replaced).
+                      </span>
+                      <button
+                        type="button"
+                        onClick={upgradeLegacyToEffectManager}
+                        className="shrink-0 cursor-pointer rounded-md border border-amber-400 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-50 dark:border-amber-700 dark:bg-stone-900 dark:text-amber-200"
+                      >
+                        Upgrade to Effect Manager Explosion
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Spawn Fire (`wa.fire.spawn`) */}
             {(() => {

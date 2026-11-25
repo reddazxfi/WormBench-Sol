@@ -1296,13 +1296,22 @@ local function hold_draw_aim(entry, w, ws, pose, firing_hold, alpha_mul, blend, 
   end
 end
 
+local function hold_clamp_aim(entry, aim)
+  local a = aim or 0.5
+  local r = entry.aim_range
+  if not r then return a end
+  if a < r.lo then return r.lo end
+  if a > r.hi then return r.hi end
+  return a
+end
+
 -- One frame of a role sheet (`fire` or `buffer` in the spec): the same aim pose
 -- the held art takes, the same cell and hand rules, but its own sheet, size,
 -- strip and numbers. No draw-out and no clip: a shot/charge isn't an aim.
 local function hold_draw_role(entry, role, phase, w)
   local pi = math.pi
   local facing = w.facing < 0 and -1 or 1
-  local a = w.aim or 0.5
+  local a = hold_clamp_aim(entry, w.aim)
   local rot = (1.0 - a) * pi
   local rot_w = rot + pi * role.weap_radial_rotation
   local rot_h = rot - pi * role.hand_radial_rotation
@@ -1381,7 +1390,10 @@ local function hold_fire_step(entry, w, ws, now)
     return false
   end
   if ticks <= 0 then
-    if not firing then return false end
+    if not firing then
+      ws.fire_start = nil
+      return false
+    end
   elseif now - ws.fire_start >= ticks then
     ws.fire_start = nil
     ws.fire_override_ticks = nil
@@ -1436,8 +1448,8 @@ local function hold_worm_state(entry, w)
   return per_worm, ws
 end
 
--- Deterministically trigger a hold role ("buffer" or "fire") for `ticks` 50 Hz
--- frames from simulation callbacks (`firing.beam`, `firing.sequence`, etc.).
+-- Deterministically trigger a hold role ("buffer", "fire", or "stop") for
+-- `ticks` 50 Hz frames from simulation callbacks (`firing.beam`, `firing.sequence`, etc.).
 function M.hold_trigger(w, role, ticks)
   if not w or w.id == nil then return end
   local now = wa.world and wa.world.frame and wa.world.frame() or 0
@@ -1446,15 +1458,26 @@ function M.hold_trigger(w, role, ticks)
     local entry = hold_entries[i]
     if entry.weapon == w.weapon then
       local _, ws = hold_worm_state(entry, w)
-      if role == "buffer" then
-        if dur > 0 and entry.buffer then
-          ws.buf_start = now
-          ws.buf_ticks = dur
-          ws.buf_phase = 0.0
-          ws.buf_frame = now
+      if role == "stop" then
+        ws.buf_start = nil
+        ws.buf_ticks = nil
+        ws.fire_start = nil
+        ws.fire_override_ticks = nil
+        ws.fire_passive_locked = true
+      elseif role == "buffer" then
+        if dur > 0 then
           ws.fire_start = nil
           ws.fire_override_ticks = nil
           ws.fire_passive_locked = true
+          if entry.buffer then
+            ws.buf_start = now
+            ws.buf_ticks = dur
+            ws.buf_phase = 0.0
+            ws.buf_frame = now
+          else
+            ws.buf_start = nil
+            ws.buf_ticks = nil
+          end
         else
           ws.buf_start = nil
           ws.buf_ticks = nil
@@ -1463,7 +1486,10 @@ function M.hold_trigger(w, role, ticks)
         ws.buf_start = nil
         ws.buf_ticks = nil
         ws.fire_passive_locked = true
-        if entry.fire or entry.keep_firing then
+        if ticks ~= nil and dur <= 0 then
+          ws.fire_start = nil
+          ws.fire_override_ticks = nil
+        elseif entry.fire or entry.keep_firing then
           local use_ticks = dur > 0 and dur or (entry.fire and entry.fire.ticks) or 4
           if use_ticks > 0 then
             ws.fire_start = now
@@ -1535,15 +1561,6 @@ local function hold_install_aim_clamp(entry)
   end, { kinds = { "worm" } })
 end
 
-local function hold_clamp_aim(entry, aim)
-  local a = aim or 0.5
-  local r = entry.aim_range
-  if not r then return a end
-  if a < r.lo then return r.lo end
-  if a > r.hi then return r.hi end
-  return a
-end
-
 -- True while the engine would draw this worm's hold: alive, visible, body
 -- visible, this weapon selected, and an aiming state.
 local function hold_aiming(entry, w)
@@ -1611,7 +1628,7 @@ local function hold_ensure_hook()
             -- render rate isn't the game's and differs between machines.
             if ws.frame ~= now then
               ws.frame = now
-              ws.counter = math.min(20, ws.counter + 1)
+              ws.counter = math.min(21, ws.counter + 1)
               if entry.frames > 1 then
                 ws.phase = hold_next_phase(ws.phase, entry.anim_speed)
               end
@@ -1656,25 +1673,42 @@ local function hold_ensure_hook()
             ws.counter = 0
           end
           if buffering and entry.buffer then
+            if not aiming and not swinging and entry.keep_firing and not entry.buffer.hide_main then
+              if ws.fire_frame ~= now then
+                ws.fire_frame = now
+                if (entry.frames or 1) > 1 then
+                  ws.fire_hold_phase = hold_next_phase(ws.fire_hold_phase or 0.0, entry.anim_speed or 1.0)
+                end
+              end
+              hold_draw_aim(entry, w, ws, nil, true, nil, nil, nil, hold_clamp_aim(entry, w.aim))
+              mute = true
+            end
             hold_draw_role(entry, entry.buffer, ws.buf_phase, w)
             if entry.buffer.hide_main then mute = true end
           elseif firing then
             -- `keep_firing`: the held art stays on WA's firing frames, under
             -- the firing sheet if there is one. This is what px_hold_art used to
             -- fill, and it is the same aim geometry at full size.
-            if entry.keep_firing and not (entry.fire and entry.fire.hide_main) then
-              hold_draw_aim(entry, w, ws, nil, true)
+            if not aiming and not swinging and entry.keep_firing and not (entry.fire and entry.fire.hide_main) then
+              hold_draw_aim(entry, w, ws, nil, true, nil, nil, nil, hold_clamp_aim(entry, w.aim))
               mute = true
             end
             if entry.fire then
               hold_draw_role(entry, entry.fire, ws.fire_phase, w)
               if entry.fire.hide_main then mute = true end
             end
-          elseif entry.keep_firing and owns and w.state ~= nil and HOLD_FIRE_STATES[w.state] then
+          elseif not aiming and not swinging and entry.keep_firing and owns and w.state ~= nil and HOLD_FIRE_STATES[w.state] then
             -- Between explicit flash windows while WA stays in a firing state
-            -- (gaps in a multi-shot sequence), keep drawing full-scale held
-            -- art so WA never unmutes to a tiny/put-away frame mid-burst.
-            hold_draw_aim(entry, w, ws, nil, true)
+            -- (gaps in a multi-shot sequence or buffer without buffer sheet),
+            -- keep drawing full-scale held art so WA never unmutes to a
+            -- tiny/put-away frame mid-burst.
+            if ws.fire_frame ~= now then
+              ws.fire_frame = now
+              if (entry.frames or 1) > 1 then
+                ws.fire_hold_phase = hold_next_phase(ws.fire_hold_phase or 0.0, entry.anim_speed or 1.0)
+              end
+            end
+            hold_draw_aim(entry, w, ws, nil, true, nil, nil, nil, hold_clamp_aim(entry, w.aim))
             mute = true
           end
         end

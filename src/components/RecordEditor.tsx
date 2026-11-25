@@ -35,6 +35,8 @@ import { NumberInput, useNumberDraft } from './NumberInput';
 import { MeleeCard } from './MeleeCard';
 import { AirstrikeCard } from './AirstrikeCard';
 import { BeamCard } from './BeamCard';
+import { BeamPreBufferCard } from './BeamPreBufferCard';
+import { ExplosionEffectCard } from './EffectsCards';
 import { LuaFindings } from './LuaFindings';
 import { checkLua, fixLockstepRng } from '../utils/luaCheck';
 import { recordField } from '../utils/recordField';
@@ -855,7 +857,22 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
             project={project}
             onChange={onChange}
             onOpenHoldBuilder={onOpenHoldBuilder}
+            onOpenTab={onSelectSubTab}
           />
+        </div>
+      )}
+
+      {/* PANEL 0C: Pre-Buffer Beam */}
+      {normalizedTab === 'beam_prebuffer' && (
+        <div className="p-4 sm:p-5">
+          <BeamPreBufferCard project={project} onChange={onChange} />
+        </div>
+      )}
+
+      {/* PANEL 0D: Beam Impact Explosion Spawner */}
+      {normalizedTab === 'beam_explosion' && (
+        <div className="p-4 sm:p-5">
+          <ExplosionEffectCard project={project} onChange={onChange} />
         </div>
       )}
 

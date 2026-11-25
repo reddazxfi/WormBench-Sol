@@ -9,6 +9,7 @@ import {
   ClustletConfig,
   DigActionConfig,
   EmitterConfig,
+  ExplosionEffectConfig,
   FlightRoleArt,
   HoldConfig,
   MeleeSound,
@@ -965,6 +966,140 @@ export function beamSoundPath(
         : beam.launchSound;
   if (!spec?.file?.file) return null;
   return `sounds/${sanitizeModFolder(project.id)}/beam_${role}.wav`;
+}
+
+/**
+ * Shared emitter for full `effects.sdk` bursts (`fx.burst{}` or `blast.explode{}`)
+ * + optional `wa.fire.spawn{}`. Used by both native `on_explode` and beam `on_impact`.
+ */
+function emitExplosionEffectLines(opts: {
+  e: ExplosionEffectConfig;
+  xExpr: string;
+  yExpr: string;
+  ownerExpr: string;
+  indent: string;
+  usesExplosionSound: boolean;
+  usesElectric: boolean;
+  usesTazeMine: boolean;
+  isNativeOverlay: boolean;
+}): string[] {
+  const { e, xExpr, yExpr, ownerExpr, indent, usesExplosionSound, usesElectric, usesTazeMine, isNativeOverlay } =
+    opts;
+  const out: string[] = [];
+  const { r, g, b } = hexToRgb(e.color);
+  const explosionPoison = e.mode === 'blast' ? clampPoisonPower(e.poisonPower) : 0;
+  const fxField = (pad: string, name: string, value: string) => `${pad}${name} = ${value},`;
+  const burstRows = (pad: string): string[] => {
+    const rows = [
+      fxField(pad, 'radius', formatNumber(Math.max(1, e.radius))),
+      `${pad}r = ${r}, g = ${g}, b = ${b},`,
+      fxField(pad, 'thickness', formatNumber(Math.max(0.5, e.thickness))),
+      ...(e.core && e.core > 0
+        ? [fxField(pad, 'core', formatNumber(Math.max(2.5, e.core)))]
+        : []),
+      fxField(pad, 'noise', formatNumber(Math.max(0, e.noise))),
+      fxField(pad, 'duration', String(Math.max(1, Math.round(e.duration)))),
+      fxField(pad, 'fade', formatNumber(e.fade)),
+      fxField(pad, 'grow', formatNumber(Math.max(0, e.grow))),
+      fxField(pad, 'live', String(Math.max(1, Math.round(e.live)))),
+      fxField(pad, 'ellipse', `{ ${formatNumber(e.ellipseX)}, ${formatNumber(e.ellipseY)} }`),
+    ];
+    if (Math.round(e.segments) > 0) {
+      rows.push(fxField(pad, 'segments', String(Math.round(e.segments))));
+    }
+    rows.push(
+      e.smoke
+        ? `${pad}smoke = { count = 7, kinds = 2, r = ${r}, g = ${g}, b = ${b} },`
+        : `${pad}smoke = false,`,
+    );
+    if (e.rainbow) rows.push(`${pad}rainbow = true,`);
+    if (e.style && e.style !== 'classic') {
+      rows.push(`${pad}style = ${luaQuote(e.style)},`);
+    }
+    if (e.shape && e.shape !== 'ring') {
+      rows.push(`${pad}shape = ${luaQuote(e.shape)},`);
+      if (e.shape !== 'none') {
+        if (e.starPoints && e.starPoints !== 5) {
+          rows.push(`${pad}points = ${Math.max(3, Math.min(12, Math.round(e.starPoints)))},`);
+        }
+        if (e.shape === 'spin_star' && e.spin !== undefined && e.spin !== 0.16) {
+          rows.push(`${pad}spin = ${formatNumber(e.spin)},`);
+        }
+      }
+    }
+    const glowLua = burstGlowExpr(e.centerGlow, e.shape);
+    if (glowLua) rows.push(`${pad}glow = ${glowLua},`);
+    const rbMode = e.rebufferMode ?? (e.rebuffer ? 'px' : 'none');
+    const rbAt = Math.max(2, Math.round(e.rebufferAt ?? 16));
+    const rbOn = e.rebuffer && rbMode !== 'none';
+    rows.push(
+      rbOn
+        ? `${pad}rebuffer = { at = ${rbAt}${rbMode !== 'px' ? `, mode = ${luaQuote(rbMode)}` : ''}, noise = ${formatNumber(
+            Math.max(1.8, e.noise * 1.6),
+          )}, r = ${r}, g = ${g}, b = ${b}, fade = ${rbMode === 'px' ? '-0.85' : '0.65'} },`
+        : `${pad}rebuffer = false,`,
+    );
+    return rows;
+  };
+
+  if (usesElectric) {
+    if (e.mode === 'blast') {
+      out.push(`${indent}zap.set_message_electric(20, 0, -4, true)`);
+    } else if (isNativeOverlay) {
+      out.push(`${indent}zap.set_message_electric_missile(20, ${ownerExpr}, 2)`);
+    }
+  }
+  if (e.mode === 'blast') {
+    const inner = `${indent}  `;
+    const blastRows = [
+      `${inner}x = ${xExpr}, y = ${yExpr}, owner = ${ownerExpr},`,
+      fxField(inner, 'damage', formatNumber(Math.max(0, Math.round(e.damage)))),
+      fxField(inner, 'push', formatNumber(Math.max(0, Math.round(e.push)))),
+    ];
+    const hole = Math.max(0, Math.round(e.hole));
+    if (hole > 0) {
+      blastRows.push(fxField(inner, 'hole', String(hole)));
+    } else {
+      blastRows.push(`${inner}destroy = false,`);
+    }
+    if (e.damageType === 'electric') {
+      blastRows.push(`${inner}kind = "taze",`);
+    }
+    if (explosionPoison > 0) {
+      blastRows.push(`${inner}poison = ${explosionPoison},`);
+    }
+    if (!usesExplosionSound) {
+      if (e.sound === 'default') blastRows.push(`${inner}sound = true,`);
+      else if (typeof e.sound === 'number') blastRows.push(`${inner}sound = ${e.sound},`);
+    }
+    if (usesElectric && usesTazeMine) {
+      blastRows.push(`${inner}on_taze_mine = function(m, w) taze_mine.taze(m, { owner = w }) end,`);
+    }
+    out.push(`${indent}blast.explode{`);
+    for (const row of blastRows) out.push(row);
+    out.push(`${inner}effect = {`);
+    for (const row of burstRows(`${inner}  `)) out.push(row);
+    out.push(`${inner}},`);
+    out.push(`${indent}}`);
+  } else {
+    if (usesElectric && usesTazeMine) {
+      const mineR2 = Math.pow(Math.max(40, Math.round(e.radius * 2)), 2);
+      out.push(
+        `${indent}if wa.mines and wa.mines.all then local r2 = ${mineR2}; for _, m in ipairs(wa.mines.all()) do if (m.x - ${xExpr})^2 + (m.y - ${yExpr})^2 <= r2 then taze_mine.taze(m, { owner = ${ownerExpr} }) end end end`,
+      );
+    }
+    out.push(`${indent}fx.burst{`);
+    out.push(`${indent}  x = ${xExpr}, y = ${yExpr},`);
+    for (const row of burstRows(`${indent}  `)) out.push(row);
+    out.push(`${indent}}`);
+  }
+  if (e.fireSpawn?.enabled) {
+    const fs = e.fireSpawn;
+    out.push(
+      `${indent}if wa.fire and wa.fire.spawn then wa.fire.spawn({ owner = ${ownerExpr}, x = ${xExpr}, y = ${yExpr}, vx = 0, vy = ${formatNumber(fs.vy)}, count = ${Math.max(1, Math.round(fs.count))}, duration = ${Math.max(200, Math.round(fs.durationMs))}, up_power = ${Math.max(1, Math.round(fs.upPower))}, damage = ${Math.max(0, Math.round(fs.damage))} }) end`,
+    );
+  }
+  return out;
 }
 
 /** True when airstrike plane crash explosion config should trigger a px_effects burst. */
@@ -2144,6 +2279,8 @@ export function generateLuaCode(project: WeaponProject): string {
   // PX-style blast replacement, and the smoke and re-buffer passes.
   const explosionEffect = project.explosionEffect;
   const usesExplosionEffect = !!explosionEffect?.enabled && explodesNatively;
+  const usesBeamExplosion = usesBeam && !!explosionEffect?.enabled;
+  const usesLegacyBeamImpactBurst = usesBeam && !usesBeamExplosion && beamUsesImpactBurst(project);
   // Uploaded WAVs.
   const customSounds = project.customSounds;
   const explosionSoundPath = customSoundPath(project, 'explosion');
@@ -2179,10 +2316,8 @@ export function generateLuaCode(project: WeaponProject): string {
   // would blast once more on top of the pierce (and crater over a stamp).
   const silencesBlast =
     (usesExplosionEffect && explosionEffect!.mode === 'blast') || usesImpactDamage;
-  const explosionPoison =
-    usesExplosionEffect && explosionEffect!.mode === 'blast'
-      ? clampPoisonPower(explosionEffect!.poisonPower)
-      : 0;
+  const needsCustomExplosionLib =
+    silencesBlast || (usesBeamExplosion && explosionEffect!.mode === 'blast');
   // Electric damage. WA has no electric hit kind, so `kind = "taze"` only names
   // the hit (WA takes it as the Prod's) and nothing about the worm changes.
   // What tazes is `px.electric`'s damage module, which is already installed as
@@ -2193,6 +2328,8 @@ export function generateLuaCode(project: WeaponProject): string {
   // no change to `effects.sdk` beyond the `kind` it already forwards.
   const usesElectricBlast =
     !!usesExplosionEffect && explosionEffect!.damageType === 'electric';
+  const usesElectricBeamExplosion =
+    usesBeamExplosion && explosionEffect!.damageType === 'electric';
   // The javelin's pierce takes the same hit kinds, so its `taze` needs the same
   // arm: `o:hurt{ kind = "taze" }` is a Prod to WA and nothing more.
   const usesElectricImpact = usesImpactDamage && stampImpact!.kind === 'taze';
@@ -2203,6 +2340,7 @@ export function generateLuaCode(project: WeaponProject): string {
   const meleePoison = project.melee?.enabled ? clampPoisonPower(project.melee.poisonPower) : 0;
   const usesZap =
     usesElectricBlast ||
+    usesElectricBeamExplosion ||
     usesElectricImpact ||
     usesElectricMelee ||
     usesPlaneCrashTaze ||
@@ -2324,11 +2462,12 @@ export function generateLuaCode(project: WeaponProject): string {
   const emitterCarries = !isMine && emitterUsesAim && emitterUsesRound;
   const usesMineEmitter = isMine && usesEmitter && emitterUsesRound;
   const usesMineTrail = isMine && usesRibbonTrail;
-  const usesBeamImpactBurst = usesBeam && beamUsesImpactBurst(project);
+  const usesBeamImpactBurst = usesLegacyBeamImpactBurst;
   // Anything in px_effects needs the module required and installed; the trail
   // module on its own installs itself.
   const usesEffectsSdk =
     usesExplosionEffect ||
+    usesBeamExplosion ||
     usesEmitter ||
     usesRibbonTrail ||
     usesAirstrikeStrafeTrail ||
@@ -2479,6 +2618,7 @@ export function generateLuaCode(project: WeaponProject): string {
     if (
       usesEmitter ||
       usesExplosionEffect ||
+      usesBeamExplosion ||
       usesRibbonTrail ||
       usesAirstrikeStrafeTrail ||
       usesPlaneCrashFx ||
@@ -2486,7 +2626,7 @@ export function generateLuaCode(project: WeaponProject): string {
     ) {
       lines.push('local fx = require("wf-lib/effects/px_effects")');
     }
-    if (silencesBlast) {
+    if (needsCustomExplosionLib) {
       lines.push('local blast = require("wf-lib/effects/custom_explosion")');
     }
   }
@@ -3049,8 +3189,11 @@ export function generateLuaCode(project: WeaponProject): string {
 
     const holdFireFrames = Math.max(1, Math.round(project.hold?.fireFrames ?? 1));
     const holdFireFps = Math.max(1, Number(project.hold?.fireFps) || 15);
+    const activeBeamTicks =
+      Math.max(0, Math.round(b.growFrames)) + Math.max(0, Math.round(b.holdFrames));
     const beamFireTicks = Math.max(
       2,
+      activeBeamTicks,
       Math.round(project.hold?.fireTicks ?? Math.ceil((holdFireFrames * 50) / holdFireFps)),
     );
 
@@ -3115,7 +3258,14 @@ export function generateLuaCode(project: WeaponProject): string {
         lines.push('      on_taze_mine = function(m, w) taze_mine.taze(m, { owner = w }) end,');
       }
     }
-    if (b.terrainCut && b.cutRadius > 0) lines.push(`      cut = ${b.cutRadius},`);
+    const cutShape = b.cutShape ?? 'circle';
+    if (b.terrainCut) {
+      if (cutShape === 'circle') {
+        if (b.cutRadius > 0) lines.push(`      cut = ${b.cutRadius},`);
+      } else {
+        lines.push(`      cut_shape = ${luaQuote(cutShape)},`);
+      }
+    }
     if (b.fire?.enabled) {
       const bf = b.fire;
       lines.push(
@@ -3145,7 +3295,7 @@ export function generateLuaCode(project: WeaponProject): string {
       const hi = Math.min(1, 0.5 + beamClamp.up / 180);
       lines.push(`      aim_clamp = { lo = ${formatNumber(lo)}, hi = ${formatNumber(hi)} },`);
     }
-    if (!usesFireSeqTimed && usesAimLayer && usesBufferArt && b.bufferFrames > 0) {
+    if (!usesFireSeqTimed && usesAimLayer && (usesBufferArt || usesFiringArt) && b.bufferFrames > 0) {
       lines.push('      on_buffer = function(w, t) sb.hold_trigger(w, "buffer", t) end,');
     }
     if (usesAimLayer && usesFiringArt) {
@@ -3153,12 +3303,78 @@ export function generateLuaCode(project: WeaponProject): string {
         `      on_discharge = function(w) sb.hold_trigger(w, "fire", ${beamFireTicks}) end,`,
       );
     }
+    if (usesAimLayer && (usesFiringArt || usesBufferArt)) {
+      lines.push(
+        '      on_end = function(w, _, interrupted) if interrupted then sb.hold_trigger(w, "stop") end end,',
+      );
+    }
     if (usesElectricBeam) {
       lines.push(
         '      on_before_hit = function(o) if o and o.kind == "worm" then zap.set_message_electric(20, 0, -4, true, 2) end end,',
       );
     }
-    if (usesBeamImpactBurst && b.impactBurst) {
+    if (b.preBuffer?.enabled) {
+      const pb = b.preBuffer;
+      const pbParts: string[] = [
+        `show_beam = ${pb.showBeam ? 'true' : 'false'}`,
+        `show_orb = ${pb.showOrb ? 'true' : 'false'}`,
+      ];
+      if (pb.showOrb) {
+        if (pb.orbScale !== 1) pbParts.push(`orb_scale = ${formatNumber(pb.orbScale)}`);
+        if (pb.orbMotes !== 6) pbParts.push(`orb_motes = ${Math.round(pb.orbMotes)}`);
+      }
+      if (pb.range > 0) pbParts.push(`range = ${Math.round(pb.range)}`);
+      pbParts.push(`stop_on_terrain = ${pb.stopOnTerrain ? 'true' : 'false'}`);
+      pbParts.push(`reach = ${luaQuote(pb.reach)}`);
+      if (pb.reach === 'converge') {
+        pbParts.push(`converge_spread = ${formatNumber(pb.convergeSpread)}`);
+      }
+      pbParts.push(`path = ${luaQuote(pb.path)}`);
+      if (pb.path === 'arc') pbParts.push(`bulge = ${formatNumber(pb.bulge)}`);
+      if (pb.path === 'jagged') pbParts.push(`noise = ${formatNumber(pb.noise)}`);
+      pbParts.push(`points = ${Math.round(pb.points)}`);
+      pbParts.push(`core_width = ${formatNumber(pb.coreWidth)}`);
+      pbParts.push(`tip_width = ${formatNumber(pb.tipWidth)}`);
+      pbParts.push(`glow_width = ${formatNumber(pb.glowWidth)}`);
+      pbParts.push(`end_width_scale = ${formatNumber(pb.endWidthScale)}`);
+      if (pb.color.trim()) {
+        const pbRgb = hexToRgb(pb.color);
+        pbParts.push(`r = ${pbRgb.r}, g = ${pbRgb.g}, b = ${pbRgb.b}`);
+      }
+      if (pb.rainbow) pbParts.push('rainbow = true');
+      pbParts.push(`alpha_start = ${formatNumber(pb.alphaStart)}`);
+      pbParts.push(`alpha_end = ${formatNumber(pb.alphaEnd)}`);
+      pbParts.push(`pulse = ${formatNumber(pb.pulse)}`);
+      if (pb.flicker > 0) pbParts.push(`flicker = ${formatNumber(pb.flicker)}`);
+      if (pb.artStyle !== 'inherit') {
+        const paths = BEAM_ART_STYLE_PATHS[pb.artStyle];
+        pbParts.push(`sprite = ${luaQuote(paths.core)}`);
+        pbParts.push(`glow_sprite = ${luaQuote(paths.glow)}`);
+        pbParts.push(`orb_sprite = ${luaQuote(paths.orb)}`);
+      }
+      if (pb.depth !== 'inherit') {
+        pbParts.push(`depth = wa.depth.${pb.depth}`);
+      }
+      lines.push(`      pre_buffer = { ${pbParts.join(', ')} },`);
+    }
+    if (usesBeamExplosion && explosionEffect) {
+      lines.push(`      impact_radius = ${Math.max(6, Math.round(explosionEffect.radius))},`);
+      lines.push('      on_impact = function(ex, ey, w)');
+      for (const row of emitExplosionEffectLines({
+        e: explosionEffect,
+        xExpr: 'ex',
+        yExpr: 'ey',
+        ownerExpr: 'w',
+        indent: '        ',
+        usesExplosionSound: false,
+        usesElectric: usesElectricBeamExplosion,
+        usesTazeMine,
+        isNativeOverlay: false,
+      })) {
+        lines.push(row);
+      }
+      lines.push('      end,');
+    } else if (usesBeamImpactBurst && b.impactBurst) {
       const ib = b.impactBurst;
       const ibRgb = hexToRgb(ib.color?.trim() ? ib.color : b.color);
       lines.push(`      impact_radius = ${Math.max(6, Math.round(ib.radius))},`);
@@ -3265,6 +3481,10 @@ export function generateLuaCode(project: WeaponProject): string {
       );
       const customSchedule = parseCustomIntervalsMs(f.customIntervalsMs);
       const beamSched = usesBeam && beamCfg ? computeBeamSequenceSchedule(beamCfg, f) : null;
+      const seqBeamActiveTicks =
+        usesBeam && beamCfg
+          ? Math.max(0, Math.round(beamCfg.growFrames)) + Math.max(0, Math.round(beamCfg.holdFrames))
+          : 0;
       lines.push('    local SEQ = {');
       if (!usesBeam && f.mode === 'actors') lines.push('      mode = "actors",');
       lines.push(`      count = ${Math.max(1, Math.round(f.count))},`);
@@ -3278,6 +3498,9 @@ export function generateLuaCode(project: WeaponProject): string {
           lines.push(
             `      interval_ms = ${Math.max(20, Math.round(f.intervalMs) + beamSched.anchorPadFrames * 20)},`,
           );
+        }
+        if (seqBeamActiveTicks > 0) {
+          lines.push(`      tail_frames = ${seqBeamActiveTicks},`);
         }
       } else if (customSchedule.length > 0) {
         lines.push(`      intervals_ms = { ${customSchedule.join(', ')} },`);
@@ -3308,7 +3531,7 @@ export function generateLuaCode(project: WeaponProject): string {
           onBufParts.push(`wa.sound.play(w, ${seqChargeId}, 8)`);
         }
         onBufParts.push('firing.beam_buffer(w, t, BEAM)');
-        if (usesAimLayer && usesBufferArt) {
+        if (usesAimLayer && (usesBufferArt || usesFiringArt)) {
           onBufParts.push('sb.hold_trigger(w, "buffer", t)');
         }
         if (onBufParts.length > 0) {
@@ -3565,7 +3788,7 @@ export function generateLuaCode(project: WeaponProject): string {
     claimSdkSheet('trail.BEAM');
     claimSdkSheet('trail.GLOW');
   }
-  if (usesExplosionEffect || usesEmitter || usesPlaneCrashFx || usesBeamImpactBurst) {
+  if (usesExplosionEffect || usesBeamExplosion || usesEmitter || usesPlaneCrashFx || usesBeamImpactBurst) {
     claimSdkSheet('trail.BEAM');
     claimSdkSheet('trail.GLOW');
     claimSdkSheet('fx.SPARK');
@@ -3582,7 +3805,7 @@ export function generateLuaCode(project: WeaponProject): string {
     }
   };
   if (usesRibbonTrail) claimEffectsStyle(ribbonTrail?.style);
-  if (usesExplosionEffect) {
+  if (usesExplosionEffect || usesBeamExplosion) {
     claimEffectsStyle(explosionEffect?.style);
     const expGlowShape = explosionEffect?.centerGlow?.shape;
     if (
@@ -3639,6 +3862,13 @@ export function generateLuaCode(project: WeaponProject): string {
     if (beamGlow && !packSprites.includes(luaQuote(beamGlow))) packSprites.push(luaQuote(beamGlow));
     if (beamEnd && !packSprites.includes(luaQuote(beamEnd))) packSprites.push(luaQuote(beamEnd));
     if (beamOrb && !packSprites.includes(luaQuote(beamOrb))) packSprites.push(luaQuote(beamOrb));
+    if (beamCfg?.preBuffer?.enabled && beamCfg.preBuffer.artStyle !== 'inherit') {
+      const pbPaths = BEAM_ART_STYLE_PATHS[beamCfg.preBuffer.artStyle];
+      for (const p of [pbPaths.core, pbPaths.glow, pbPaths.orb]) {
+        const quoted = luaQuote(p);
+        if (!packSprites.includes(quoted)) packSprites.push(quoted);
+      }
+    }
   }
   // Sheets the carried code names (M6): a `wa.draw.quad{ sprite = HOLE }` can
   // only resolve a pack path the claim fills the sprite-key registry with, and
@@ -3943,6 +4173,7 @@ export function generateLuaCode(project: WeaponProject): string {
     // while `on_fire` dispatches `firing.beam(ev, BEAM)`.
     lines.push('      gun = {');
     lines.push('        bullets = 1,');
+    lines.push('        shot_interval_ms = 0,');
     lines.push('        damage = 0,');
     lines.push('        hits = {},');
     lines.push('        explosion = { push_pct = 0 },');
@@ -5675,145 +5906,19 @@ export function generateLuaCode(project: WeaponProject): string {
         )}, ${Math.max(0, Math.round(customSounds?.explosionPriority ?? 10))}) end`,
       );
     }
-    if (usesExplosionEffect) {
-      const e = explosionEffect!;
-      const { r, g, b } = hexToRgb(e.color);
-      const fxField = (indent: string, name: string, value: string) =>
-        `${indent}${name} = ${value},`;
-      const burstRows = (indent: string): string[] => {
-        const rows = [
-          fxField(indent, 'radius', formatNumber(Math.max(1, e.radius))),
-          `${indent}r = ${r}, g = ${g}, b = ${b},`,
-          fxField(indent, 'thickness', formatNumber(Math.max(0.5, e.thickness))),
-          // The sharp core pass. The SDK derives it from `thickness` today
-          // (0.9 x, floored at 1.8 half-width); the key is written when the
-          // author sets one so a build that reads it draws the same ring.
-          ...(e.core && e.core > 0
-            ? [fxField(indent, 'core', formatNumber(Math.max(2.5, e.core)))]
-            : []),
-          fxField(indent, 'noise', formatNumber(Math.max(0, e.noise))),
-          fxField(indent, 'duration', String(Math.max(1, Math.round(e.duration)))),
-          fxField(indent, 'fade', formatNumber(e.fade)),
-          fxField(indent, 'grow', formatNumber(Math.max(0, e.grow))),
-          fxField(indent, 'live', String(Math.max(1, Math.round(e.live)))),
-          fxField(
-            indent,
-            'ellipse',
-            `{ ${formatNumber(e.ellipseX)}, ${formatNumber(e.ellipseY)} }`,
-          ),
-        ];
-        if (Math.round(e.segments) > 0) {
-          rows.push(fxField(indent, 'segments', String(Math.round(e.segments))));
-        }
-        // `smoke` is a nested spec: a bare `true` would inherit the preset's
-        // fixed blue numbers, so hand it the same colour as the ring.
-        rows.push(
-          e.smoke
-            ? `${indent}smoke = { count = 7, kinds = 2, r = ${r}, g = ${g}, b = ${b} },`
-            : `${indent}smoke = false,`,
-        );
-        // PX's SetRainbowMode on the manager (`CalculateRainbow`): one clock
-        // colour for every pass of the burst.
-        if (e.rainbow) rows.push(`${indent}rainbow = true,`);
-        if (e.style && e.style !== 'classic') {
-          rows.push(`${indent}style = ${luaQuote(e.style)},`);
-        }
-        if (e.shape && e.shape !== 'ring') {
-          rows.push(`${indent}shape = ${luaQuote(e.shape)},`);
-          if (e.shape !== 'none') {
-            if (e.starPoints && e.starPoints !== 5) {
-              rows.push(`${indent}points = ${Math.max(3, Math.min(12, Math.round(e.starPoints)))},`);
-            }
-            if (e.shape === 'spin_star' && e.spin !== undefined && e.spin !== 0.16) {
-              rows.push(`${indent}spin = ${formatNumber(e.spin)},`);
-            }
-          }
-        }
-        const glowLua = burstGlowExpr(e.centerGlow, e.shape);
-        if (glowLua) rows.push(`${indent}glow = ${glowLua},`);
-        const rbMode = e.rebufferMode ?? (e.rebuffer ? 'px' : 'none');
-        const rbAt = Math.max(2, Math.round(e.rebufferAt ?? 16));
-        const rbOn = e.rebuffer && rbMode !== 'none';
-        rows.push(
-          rbOn
-            ? `${indent}rebuffer = { at = ${rbAt}${rbMode !== 'px' ? `, mode = ${luaQuote(rbMode)}` : ''}, noise = ${formatNumber(
-                Math.max(1.8, e.noise * 1.6),
-              )}, r = ${r}, g = ${g}, b = ${b}, fade = ${rbMode === 'px' ? '-0.85' : '0.65'} },`
-            : `${indent}rebuffer = false,`,
-        );
-        return rows;
-      };
-
-      if (usesElectricBlast) {
-        // PX's electric damage (`set_message_electric`, custom_taze.c): arm the
-        // hurt, and the module tazes each worm the blast takes health from.
-        // `retain` hands the hold the knockback WA gives the worm, so the push
-        // is re-applied on release instead of being lost to the hold. A custom
-        // blast delivers a hit of the scripted `taze` kind, so it takes the hit
-        // arm; WA's own blast is a blast-kind hurt, and its arm is scoped to
-        // this shooter and only lasts a couple of frames.
-        lines.push(
-          e.mode === 'blast'
-            ? '        zap.set_message_electric(20, 0, -4, true)'
-            : '        zap.set_message_electric_missile(20, ev.worm, 2)',
-        );
-      }
-      if (e.mode === 'blast') {
-        const blastRows = [
-          '          x = ev.x, y = ev.y, owner = ev.worm,',
-          fxField('          ', 'damage', formatNumber(Math.max(0, Math.round(e.damage)))),
-          fxField('          ', 'push', formatNumber(Math.max(0, Math.round(e.push)))),
-        ];
-        const hole = Math.max(0, Math.round(e.hole));
-        if (hole > 0) {
-          blastRows.push(fxField('          ', 'hole', String(hole)));
-        } else {
-          blastRows.push('          destroy = false,');
-        }
-        // The hit kind the blast sends. `taze` is the scripted electric kind
-        // (`crates/game/src/hit_kind.rs`): WA takes it as a Prod hit, but a
-        // `wa.on.hit` handler sees "taze", which is how PX's electric weapons
-        // recognise their own damage. Only the custom blast can name a kind.
-        // The hold itself is the `zap` table above: the taze kind alone changes
-        // nothing about the worm.
-        if (e.damageType === 'electric') {
-          blastRows.push('          kind = "taze",');
-        }
-        if (explosionPoison > 0) {
-          blastRows.push(`          poison = ${explosionPoison},`);
-        }
-        // PX's own default is a random 69-71 blast; `sound = true` asks for it.
-        // A pack WAV already covers the blast, so the native one stays off.
-        if (!usesExplosionSound) {
-          if (e.sound === 'default') blastRows.push('          sound = true,');
-          else if (typeof e.sound === 'number') blastRows.push(`          sound = ${e.sound},`);
-        }
-        if (usesElectricBlast && usesTazeMine) {
-          blastRows.push('          on_taze_mine = function(m, w) taze_mine.taze(m, { owner = w }) end,');
-        }
-        lines.push('        blast.explode{');
-        for (const row of blastRows) lines.push(row);
-        lines.push('          effect = {');
-        for (const row of burstRows('            ')) lines.push(row);
-        lines.push('          },');
-        lines.push('        }');
-      } else {
-        if (usesElectricBlast && usesTazeMine) {
-          const mineR2 = Math.pow(Math.max(40, Math.round(e.radius * 2)), 2);
-          lines.push(
-            `        if wa.mines and wa.mines.all then local r2 = ${mineR2}; for _, m in ipairs(wa.mines.all()) do if (m.x - ev.x)^2 + (m.y - ev.y)^2 <= r2 then taze_mine.taze(m, { owner = ev.worm }) end end end`,
-          );
-        }
-        lines.push('        fx.burst{');
-        lines.push('          x = ev.x, y = ev.y,');
-        for (const row of burstRows('          ')) lines.push(row);
-        lines.push('        }');
-      }
-      if (e.fireSpawn?.enabled) {
-        const fs = e.fireSpawn;
-        lines.push(
-          `        if wa.fire and wa.fire.spawn then wa.fire.spawn({ owner = ev.worm, x = ev.x, y = ev.y, vx = 0, vy = ${formatNumber(fs.vy)}, count = ${Math.max(1, Math.round(fs.count))}, duration = ${Math.max(200, Math.round(fs.durationMs))}, up_power = ${Math.max(1, Math.round(fs.upPower))}, damage = ${Math.max(0, Math.round(fs.damage))} }) end`,
-        );
+    if (usesExplosionEffect && explosionEffect) {
+      for (const row of emitExplosionEffectLines({
+        e: explosionEffect,
+        xExpr: 'ev.x',
+        yExpr: 'ev.y',
+        ownerExpr: 'ev.worm',
+        indent: '        ',
+        usesExplosionSound,
+        usesElectric: usesElectricBlast,
+        usesTazeMine,
+        isNativeOverlay: true,
+      })) {
+        lines.push(row);
       }
     }
     // The bundle's own body goes first and the author's snippet after it: both
@@ -6400,10 +6505,16 @@ export function autoDependenciesForProject(
   if (usesPlaneCrashTaze) out.push({ id: 'px.electric', reason: 'plane crash electric taze' });
   const usesBeam = beamActive(project);
   const usesElectricBeam = beamUsesElectricTaze(project);
-  const usesBeamImpactBurst = beamUsesImpactBurst(project);
+  const usesBeamExplosion = usesBeam && !!project.explosionEffect?.enabled;
+  const usesElectricBeamExplosion =
+    usesBeamExplosion && project.explosionEffect!.damageType === 'electric';
+  const usesLegacyBeamImpactBurst =
+    usesBeam && !usesBeamExplosion && beamUsesImpactBurst(project);
   if (usesBeam) out.push({ id: 'wfws.sdk', reason: 'beam weapon' });
-  if (usesBeamImpactBurst) out.push({ id: 'effects.sdk', reason: 'beam impact burst' });
+  if (usesBeamExplosion) out.push({ id: 'effects.sdk', reason: 'beam impact explosion' });
+  if (usesLegacyBeamImpactBurst) out.push({ id: 'effects.sdk', reason: 'beam impact burst' });
   if (usesElectricBeam) out.push({ id: 'px.electric', reason: 'electric beam taze' });
+  if (usesElectricBeamExplosion) out.push({ id: 'px.electric', reason: 'beam impact electric taze' });
   if (usesFireSequence) out.push({ id: 'wfws.sdk', reason: 'firing engine & burst' });
   return out;
 }

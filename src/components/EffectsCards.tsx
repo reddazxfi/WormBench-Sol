@@ -63,6 +63,7 @@ export function supportsExplosionEffect(project: WeaponProject): boolean {
   return (
     project.fireType === 'power' ||
     project.fireType === 'drop' ||
+    project.fireType === 'beam' ||
     takeoverMissileActive(project) ||
     fireSequenceMissileActive(project)
   );
@@ -70,7 +71,7 @@ export function supportsExplosionEffect(project: WeaponProject): boolean {
 
 /** A missile or mine: WA blasts it, so `on_explode` runs. */
 export function supportsExplosionSound(project: WeaponProject): boolean {
-  return supportsExplosionEffect(project);
+  return supportsExplosionEffect(project) && project.fireType !== 'beam';
 }
 
 /**
@@ -504,21 +505,28 @@ function BurstNumField({
 
 export function ExplosionEffectCard({ project, onChange }: CardProps) {
   if (!supportsExplosionEffect(project)) return null;
+  const isBeam = project.fireType === 'beam';
   const fx: ExplosionEffectConfig = project.explosionEffect ?? DEFAULT_EXPLOSION_EFFECT;
   const update = (patch: Partial<ExplosionEffectConfig>) => {
     onChange({ explosionEffect: { ...fx, ...patch } });
   };
   const customOnExplode =
-    !!project.enableCustomLua && /^\s*on_explode\s*=/m.test(project.customLuaSnippet || '');
+    !isBeam &&
+    !!project.enableCustomLua &&
+    /^\s*on_explode\s*=/m.test(project.customLuaSnippet || '');
   const soundMode = typeof fx.sound === 'number' ? 'id' : fx.sound;
 
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Explosion Burst"
-        code="wf-lib/effects/px_effects (effects.sdk)"
+        title={isBeam ? 'Beam Impact Explosion' : 'Explosion Burst'}
+        code={isBeam ? 'on_impact -> wf-lib/effects/px_effects (effects.sdk)' : 'wf-lib/effects/px_effects (effects.sdk)'}
         icon={<Sparkles className="h-4 w-4 text-forge-500" aria-hidden="true" />}
-        desc="Shockwave ring and squashed lens rendered from on_explode using beam, beam_glow, and optional smoke sheets."
+        desc={
+          isBeam
+            ? 'Full effects-SDK burst and optional custom_explosion blast spawned at the beam impact point inside on_impact.'
+            : 'Shockwave ring and squashed lens rendered from on_explode using beam, beam_glow, and optional smoke sheets.'
+        }
         right={
           <label
             className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${
@@ -534,7 +542,7 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
               className="h-3.5 w-3.5 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
             />
             <span className="text-xs font-semibold text-stone-900 dark:text-stone-100">
-              Enable Burst
+              {isBeam ? 'Enable Impact Explosion' : 'Enable Burst'}
             </span>
           </label>
         }
@@ -556,15 +564,24 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
           <div>
             <TooltipLabel
               label="Blast Mode"
-              code="custom_explosion / on_explode"
-              desc="Layer Over Game Blast keeps the native WA crater/damage. Replace Game Blast zeros record damage and deals damage, knockback, crater, and sound through custom_explosion."
+              code={isBeam ? 'fx.burst / blast.explode' : 'custom_explosion / on_explode'}
+              desc={
+                isBeam
+                  ? 'Visual Burst spawns fx.burst{} at beam impact without an extra blast. Full Explosion spawns blast.explode{} with damage, knockback, crater, poison/electric hit kind, and sound.'
+                  : 'Layer Over Game Blast keeps the native WA crater/damage. Replace Game Blast zeros record damage and deals damage, knockback, crater, and sound through custom_explosion.'
+              }
             />
             <div className="grid grid-cols-2 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
               {(
-                [
-                  { id: 'effect', label: 'Layer Over Game Blast' },
-                  { id: 'blast', label: 'Replace Game Blast' },
-                ] as const
+                isBeam
+                  ? ([
+                      { id: 'effect', label: 'Visual Burst (fx.burst)' },
+                      { id: 'blast', label: 'Full Explosion (blast.explode)' },
+                    ] as const)
+                  : ([
+                      { id: 'effect', label: 'Layer Over Game Blast' },
+                      { id: 'blast', label: 'Replace Game Blast' },
+                    ] as const)
               ).map((option) => (
                 <button
                   key={option.id}
@@ -582,36 +599,38 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
             </div>
           </div>
 
-          {/* Which explosion the hook runs for. */}
-          <div>
-            <TooltipLabel
-              label="Applies To"
-              code="sb.role (wfws.sdk)"
-              desc="Which explosions run this hook. The flight builder tells the round from its cluster bits. One claim on_explode carries the burst, the custom explosion WAV, any custom on_explode Lua in the snippet and the Terrain Stamp, so all of them follow this choice. Needs the flight builder: with it off nothing can tell the parts apart and the hook runs for every round."
-            />
-            <div className="grid grid-cols-3 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
-              {(
-                [
-                  { id: 'all', label: 'Every Part' },
-                  { id: 'main', label: 'Main Round' },
-                  { id: 'bit', label: 'Cluster Bits' },
-                ] as const
-              ).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => update({ target: option.id })}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    (fx.target ?? 'all') === option.id
-                      ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
-                      : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+          {/* Which explosion the hook runs for (native missiles/clusters only). */}
+          {!isBeam && (
+            <div>
+              <TooltipLabel
+                label="Applies To"
+                code="sb.role (wfws.sdk)"
+                desc="Which explosions run this hook. The flight builder tells the round from its cluster bits. One claim on_explode carries the burst, the custom explosion WAV, any custom on_explode Lua in the snippet and the Terrain Stamp, so all of them follow this choice. Needs the flight builder: with it off nothing can tell the parts apart and the hook runs for every round."
+              />
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-stone-200 bg-stone-100 p-1 dark:border-stone-800 dark:bg-stone-950/60">
+                {(
+                  [
+                    { id: 'all', label: 'Every Part' },
+                    { id: 'main', label: 'Main Round' },
+                    { id: 'bit', label: 'Cluster Bits' },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => update({ target: option.id })}
+                    className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      (fx.target ?? 'all') === option.id
+                        ? 'bg-white text-stone-900 shadow-xs ring-1 ring-forge-500/35 dark:bg-stone-800 dark:text-white'
+                        : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Presets */}
           <div className="flex flex-wrap items-center gap-1.5">

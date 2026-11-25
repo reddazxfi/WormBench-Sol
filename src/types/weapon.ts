@@ -1489,6 +1489,64 @@ export type BeamFadeMode = 'fade' | 'retract' | 'dissolve';
 export type BeamGrowEase = 'linear' | 'out' | 'in';
 export type BeamDepthBand = 'FRONT' | 'EFFECTS' | 'OBJECTS';
 export type BeamHitKind = StampHitKind;
+export type BeamCutShape = 'circle' | 'drill' | 'torch';
+export type BeamPreBufferReach = 'grow' | 'full' | 'converge';
+
+/**
+ * Custom visual configuration drawn during `b.phase == "buffer"` (both direct
+ * `firing.beam` buffer and sequenced `firing.beam_buffer`).
+ */
+export interface BeamPreBufferConfig {
+  enabled: boolean;
+  /** Draw the pre-buffer beam / guide ribbon. */
+  showBeam: boolean;
+  /** Draw the charging muzzle orb and orbiting motes. */
+  showOrb: boolean;
+  /** Scale multiplier on the muzzle charge orb (0.25..3.0). */
+  orbScale: number;
+  /** Number of orbiting energy motes drawn around the muzzle (0..12). */
+  orbMotes: number;
+  /** Pre-buffer reach in px (0 = inherit main beam range). */
+  range: number;
+  /** Stop the pre-buffer beam at solid terrain (`wa.land.trace`). */
+  stopOnTerrain: boolean;
+  /** How the pre-buffer beam extends during charge. */
+  reach: BeamPreBufferReach;
+  /** Half-separation at the target end when `reach === 'converge'` (px). */
+  convergeSpread: number;
+  /** Centerline geometry during buffer. */
+  path: BeamPathKind;
+  /** Peak perpendicular bulge for `arc` pre-buffer paths (px). */
+  bulge: number;
+  /** Lateral jitter amplitude for `jagged` pre-buffer paths (px). */
+  noise: number;
+  /** Vertices sampled along the pre-buffer ribbon (2..32). */
+  points: number;
+  /** Core ribbon width at muzzle (px). */
+  coreWidth: number;
+  /** Core ribbon width at target tip (px). */
+  tipWidth: number;
+  /** Outer additive glow ribbon width (px; 0 disables glow pass). */
+  glowWidth: number;
+  /** Width multiplier reached at full charge (`p_charge = 1`). */
+  endWidthScale: number;
+  /** Hex colour tint (`''` = inherit main beam colour). */
+  color: string;
+  /** Cycle hue smoothly during charge. */
+  rainbow: boolean;
+  /** Opacity at the start of the buffer (0..1). */
+  alphaStart: number;
+  /** Opacity at full charge (0..1). */
+  alphaEnd: number;
+  /** Subtle sinusoidal pulse amplitude (0..1). */
+  pulse: number;
+  /** Per-frame random flicker intensity (0..1). */
+  flicker: number;
+  /** Shared `wfws.sdk` beam texture family (`'inherit'` uses main beam style). */
+  artStyle: 'inherit' | BeamArtStyle;
+  /** Draw depth layer (`'inherit'` uses main beam depth). */
+  depth: 'inherit' | BeamDepthBand;
+}
 
 export interface BeamImpactBurstConfig {
   enabled: boolean;
@@ -1588,7 +1646,9 @@ export interface BeamConfig {
   poisonPower: number;
   /** Carve terrain crater where the ray hits solid land (`wa.land.cut`). */
   terrainCut: boolean;
-  /** Terrain cut crater radius in px. */
+  /** Built-in `wa.land.cut` shape (`circle` | `drill` | `torch`, default `'circle'`). */
+  cutShape?: BeamCutShape;
+  /** Terrain cut crater radius in px (used when `cutShape === 'circle'`). */
   cutRadius: number;
   /** Terrain cut scorched border width in px. */
   cutBorder: number;
@@ -1642,6 +1702,8 @@ export interface BeamConfig {
   launchSound: AirstrikeSoundSpec;
   /** Sound played where the beam strikes terrain. */
   impactSound: AirstrikeSoundSpec;
+  /** Custom visual beam & muzzle orb drawn during the pre-fire buffer. */
+  preBuffer?: BeamPreBufferConfig;
   /** Optional `effects.sdk` burst (ring, star, or spinning star) triggered at beam impact. */
   impactBurst?: BeamImpactBurstConfig;
 }

@@ -76,6 +76,19 @@ def wa_random(lo=None, hi=None):
 
 def py_reset(seed=13579):
     global TERRAIN_WALL_X
+    if "firing" in globals():
+        seen_ids = set()
+        for w in WORMS:
+            if w["id"] is not None:
+                seen_ids.add(int(w["id"]))
+        for b in BODIES:
+            if b["kind"] == "worm" and b["id"] is not None:
+                seen_ids.add(int(b["id"]))
+        for a in ACTORS_SPAWNED:
+            if a.get("owner_id") is not None:
+                seen_ids.add(a["owner_id"])
+        for wid in seen_ids:
+            firing.reset(wid)
     STATE["frame"] = 0
     STATE["digit"] = None
     STATE["rng_seed"] = seed
@@ -166,9 +179,12 @@ def py_actor_spawn(spec, handle):
     body_tbl = spec["body"]
     aid = STATE["next_actor_id"]
     STATE["next_actor_id"] += 1
+    owner_tbl = spec["owner"]
+    owner_id = int(owner_tbl["id"]) if owner_tbl is not None and owner_tbl["id"] is not None else None
     rec = {
         "id": aid,
         "handle": handle,
+        "owner_id": owner_id,
         "frame": STATE["frame"],
         "x": float(spec["x"] or 0),
         "y": float(spec["y"] or 0),
@@ -236,7 +252,9 @@ def py_land_cut(spec):
         "x": float(spec["x"]),
         "y": float(spec["y"]),
         "shape": str(spec["shape"]),
-        "radius": int(spec["radius"]),
+        "radius": int(spec["radius"]) if spec["radius"] is not None else None,
+        "facing": int(spec["facing"]) if spec["facing"] is not None else None,
+        "angle": float(spec["angle"]) if spec["angle"] is not None else None,
     })
 
 
@@ -1077,22 +1095,34 @@ spec14 = to_lua({
 spec14["on_buffer"] = lua.eval("function() _buf_cb14() end")
 spec14["on_discharge"] = lua.eval("function() _dis_cb14() end")
 
-# Frame 0: fire and simulate WA repeat-fire frames calling firing.beam again on ticks 1..4
+# Frame 0: fire and simulate WA repeat-fire frames calling firing.beam again during buffer AND hold
 firing.beam(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14, "weapon": "test.buf"}), spec14)
 QUADS.clear()
 RIBBONS.clear()
-for i in range(6):
-    if i in (1, 2, 3, 4):
+held_during_buffer = True
+held_during_hold = True
+for i in range(9):
+    if i in (1, 2, 3, 4, 6, 7):
         # Simulate WA re-triggering on_fire while shots_fired < shots_to_fire
         firing.beam(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14, "weapon": "test.buf"}), spec14)
     if i == 2:
         run_draw()
     step_tick()
+    # Ticks 1..5 (i=0..4) are buffer; ticks 6..8 (i=5..7) are hold; tick 9 (i=8) enters fade
+    if i <= 4 and sh14["shots_fired"] != 0:
+        held_during_buffer = False
+    if 5 <= i <= 7 and sh14["shots_fired"] != 0:
+        held_during_hold = False
 
 check(
-    "case 14a: buffered beam swallows repeat on_fire frames without infinite loop and releases shots_fired on discharge",
-    buf_calls == 1 and dis_calls == 1 and len(HITS) == 1 and sh14["shots_fired"] == 1,
-    f"buf={buf_calls}, dis={dis_calls}, hits={HITS}, shots_fired={sh14['shots_fired']}",
+    "case 14a: buffered beam swallows repeat on_fire frames through buffer and hold, releasing shots_fired on fade",
+    buf_calls == 1
+    and dis_calls == 1
+    and len(HITS) == 1
+    and held_during_buffer
+    and held_during_hold
+    and sh14["shots_fired"] == 1,
+    f"buf={buf_calls}, dis={dis_calls}, hits={HITS}, held_buf={held_during_buffer}, held_hold={held_during_hold}, shots_fired={sh14['shots_fired']}",
 )
 orb_quads_14b = [q for q in QUADS if q["sprite"] == "sprites/test/beam_orb.png"]
 check(
@@ -1693,6 +1723,343 @@ check(
     "case 14p: beam fire mode='both' calls wa.fire.spawn along trajectory and at impact wall",
     len(traj_fires) >= 2 and imp_count_14p >= 3,
     f"traj={len(traj_fires)}, imp_calls={len(imp_fires)}, imp_count={imp_count_14p}, total={len(FIRES)}",
+)
+
+# ---- Case 14q: sustained beam with live_aim follows worm aim, holds shots_fired, cuts periodically, and drains ----
+py_reset()
+TERRAIN_WALL_X = 320.0
+dis_14q = 0
+end_14q = []
+lua.globals()["_dis_cb14q"] = lambda *_: globals().__setitem__("dis_14q", dis_14q + 1)
+lua.globals()["_end_cb14q"] = lambda _w, _b, interrupted: end_14q.append(bool(interrupted))
+sh14q = lua.eval('_make_worm(116, 100, 100, 0.5, 1, "test.livebeam")')
+t14q_a = lua.eval('_make_worm(117, 200, 100, 0.5, -1, "stock.bazooka")')
+# Worm positioned upward-right (~45 deg up from (100,100) -> aim = 0.75 -> dx=0.707, dy=-0.707)
+t14q_b = lua.eval('_make_worm(118, 200, 0, 0.5, -1, "stock.bazooka")')
+BODIES.extend([sh14q, t14q_a, t14q_b])
+spec14q = to_lua({
+    "weapon": "test.livebeam",
+    "reach": "instant",
+    "buffer": 0,
+    "hold": 12,
+    "fade": 3,
+    "live_aim": True,
+    "hits": "corridor",
+    "width": 12,
+    "range": 400,
+    "damage": 15,
+    "cut": 6,
+    "hit_cooldown": 4,
+    "sprite": "sprites/live/beam.png",
+    "glow_sprite": "sprites/live/beam_glow.png",
+})
+spec14q["on_discharge"] = lua.eval("function() _dis_cb14q() end")
+spec14q["on_end"] = lua.eval("function(w, b, inter) _end_cb14q(w, b, inter) end")
+
+firing.beam(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14q, "weapon": "test.livebeam"}), spec14q)
+shots_held_14q = (sh14q["shots_fired"] == 0)
+for t in range(1, 13):
+    if t == 6:
+        # Sweep aim upward 45 degrees while holding
+        sh14q["aim"] = 0.75
+    if t in (2, 7, 11):
+        firing.beam(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14q, "weapon": "test.livebeam"}), spec14q)
+    step_tick()
+    if t < 12 and sh14q["shots_fired"] != 0:
+        shots_held_14q = False
+    if t == 8:
+        run_draw()
+
+released_at_fade_14q = (sh14q["shots_fired"] == 1)
+# Repeat on_fire during fade + post-release drain must still be swallowed
+for t in range(13, 18):
+    firing.beam(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14q, "weapon": "test.livebeam"}), spec14q)
+    step_tick()
+
+swept_ribbons_14q = [r for r in RIBBONS if r["sprite"] == "sprites/live/beam.png" and len(r["points"]) > 2]
+tip_y_14q = swept_ribbons_14q[0]["points"][-1]["y"] if swept_ribbons_14q else 100.0
+cut_ys_14q = [c["y"] for c in CUTS]
+hit_ids_14q = {h["id"] for h in HITS}
+check(
+    "case 14q: sustained beam holds shots_fired across hold, follows live aim, cuts along moving tip, hits swept target, and drains repeat on_fire",
+    dis_14q == 1
+    and shots_held_14q
+    and released_at_fade_14q
+    and end_14q == [False]
+    and 117 in hit_ids_14q
+    and 118 in hit_ids_14q
+    and tip_y_14q < 0.0
+    and len(CUTS) >= 2
+    and min(cut_ys_14q) < 0.0,
+    f"dis={dis_14q}, held={shots_held_14q}, rel={released_at_fade_14q}, end={end_14q}, hits={hit_ids_14q}, tip_y={tip_y_14q}, cuts={CUTS}",
+)
+
+# ---- Case 14r: mid-hold interruption immediately releases shots_fired and calls on_end(..., true) ----
+py_reset()
+TERRAIN_WALL_X = None
+end_14r = []
+lua.globals()["_end_cb14r"] = lambda _w, _b, interrupted: end_14r.append(bool(interrupted))
+sh14r = lua.eval('_make_worm(119, 100, 100, 0.5, 1, "test.intbeam")')
+BODIES.append(sh14r)
+spec14r = to_lua({
+    "weapon": "test.intbeam",
+    "reach": "instant",
+    "buffer": 0,
+    "hold": 10,
+    "fade": 3,
+    "hits": "none",
+    "range": 200,
+    "sprite": "sprites/int/beam.png",
+    "glow_sprite": "sprites/int/beam_glow.png",
+})
+spec14r["on_end"] = lua.eval("function(w, b, inter) _end_cb14r(w, b, inter) end")
+firing.beam(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14r, "weapon": "test.intbeam"}), spec14r)
+step_tick()
+held_before_int_14r = (sh14r["shots_fired"] == 0)
+sh14r["state"] = "hit"
+step_tick()
+RIBBONS.clear()
+run_draw()
+check(
+    "case 14r: mid-hold interruption releases shots_fired, calls on_end(interrupted=true), and removes beam",
+    held_before_int_14r and sh14r["shots_fired"] == 1 and end_14r == [True] and len(RIBBONS) == 0,
+    f"held={held_before_int_14r}, shots_fired={sh14r['shots_fired']}, end={end_14r}, ribbons={len(RIBBONS)}",
+)
+
+# ---- Case 14s: firing.sequence tail_frames holds shots_fired across the final beam duration ----
+py_reset()
+TERRAIN_WALL_X = None
+sh14s = lua.eval('_make_worm(120, 100, 100, 0.5, 1, "test.seqtail")')
+BODIES.append(sh14s)
+done_14s = []
+lua.globals()["_done_14s"] = lambda _w, fired: done_14s.append(int(fired))
+beam_14s = to_lua({
+    "weapon": "test.seqtail",
+    "reach": "instant",
+    "hold": 5,
+    "fade": 2,
+    "hits": "none",
+    "range": 200,
+})
+seq_14s = to_lua({
+    "weapon": "test.seqtail",
+    "count": 2,
+    "interval_ms": 40,
+    "tail_frames": 5,
+})
+lua.globals()["_firing_14s"] = firing
+lua.globals()["_beam_14s"] = beam_14s
+seq_14s["fire_fn"] = lua.eval("function(ev) _firing_14s.beam(ev, _beam_14s) end")
+seq_14s["on_done"] = lua.eval("function(w, fired) _done_14s(w, fired) end")
+firing.sequence(to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14s, "weapon": "test.seqtail"}), seq_14s)
+# Shot 1 at f=0; interval_ms=40 -> 2 ticks -> Shot 2 at f=2; tail_frames=5 -> settles at f=7
+held_frames_14s = []
+for f in range(1, 9):
+    step_tick()
+    held_frames_14s.append(int(sh14s["shots_fired"]))
+check(
+    "case 14s: firing.sequence tail_frames holds shots_fired=0 through final shot's hold duration and releases after",
+    held_frames_14s[:6] == [0, 0, 0, 0, 0, 0] and held_frames_14s[6:] == [1, 1] and done_14s == [2],
+    f"held={held_frames_14s}, done={done_14s}",
+)
+
+# ---- Case 14t: cut_shape presets ("drill", "torch", validation) ----
+py_reset()
+TERRAIN_WALL_X = 280.0
+sh14t_err = lua.eval('_make_worm(121, 100, 100, 0.5, 1, "test.cuterr")')
+expect_beam_err(
+    "case 14t-err: unknown cut_shape rejected",
+    {"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14t_err, "weapon": "test.cuterr"},
+    {"cut_shape": "square"},
+)
+
+py_reset()
+TERRAIN_WALL_X = 280.0
+sh14t_drill = lua.eval('_make_worm(122, 100, 100, 0.5, 1, "test.cutdrill")')
+BODIES.append(sh14t_drill)
+firing.beam(
+    to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14t_drill, "weapon": "test.cutdrill"}),
+    to_lua({
+        "weapon": "test.cutdrill",
+        "reach": "instant",
+        "hold": 2,
+        "fade": 1,
+        "hits": "none",
+        "range": 400,
+        "cut_shape": "drill",
+    }),
+)
+step_tick()
+check(
+    "case 14t-drill: cut_shape='drill' calls wa.land.cut with shape='drill' even without cut radius",
+    len(CUTS) == 1 and CUTS[0]["shape"] == "drill" and CUTS[0]["radius"] is None,
+    f"cuts={CUTS}",
+)
+
+py_reset()
+TERRAIN_WALL_X = 280.0
+sh14t_torch = lua.eval('_make_worm(123, 100, 100, 0.5, 1, "test.cuttorch")')
+BODIES.append(sh14t_torch)
+firing.beam(
+    to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14t_torch, "weapon": "test.cuttorch"}),
+    to_lua({
+        "weapon": "test.cuttorch",
+        "reach": "instant",
+        "hold": 6,
+        "fade": 1,
+        "live_aim": True,
+        "hits": "none",
+        "range": 400,
+        "cut_shape": "torch",
+    }),
+)
+for t in range(1, 6):
+    if t == 4:
+        sh14t_torch["aim"] = 0.75
+    step_tick()
+torch_cuts = [c for c in CUTS if c["shape"] == "torch"]
+check(
+    "case 14t-torch: cut_shape='torch' passes facing and clamped live aim angle (-1..1)",
+    len(torch_cuts) >= 2
+    and all(c["facing"] == 1 and -1.0 <= c["angle"] <= 1.0 for c in torch_cuts)
+    and abs(torch_cuts[0]["angle"]) < 0.01
+    and torch_cuts[-1]["angle"] < -0.5,
+    f"cuts={torch_cuts}",
+)
+
+# ---- Case 14u: custom pre_buffer on firing.beam (terrain trace, converge rails, show_orb=false, show_beam=false) ----
+py_reset()
+TERRAIN_WALL_X = 240.0
+sh14u = lua.eval('_make_worm(124, 100, 100, 0.5, 1, "test.prebuf")')
+BODIES.append(sh14u)
+firing.beam(
+    to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14u, "weapon": "test.prebuf"}),
+    to_lua({
+        "weapon": "test.prebuf",
+        "reach": "instant",
+        "buffer": 6,
+        "hold": 2,
+        "fade": 1,
+        "hits": "none",
+        "range": 500,
+        "standoff": 10,
+        "sprite": "sprites/main/beam.png",
+        "glow_sprite": "sprites/main/beam_glow.png",
+        "orb_sprite": "sprites/main/beam_orb.png",
+        "pre_buffer": {
+            "show_beam": True,
+            "show_orb": False,
+            "range": 500,
+            "stop_on_terrain": True,
+            "reach": "converge",
+            "converge_spread": 32,
+            "path": "straight",
+            "points": 8,
+            "core_width": 4,
+            "tip_width": 2,
+            "glow_width": 10,
+            "end_width_scale": 1.2,
+            "r": 255, "g": 64, "b": 32,
+            "sprite": "sprites/pb/beam_soft.png",
+            "glow_sprite": "sprites/pb/beam_glow_soft.png",
+            "orb_sprite": "sprites/pb/beam_orb_soft.png",
+        },
+    }),
+)
+QUADS.clear()
+RIBBONS.clear()
+run_draw()
+pb_core_14u = [r for r in RIBBONS if r["sprite"] == "sprites/pb/beam_soft.png"]
+pb_glow_14u = [r for r in RIBBONS if r["sprite"] == "sprites/pb/beam_glow_soft.png"]
+max_x_14u = max((p["x"] for r in pb_core_14u for p in r["points"]), default=0)
+check(
+    "case 14u-1: pre_buffer reach='converge' draws twin core + hot + glow strips clipped by terrain wall and suppresses orb when show_orb=false",
+    len(pb_core_14u) == 4  # 2 converging rails * (core + hot)
+    and len(pb_glow_14u) == 2  # 2 converging glow rails
+    and 235.0 <= max_x_14u <= 245.0
+    and len(QUADS) == 0,
+    f"core={len(pb_core_14u)}, glow={len(pb_glow_14u)}, max_x={max_x_14u}, quads={len(QUADS)}",
+)
+
+# show_beam=false + custom orb_motes draws orb only
+py_reset()
+TERRAIN_WALL_X = 240.0
+sh14u2 = lua.eval('_make_worm(125, 100, 100, 0.5, 1, "test.prebuforb")')
+BODIES.append(sh14u2)
+firing.beam(
+    to_lua({"x": 100, "y": 100, "vx": 1, "vy": 0, "worm": sh14u2, "weapon": "test.prebuforb"}),
+    to_lua({
+        "weapon": "test.prebuforb",
+        "reach": "instant",
+        "buffer": 4,
+        "hold": 2,
+        "fade": 1,
+        "hits": "none",
+        "range": 300,
+        "pre_buffer": {
+            "show_beam": False,
+            "show_orb": True,
+            "orb_scale": 1.5,
+            "orb_motes": 3,
+            "orb_sprite": "sprites/pb/orb_only.png",
+        },
+    }),
+)
+QUADS.clear()
+RIBBONS.clear()
+run_draw()
+pb_orbs_14u2 = [q for q in QUADS if q["sprite"] == "sprites/pb/orb_only.png"]
+check(
+    "case 14u-2: pre_buffer show_beam=false draws orb + 3 custom motes (5 quads) with 0 ribbons",
+    len(RIBBONS) == 0 and len(pb_orbs_14u2) == 5,
+    f"ribbons={len(RIBBONS)}, orbs={len(pb_orbs_14u2)}",
+)
+
+# ---- Case 14v: sequenced firing.beam_buffer uses spec.pre_buffer + jagged terrain trace ----
+py_reset()
+TERRAIN_WALL_X = 220.0
+sh14v = lua.eval('_make_worm(126, 100, 100, 0.5, 1, "test.seqprebuf")')
+BODIES.append(sh14v)
+firing.beam_buffer(sh14v, 6, to_lua({
+    "weapon": "test.seqprebuf",
+    "range": 400,
+    "standoff": 10,
+    "core0": 20,
+    "sprite": "sprites/main/beam.png",
+    "glow_sprite": "sprites/main/beam_glow.png",
+    "orb_sprite": "sprites/main/beam_orb.png",
+    "pre_buffer": {
+        "show_beam": True,
+        "show_orb": True,
+        "orb_motes": 2,
+        "reach": "full",
+        "stop_on_terrain": True,
+        "path": "jagged",
+        "noise": 12,
+        "points": 10,
+        "core_width": 5,
+        "tip_width": 2,
+        "glow_width": 14,
+        "sprite": "sprites/pb/beam_plasma.png",
+        "glow_sprite": "sprites/pb/beam_glow_plasma.png",
+        "orb_sprite": "sprites/pb/beam_orb_plasma.png",
+    },
+}))
+QUADS.clear()
+RIBBONS.clear()
+step_tick()
+run_draw()
+pb_core_14v = [r for r in RIBBONS if r["sprite"] == "sprites/pb/beam_plasma.png"]
+pb_glow_14v = [r for r in RIBBONS if r["sprite"] == "sprites/pb/beam_glow_plasma.png"]
+pb_orb_14v = [q for q in QUADS if q["sprite"] == "sprites/pb/beam_orb_plasma.png"]
+max_x_14v = max((p["x"] for r in pb_core_14v for p in r["points"]), default=0)
+check(
+    "case 14v: firing.beam_buffer renders spec.pre_buffer ribbons + 2-mote orb clipped to wall",
+    len(pb_core_14v) == 2
+    and len(pb_glow_14v) == 1
+    and len(pb_orb_14v) == 4  # halo + core + 2 motes
+    and 215.0 <= max_x_14v <= 225.0,
+    f"core={len(pb_core_14v)}, glow={len(pb_glow_14v)}, orb={len(pb_orb_14v)}, max_x={max_x_14v}",
 )
 
 print()

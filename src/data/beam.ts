@@ -1,6 +1,7 @@
 import type {
   BeamArtStyle,
   BeamConfig,
+  BeamCutShape,
   BeamDepthBand,
   BeamFadeMode,
   BeamFireConfig,
@@ -10,6 +11,8 @@ import type {
   BeamImpactBurstConfig,
   BeamLookKind,
   BeamPathKind,
+  BeamPreBufferConfig,
+  BeamPreBufferReach,
   BeamSpriteRole,
   BeamTargetsConfig,
   BurstGlowConfig,
@@ -92,6 +95,155 @@ export const DEFAULT_BEAM_TARGETS: BeamTargetsConfig = {
   graves: false,
 };
 
+export const DEFAULT_BEAM_PRE_BUFFER: BeamPreBufferConfig = {
+  enabled: false,
+  showBeam: true,
+  showOrb: true,
+  orbScale: 1,
+  orbMotes: 6,
+  range: 0,
+  stopOnTerrain: true,
+  reach: 'grow',
+  convergeSpread: 36,
+  path: 'straight',
+  bulge: 32,
+  noise: 10,
+  points: 12,
+  coreWidth: 4,
+  tipWidth: 1.5,
+  glowWidth: 12,
+  endWidthScale: 1.4,
+  color: '',
+  rainbow: false,
+  alphaStart: 0.35,
+  alphaEnd: 0.9,
+  pulse: 0.2,
+  flicker: 0,
+  artStyle: 'inherit',
+  depth: 'inherit',
+};
+
+export interface BeamPreBufferPreset {
+  id: string;
+  label: string;
+  desc: string;
+  config: Partial<BeamPreBufferConfig>;
+}
+
+export const BEAM_PRE_BUFFER_PRESETS: BeamPreBufferPreset[] = [
+  {
+    id: 'targeting_laser',
+    label: 'Targeting Laser',
+    desc: 'Crisp full-length red rangefinder line locked to terrain before discharge.',
+    config: {
+      enabled: true,
+      showBeam: true,
+      showOrb: false,
+      orbScale: 0.6,
+      orbMotes: 0,
+      range: 0,
+      stopOnTerrain: true,
+      reach: 'full',
+      path: 'straight',
+      coreWidth: 2,
+      tipWidth: 2,
+      glowWidth: 6,
+      endWidthScale: 1.1,
+      color: '#ff3b30',
+      rainbow: false,
+      alphaStart: 0.4,
+      alphaEnd: 0.95,
+      pulse: 0.25,
+      flicker: 0.05,
+      artStyle: 'classic',
+    },
+  },
+  {
+    id: 'converging_rail',
+    label: 'Converging Rail',
+    desc: 'Twin rails closing cleanly onto the aim line as the charge finishes.',
+    config: {
+      enabled: true,
+      showBeam: true,
+      showOrb: true,
+      orbScale: 1.1,
+      orbMotes: 6,
+      range: 0,
+      stopOnTerrain: true,
+      reach: 'converge',
+      convergeSpread: 44,
+      path: 'straight',
+      coreWidth: 3.5,
+      tipWidth: 1.5,
+      glowWidth: 12,
+      endWidthScale: 1.3,
+      color: '',
+      rainbow: false,
+      alphaStart: 0.3,
+      alphaEnd: 0.95,
+      pulse: 0.15,
+      flicker: 0,
+      artStyle: 'soft',
+    },
+  },
+  {
+    id: 'plasma_charge',
+    label: 'Plasma Charge',
+    desc: 'Swelling plasma core and heavy muzzle orb gathering energy.',
+    config: {
+      enabled: true,
+      showBeam: true,
+      showOrb: true,
+      orbScale: 1.6,
+      orbMotes: 10,
+      range: 240,
+      stopOnTerrain: true,
+      reach: 'grow',
+      path: 'straight',
+      coreWidth: 7,
+      tipWidth: 2,
+      glowWidth: 22,
+      endWidthScale: 1.8,
+      color: '',
+      rainbow: false,
+      alphaStart: 0.35,
+      alphaEnd: 0.95,
+      pulse: 0.35,
+      flicker: 0.08,
+      artStyle: 'plasma',
+    },
+  },
+  {
+    id: 'arcing_static',
+    label: 'Arcing Static',
+    desc: 'Crackling pilot arc whipping outward along the aim vector before blast.',
+    config: {
+      enabled: true,
+      showBeam: true,
+      showOrb: true,
+      orbScale: 1.25,
+      orbMotes: 8,
+      range: 280,
+      stopOnTerrain: true,
+      reach: 'grow',
+      path: 'jagged',
+      noise: 14,
+      points: 14,
+      coreWidth: 3.5,
+      tipWidth: 1.5,
+      glowWidth: 11,
+      endWidthScale: 1.4,
+      color: '#67e8f9',
+      rainbow: false,
+      alphaStart: 0.45,
+      alphaEnd: 0.95,
+      pulse: 0.2,
+      flicker: 0.3,
+      artStyle: 'classic',
+    },
+  },
+];
+
 export const DEFAULT_BEAM: BeamConfig = {
   enabled: false,
   range: 420,
@@ -122,6 +274,7 @@ export const DEFAULT_BEAM: BeamConfig = {
   electricTaze: false,
   poisonPower: 0,
   terrainCut: true,
+  cutShape: 'circle',
   cutRadius: 16,
   cutBorder: 4,
   impactSparks: true,
@@ -149,8 +302,68 @@ export const DEFAULT_BEAM: BeamConfig = {
   chargeSound: { id: 0 },
   launchSound: { id: 0 },
   impactSound: { id: 0 },
+  preBuffer: { ...DEFAULT_BEAM_PRE_BUFFER },
   impactBurst: { ...DEFAULT_BEAM_IMPACT_BURST },
 };
+
+export function mergeBeamPreBufferConfig(
+  raw?: Partial<BeamPreBufferConfig> | null,
+): BeamPreBufferConfig {
+  const s = raw ?? {};
+  const reach: BeamPreBufferReach =
+    s.reach === 'grow' || s.reach === 'full' || s.reach === 'converge'
+      ? s.reach
+      : DEFAULT_BEAM_PRE_BUFFER.reach;
+  const path: BeamPathKind =
+    s.path === 'straight' || s.path === 'arc' || s.path === 'jagged'
+      ? s.path
+      : DEFAULT_BEAM_PRE_BUFFER.path;
+  const artStyle: BeamPreBufferConfig['artStyle'] =
+    s.artStyle === 'inherit' ||
+    s.artStyle === 'classic' ||
+    s.artStyle === 'soft' ||
+    s.artStyle === 'plasma'
+      ? s.artStyle
+      : DEFAULT_BEAM_PRE_BUFFER.artStyle;
+  const rawDepth = s.depth as string | undefined;
+  const depth: BeamPreBufferConfig['depth'] =
+    rawDepth === 'inherit' ||
+    rawDepth === 'FRONT' ||
+    rawDepth === 'EFFECTS' ||
+    rawDepth === 'OBJECTS'
+      ? rawDepth
+      : DEFAULT_BEAM_PRE_BUFFER.depth;
+  return {
+    enabled: !!s.enabled,
+    showBeam: s.showBeam ?? DEFAULT_BEAM_PRE_BUFFER.showBeam,
+    showOrb: s.showOrb ?? DEFAULT_BEAM_PRE_BUFFER.showOrb,
+    orbScale: Math.max(0.25, Math.min(3, Number(s.orbScale ?? DEFAULT_BEAM_PRE_BUFFER.orbScale))),
+    orbMotes: Math.max(0, Math.min(12, Math.round(Number(s.orbMotes ?? DEFAULT_BEAM_PRE_BUFFER.orbMotes)))),
+    range: Math.max(0, Math.min(4000, Math.round(Number(s.range ?? DEFAULT_BEAM_PRE_BUFFER.range)))),
+    stopOnTerrain: s.stopOnTerrain ?? DEFAULT_BEAM_PRE_BUFFER.stopOnTerrain,
+    reach,
+    convergeSpread: Math.max(4, Math.min(120, Number(s.convergeSpread ?? DEFAULT_BEAM_PRE_BUFFER.convergeSpread))),
+    path,
+    bulge: Math.max(-160, Math.min(160, Number(s.bulge ?? DEFAULT_BEAM_PRE_BUFFER.bulge))),
+    noise: Math.max(0, Math.min(60, Number(s.noise ?? DEFAULT_BEAM_PRE_BUFFER.noise))),
+    points: Math.max(2, Math.min(32, Math.round(Number(s.points ?? DEFAULT_BEAM_PRE_BUFFER.points)))),
+    coreWidth: Math.max(0.5, Math.min(60, Number(s.coreWidth ?? DEFAULT_BEAM_PRE_BUFFER.coreWidth))),
+    tipWidth: Math.max(0.5, Math.min(60, Number(s.tipWidth ?? DEFAULT_BEAM_PRE_BUFFER.tipWidth))),
+    glowWidth: Math.max(0, Math.min(120, Number(s.glowWidth ?? DEFAULT_BEAM_PRE_BUFFER.glowWidth))),
+    endWidthScale: Math.max(
+      0.1,
+      Math.min(4, Number(s.endWidthScale ?? DEFAULT_BEAM_PRE_BUFFER.endWidthScale)),
+    ),
+    color: typeof s.color === 'string' ? s.color : DEFAULT_BEAM_PRE_BUFFER.color,
+    rainbow: !!s.rainbow,
+    alphaStart: Math.max(0, Math.min(1, Number(s.alphaStart ?? DEFAULT_BEAM_PRE_BUFFER.alphaStart))),
+    alphaEnd: Math.max(0, Math.min(1, Number(s.alphaEnd ?? DEFAULT_BEAM_PRE_BUFFER.alphaEnd))),
+    pulse: Math.max(0, Math.min(1, Number(s.pulse ?? DEFAULT_BEAM_PRE_BUFFER.pulse))),
+    flicker: Math.max(0, Math.min(1, Number(s.flicker ?? DEFAULT_BEAM_PRE_BUFFER.flicker))),
+    artStyle,
+    depth,
+  };
+}
 
 export function cloneBeamConfig(src: BeamConfig): BeamConfig {
   return {
@@ -160,6 +373,7 @@ export function cloneBeamConfig(src: BeamConfig): BeamConfig {
     launchSound: { ...src.launchSound },
     impactSound: { ...src.impactSound },
     fire: src.fire ? { ...src.fire } : { ...DEFAULT_BEAM_FIRE },
+    preBuffer: src.preBuffer ? { ...src.preBuffer } : { ...DEFAULT_BEAM_PRE_BUFFER },
     impactBurst: src.impactBurst
       ? {
           ...src.impactBurst,
@@ -214,6 +428,10 @@ export function mergeBeamConfig(raw?: Partial<BeamConfig> | null): BeamConfig {
       ? s.kind
       : DEFAULT_BEAM.kind;
 
+  const cutShape: BeamCutShape =
+    s.cutShape === 'circle' || s.cutShape === 'drill' || s.cutShape === 'torch'
+      ? s.cutShape
+      : 'circle';
   return {
     enabled: s.enabled ?? DEFAULT_BEAM.enabled,
     range: Math.max(20, Math.min(4000, Number(s.range ?? DEFAULT_BEAM.range) || DEFAULT_BEAM.range)),
@@ -262,6 +480,7 @@ export function mergeBeamConfig(raw?: Partial<BeamConfig> | null): BeamConfig {
     electricTaze: !!s.electricTaze,
     poisonPower: clampPoisonPower(s.poisonPower),
     terrainCut: s.terrainCut ?? DEFAULT_BEAM.terrainCut,
+    cutShape,
     cutRadius: Math.max(0, Math.min(120, Math.round(Number(s.cutRadius ?? DEFAULT_BEAM.cutRadius)))),
     cutBorder: Math.max(0, Math.min(32, Math.round(Number(s.cutBorder ?? DEFAULT_BEAM.cutBorder)))),
     impactSparks: s.impactSparks ?? DEFAULT_BEAM.impactSparks,
@@ -292,6 +511,7 @@ export function mergeBeamConfig(raw?: Partial<BeamConfig> | null): BeamConfig {
     chargeSound: { id: s.chargeSound?.id ?? 0, file: s.chargeSound?.file },
     launchSound: { id: s.launchSound?.id ?? 0, file: s.launchSound?.file },
     impactSound: { id: s.impactSound?.id ?? 0, file: s.impactSound?.file },
+    preBuffer: mergeBeamPreBufferConfig(s.preBuffer),
     impactBurst: (() => {
       const ib = s.impactBurst;
       if (!ib) return { ...DEFAULT_BEAM_IMPACT_BURST };

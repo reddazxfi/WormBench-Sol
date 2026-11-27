@@ -1,4 +1,4 @@
-# WormForge Weapon Studio, Engineering Notes (API 5 / WormForge 1.0 RC3)
+# WormBench Weapon Studio, Engineering Notes (API 5 / WormBench 1.0 RC3)
 
 ### The in-game beam painter now matches `BeamPreview`
 
@@ -91,9 +91,9 @@ The harness's `wa.draw.random` is a constant 0.5, so it cannot exercise the ray
 angles; render the recorded ribbons and quads with the real sheets to see the
 fan.
 
-### WormForge 1.0 RC3 / Lua API 5 migration
+### WormBench 1.0 RC3 / Lua API 5 migration
 
-All four phases of the WormForge 1.0 RC3 (Lua API 5) migration are complete:
+All four phases of the WormBench 1.0 RC3 (Lua API 5) migration are complete:
 
 - **Phase 1 (SDKs + Lua harnesses):** Updated `spec/lua_sdk/wfws_sdk` and
   `spec/lua_sdk/effects_sdk` (`api_version = 5`, `version = "1.0.0"`), replacing
@@ -119,7 +119,7 @@ All four phases of the WormForge 1.0 RC3 (Lua API 5) migration are complete:
   `tools/check_mod_import.ts` + `tools/check_carried_lua.ts` with API 4 -> API 5
   and API 5 pass-through coverage, added API 5 claim keys to
   `PENDING_ENGINE_KEYS` in `tools/check_pack_fixture.ts` (for pre-1.0
-  `wfcheck.exe` 0.9.9), and audited `C:\Users\lucia\Documents\GitHub\WormForge-Mods`
+  `wfcheck.exe` 0.9.9), and audited `C:\Users\lucia\Documents\GitHub\WormBench-Mods`
   (`audit_records.ts`: 200/200 records, 0 field/mask/output errors;
   `audit_bundles.ts`: 0 failures on root corpus, 1 pre-existing custom-module
   round-trip diff on `from_modders/gas_pump`).
@@ -328,7 +328,7 @@ back, and the key table has its own Fade column. WF 47's return key is
 `alpha = 0.6, fade = false`, so the cut is visible and the return is not.
 
 ## Overview & Architecture
-This application is a modern, full-featured TypeScript & React replacement for the legacy/stale WormForge weapon creator.
+This application is a modern, full-featured TypeScript & React replacement for the legacy/stale WormBench weapon creator.
 
 ### Core Goals & Capabilities
 1. **Full API 4.0 & format_version 2 Compliance**:
@@ -416,7 +416,7 @@ This application is a modern, full-featured TypeScript & React replacement for t
    - When disabled, no extraneous callback tables are emitted in the generated Lua file.
 
 8. **Mod Pack Exporter (Zip)**:
-   - Exports complete ZIP archive matching WormForge directory layout:
+   - Exports complete ZIP archive matching WormBench directory layout:
      ```text
      <mod_name>/
        mod.toml
@@ -430,7 +430,7 @@ This application is a modern, full-featured TypeScript & React replacement for t
          hold.png (if custom hold art)
          missile.png (if custom flight art)
      ```
-   - Ready to drop into `WormForge/Mods/` next to `wf-lib`.
+   - Ready to drop into `WormBench/Mods/` next to `wf-lib`.
 
 9. **Decluttered & Professional UI Layout**:
    - Clean top navigation with three modes:
@@ -445,7 +445,7 @@ This application is a modern, full-featured TypeScript & React replacement for t
    - Server-side endpoint `POST /api/antigravity` calling `@google/genai` Interactions API:
      - Uses `agent: "antigravity-preview-09-2026"` in a remote sandboxed environment.
      - Intelligent fallback to `gemini-3.8-flash` via Interactions API if agent sandbox quotas or permissions are reached.
-     - Synthesizes valid WormForge API 4.0 weapon record schemas, enforces single-action and burst constraints, and generates custom Lua simulation callbacks when requested.
+     - Synthesizes valid WormBench API 4.0 weapon record schemas, enforces single-action and burst constraints, and generates custom Lua simulation callbacks when requested.
      - Client UI (`GeminiAntigravityModal.tsx`) displays proof of work (agent reasoning, tool steps) and allows 1-click assimilation into the editor.
 
 ## 2026-11-09, sprite-builder animations and separate collision masks
@@ -583,7 +583,7 @@ changed field is written on top of the file. This also preserves zero values
 ### Validation
 
 - `tsc --noEmit` clean; `vite build` succeeds.
-- All 43 `.wep` files under `WormForge-mods` parse successfully.
+- All 43 `.wep` files under `WormBench-mods` parse successfully.
 - Generated Lua for a .wep import, a gun fallback and a mine fallback passes
   `wfcheck --stdin` with no findings.
 - Playwright: import `petrol_bomb.wep`, apply, verify `wep = "weps/..."` and no
@@ -696,7 +696,7 @@ Validation: `wfcheck --stdin` passes an edited `uzi.wep` (shot interval/burst),
 - `fuse` (`0x8C`) and `countdown` (`0x88`) are separate UI fields and separate
   Lua writes; editing one no longer changes the other.
 - Validation: `tsc --noEmit` clean, `vite build` succeeds, all 50 `.wep` files
-  in `WormForge-mods` + `wep_Formatting` parse, and `wfcheck --stdin` passes
+  in `WormBench-mods` + `wep_Formatting` parse, and `wfcheck --stdin` passes
   generated clustlet bounce/homing/impact, roam, dig, primary-bounce and
   switched-homing bundles. Playwright verified the hold at aim 0/8/16/24/31 in
   both facings, the clustlet bounce/homing diff-only emission, the roam import
@@ -726,7 +726,7 @@ saved project had exactly that state.
 - `luaGenerator.ts`: `luaMaskTable` is now conflict-free too. If a mask still
   carries both forms (legacy project), it expands `worms` into its member groups
   instead of dropping it, so the emitted bitmask keeps its meaning.
-- Patched the installed `D:\Worms Armageddon\WormForge\Mods\ringgrenade\weapons\
+- Patched the installed `D:\Worms Armageddon\WormBench\Mods\ringgrenade\weapons\
   ringgrenade.lua` by removing the redundant `worms = true` (every group was
   already listed, so the bitmask is unchanged); `wfcheck` passes.
 - Validation: `tsc --noEmit` clean, `vite build` succeeds. Generated masks now
@@ -753,7 +753,7 @@ its clustlet submunitions) was invisible and never emitted.
   groups, sounds) and `clusters.*` + the full `clusters.bit.*` child body. The
   strike header now also decodes `strike.plane` (0x38, the plane sprite) and
   `project.burst` / `body.cluster` follow `missile.burst` at 0xF0+0x14.
-  Verified against `tools/record_fields.py`/`embed_weps.py` in WormForgeNew and
+  Verified against `tools/record_fields.py`/`embed_weps.py` in WormBench-engine and
   the PX records under `myre/pxl_extracted`.
 - `luaGenerator.ts`: strikes (`fireType === 'cursor'`, not teleport) now emit
   the `missile` and `clusters` blocks through the existing missile path, the
@@ -763,7 +763,7 @@ its clustlet submunitions) was invisible and never emitted.
   (`Plane Sprite`). The cluster submunition UI (Burst Payload -> Clusters ->
   bit body) now appears for strikes too, with the imported values.
 - Validation: `tsc --noEmit` clean, `vite build` succeeds. All 95 strike `.wep`
-  files under `WormForgeNew/myre` parse; untouched `.wep` imports emit no
+  files under `WormBench-engine/myre` parse; untouched `.wep` imports emit no
   missile/clusters/strike tables, and edits emit only the changed values.
   Playwright imported PX's Mortar Strike: clusters count 5 / spread 40 / bit
   bounciness 50, strike plane 86 / count 4 / spacing 30 / speed 1 / sound 52;
@@ -783,17 +783,16 @@ light mode, and the branding comes from the mod loader artwork.
   of `RecordEditor.tsx` so the sidebar and the editor share one state in
   `App.tsx` (`activeSubTab`). `src/data/recordTabs.tsx` is the single list of
   sections and icons used by the sidebar, the mobile bar and the editor.
-- Mobile: below `lg` the sidebar is replaced by `MobileBar` (logo, project,
+- Mobile: below `lg` the sidebar is replaced by `MobileBar` (wordmark, project,
   import/export/theme actions, three workspace buttons and a section
   `<select>`), so no navigation is lost on a phone.
 - Theme: light is the default regardless of the OS preference; only a stored
   `wf_theme_v2` value overrides it. `index.html` applies the stored dark class
   before first paint and `App.tsx` keeps the `theme-color` meta in sync.
-- Branding: `spec/modloader_banner.png` was cropped to
-  `public/assets/wormforge-logo.png` (327x57 wordmark) and
-  `public/assets/wormforge-mark.png` (49x49 gear mark, also the favicon).
-  The emerald accent was replaced by a forge-red palette (`--color-forge-*` in
-  `src/index.css`, sampled from the logo) and the neutral scale moved from
+- Branding: the sidebar and mobile bar spell `WormBench` in Chakra Petch until
+  the final wordmark lands; `public/assets/wormbench-mark.png` (49x49 gear mark)
+  is still the favicon. The emerald accent was replaced by a forge-red palette
+  (`--color-forge-*` in `src/index.css`) and the neutral scale moved from
   `neutral-*` to `stone-*` for a warmer, less blue-grey UI.
 - Accessibility: skip link to `#main`, `aria-current` on navigation, labelled
   icon-only buttons, visible `:focus-visible` ring, `prefers-reduced-motion`
@@ -926,7 +925,7 @@ slots (55 petrolbm, 56 hgrenade, …) once a pack sheet was installed at one id.
 
 ## Air strike art and rotation sheets
 
-PX's own weapons (`WormForgeNew/mods/px/weapons/`) answered how strikes get art:
+PX's own weapons (`WormBench-engine/mods/px/weapons/`) answered how strikes get art:
 `homing_air_strike.lua` sets only `sprite = ART.."flight.png"`, and
 `thumper_nade_strike.lua` adds `cluster = { sprite = ... }` on a
 `copy_from = "stock.carpet_bomb"` record. Both are claim-level declarations; the
@@ -997,7 +996,7 @@ and rockets = 2, pigeon and the ball weapons = 3, gravedigger / thumper bits = 5
 rollers and drills = 6.
 
 Two traps that produced wrong earlier guesses here:
-- WormForge's debris port (`crates/engine/src/particles.rs:452`) switches on a
+- WormBench's debris port (`crates/engine/src/particles.rs:452`) switches on a
   value it calls `anim_kind` with 0 = timer, 2 = direction, 3 = horizontal
   speed, 1 = spin. That numbering is not this record field's, so do not read the
   enum off it (it also confirms that the debris code is not the reference for
@@ -1056,7 +1055,7 @@ role sheets come from `famas.png` and `fire_famas.png`, the homing bit from the
 oil drum's 20-cell strip, the roaming animal from the sheep. The script has a
 tiny PNG codec (8-bit RGBA decode/encode, no dependencies) and bakes 360°
 rotation strips with the same convention as `src/utils/rotateSheet.ts`, so a pack
-can be thrown into `WormForge/Mods/` and the engine behaviours checked in one
+can be thrown into `WormBench/Mods/` and the engine behaviours checked in one
 match.
 
 Coverage: sprite-builder track/rotation and builder+homing, stock sprite 50 as
@@ -1120,7 +1119,7 @@ PX's explosion burst (`wf-lib/effects/px_effects`, the electric mine's blast).
 The port lives in `spec/lua_sdk/effects_sdk/libs/px_effects.lua` and the original
 C is `wapx-scipts/utils_red/px_effects.c` (`DrawExplosion`, `DrawEllipse`,
 `BufferChange`); the installed reference is
-`WormForge/Mods/wf-lib/px_electric/weapons/electric_mine.lua`.
+`WormBench/Mods/wf-lib/px_electric/weapons/electric_mine.lua`.
 
 ### Generator
 
@@ -1468,7 +1467,7 @@ sprite }` and left the rest of the group to the donor, so:
 
 `113` is `oildrum4`, so the homing missile trailed oil-drum frames with the oil
 drum's particle physics. Values taken from PX's `default.pxs` with
-`WormForgeNew/tools/px_scheme_weps.py`.
+`WormBench-engine/tools/px_scheme_weps.py`.
 
 Fix: `fullGroup` (`!baseline || action !== baseline.action`) makes every field of
 the active group be written from the editor's own values, with the panel's
@@ -1482,7 +1481,7 @@ sound on a switch (0xB0 is `homing.animation` there), and bounce writes
 ### Record ids carry a 16.16 phase (roam, dig, sounds)
 
 WA packs a 16.16 phase beside a sprite value, so schemes store `0x10000 + id`.
-Unpacked from PX's `default.pxs` (`WormForgeNew/tools/px_scheme_weps.py`):
+Unpacked from PX's `default.pxs` (`WormBench-engine/tools/px_scheme_weps.py`):
 
 | record | offset | raw | id |
 |---|---|---|---|
@@ -1677,7 +1676,7 @@ Corpus check (`bun run tools/scan_mods.ts`, folders and `.zip`):
 
 | source | weapons | records read |
 | --- | --- | --- |
-| `D:/Worms Armageddon/WormForge/Mods` | 262 | 240 |
+| `D:/Worms Armageddon/WormBench/Mods` | 262 | 240 |
 | of which `px.ports` | 92 | 83 |
 
 The 22 misses are `example.tools` (70 components that place stock weapons and
@@ -2043,7 +2042,7 @@ of to the game's pixels. It now draws what `px_effects.lua` draws:
 - **`weap_scale` & firing flash alignment (`resolvedHoldFlash`)**:
   - `hold.scale` now scales both the preview weapon draw and emits
     `weap_scale = ...` in Lua.
-  - Because WormForge evaluates `hold.flash` (`out`, `side`, `scale`) relative to
+  - Because WormBench evaluates `hold.flash` (`out`, `side`, `scale`) relative to
     the worm centre rather than the weapon pivot, `resolvedHoldFlash(hold)` in
     `luaGenerator.ts` resolves the weapon's `weapRadius`, `weapRotation`, and
     `weap_scale` into both the live canvas preview and the exported Lua `flash`
@@ -2052,7 +2051,7 @@ of to the game's pixels. It now draws what `px_effects.lua` draws:
 - **Radius parity & `draw_hand = false` engine bug workaround**:
   - Raised the negative limit on both **Weapon Radius** and **Hand Radius**
     sliders from `-10` to `-35` px so both sides match (`-35..35` px).
-  - Because WormForge still draws the hand even with `draw_hand = false`,
+  - Because WormBench still draws the hand even with `draw_hand = false`,
     `luaGenerator.ts` emits `hand_radius = 0.01,` alongside `draw_hand = false,`
     whenever **Draw Hand** is unchecked while leaving the user's `hold.handRadius`
     value intact in UI state (`importFeatures.ts` restores `fallback.handRadius`
@@ -3340,7 +3339,7 @@ list is compacted so an aliased role does not list the kept path twice.
 
 ## Turn based, so one swing at a time
 
-WA is turn based and WormForge runs it as deterministic lockstep, which decides
+WA is turn based and WormBench runs it as deterministic lockstep, which decides
 what a pack has to be careful about and, more usefully, what it does not. One worm
 acts, its player's keys are the only input, and those keys are the same on every
 peer. The swing sampler started out with a per-worm table and an "is anyone else
@@ -5234,13 +5233,13 @@ and `CSoundFile` WAVs without executing PX C-script.
 
 ### Airstrike Takeover & Fire Sequential Checkup (`wfws.sdk 0.18.0`, 0.9.9)
 
-- Audited Studio Build integration against WormForge 0.9.9 (`lua-weapons.md`, `weapon-records.md`, `src/data/recordSchema.ts`, `custom_explosion.lua`, `wfcheck 0.9.9`):
+- Audited Studio Build integration against WormBench 0.9.9 (`lua-weapons.md`, `weapon-records.md`, `src/data/recordSchema.ts`, `custom_explosion.lua`, `wfcheck 0.9.9`):
   - Fixed `luaGenerator.ts` `usesFireSeqNative` `gun` block: replaced invalid `explosion = { power = 0 }` with `explosion = { push_pct = 0 }`, rounded `gun.spread_deg` to an integer, excluded `usesFireSeqNative` from outer `isMissileFamily` (`fires.launch_power_pct` is Missile-only), and compared outer `fires.subtype` against the outer donor (`stock.minigun` / `stock.air_strike`) instead of `projDonorSlot`.
   - Fixed `luaGenerator.ts` `burstTouched` so inactive `clustlet` edits no longer emit redundant `burst = "nothing",` diffs (restoring byte-identical `54_fire_angle_clamp.lua` round-trips).
   - Fixed `wfws_firing.lua` `scale_by_power`: multiplies by `ev.power` directly (`0.0 .. 1.0`) rather than `ev.power / 100`.
   - Fixed `wfws_airstrike.lua` `wa.world.blast` call: normalizes `boom_hit_kind = "blast"` to `nil` (default plain blast).
   - Fixed `importFeatures.ts` round-trip for `wf-lib/wfws_firing`: reads nested `offset = { x, y }`, respects `cancel_weapon` for `timed` vs `native`, and aligns default shot priority with generator default `8`.
-- Added WF 61..66 (`61_airstrike_takeover`, `62_airstrike_crash`, `63_airstrike_strafe`, `64_airstrike_direct`, `65_firing_native`, `66_firing_timed`) to `tools/gen_test_pack.ts` (using `autoDependenciesForProject` + `mergeFireSequenceConfig`), added generator edge & import assertions in `tools/check_generator_edges.ts` / `tools/check_mod_import.ts`, added `tools/lua/harness_firing.py` (with `ev.power` mutation check), updated `spec/lua_sdk/wfws_sdk/README.md`, and synced `D:\Worms Armageddon\WormForge\Mods\wf-lib\wfws_sdk\`.
+- Added WF 61..66 (`61_airstrike_takeover`, `62_airstrike_crash`, `63_airstrike_strafe`, `64_airstrike_direct`, `65_firing_native`, `66_firing_timed`) to `tools/gen_test_pack.ts` (using `autoDependenciesForProject` + `mergeFireSequenceConfig`), added generator edge & import assertions in `tools/check_generator_edges.ts` / `tools/check_mod_import.ts`, added `tools/lua/harness_firing.py` (with `ev.power` mutation check), updated `spec/lua_sdk/wfws_sdk/README.md`, and synced `D:\Worms Armageddon\WormBench\Mods\wf-lib\wfws_sdk\`.
 
 
 
@@ -5259,14 +5258,14 @@ resemble the preview", and three of them were *sampling*, not geometry:
   `beam_push_full_trail` and its three call sites) is gone and `look` is
   normalised to `"ribbon"` with one log line. The card still lists the key, and
   says it is drawn as a ribbon, so an older bundle loads and round-trips.
-- **The core taper bottomed out under one pixel.** WormForge samples its quads
+- **The core taper bottomed out under one pixel.** WormBench samples its quads
   point-wise (`cell_uv`'s half-texel inset exists for that reason), so the
   converging core at the muzzle and at the tip drew as a *dotted* line of bright
   pixels, which reads in game as a lumpy, wavy start on a straight beam (WF 67,
   and `beam_vis.py`'s 1:1 render reproduced it exactly). The taper now keeps
   **45%** of the band's width and the fade lives in the colour, in the library
   and in the preview.
-- **The preview was bilinear.** WormForge is always nearest neighbour, so a
+- **The preview was bilinear.** WormBench is always nearest neighbour, so a
   smoothed canvas softens every edge and makes the same beam read dimmer and
   wider than the game. `BeamPreview` sets `imageSmoothingEnabled = false` on its
   context, `flicker` no longer scales width (the library never did), and the
@@ -5303,3 +5302,62 @@ asserts the corners are real (a second-difference spike, so a regression to
 sines fails), and 14j asserts the taper never goes sub-pixel. The off-line
 renderer (`beam_vis.py`, scratch) ports `ribbon_quads` and `cell_uv` so a render
 is the engine's geometry and sampling rather than an approximation.
+
+
+### Bundle namespace folding and API 5 doc alignment
+
+- `foldWeaponIntoBundle` in `src/utils/pack.ts` (called by `withWeapon`) enforces bundle-namespace membership on every edit and import once a pack holds more than one weapon, moving entries outside `pack.id` to `<pack.id>.<leaf>` and moving their declared art via `retargetWeaponArt`. Single-weapon packs still sync to their weapon (`syncPackToSoleWeapon`).
+- `WeaponSettings.tsx` locks multi-weapon packs to the bundle prefix so only the leaf segment is edited, while `tools/check_pack_roundtrip.ts` verifies both sole-weapon sync and multi-weapon namespace folding. Added `spec/api-5-changes.md` and aligned `lua-weapons.md` and `weapon-records.md`.
+
+### Beam weapons, alternative texture sets, and effect shapes
+
+- Added full `fireType: 'beam'` support (`wfws_firing.lua`, `src/data/beam.ts`, `BeamCard.tsx`, `BeamPreview.tsx`, `src/utils/luaGenerator.ts`, `src/utils/modLib/importFeatures.ts`):
+  - Hurt layers (`corridor`, `cone`, `first`, `none`), progressive `grow`/`hold`/`fade`/`dissolve`/`retract`, `straight`/`arc`/`jagged` centerlines with deterministic forks (`beam_kinks`), `interact = "burn"` with `burn_push`, `wa.fire.spawn` along impact/trajectory, and `taze_mines` handling.
+  - Added selectable texture families (`classic`, `soft`, `plasma`) across `wfws.sdk` and `effects.sdk`, plus `fx.STAR`, independent `centerGlow`, and `rebufferMode` (`px`, `pulse`, `flash`, `none`) in `px_effects.lua`, `EffectsCards.tsx`, and `ExplosionPreview.tsx`.
+  - Wired sequenced beams (`firing.sequence` + `firing.beam_buffer`) and placed-mine emitters/ribbons (`on_place` tracker over `wa.mines`).
+
+### Poison status dose and melee turn-ending fix (`wfws.sdk` 1.1.2, `effects.sdk` 1.0.1)
+
+- Added a shared poison dose model (`src/data/poison.ts`, `PoisonDoseField.tsx`) using WA's native `worm:poison(n)` status call rather than an invalid `"poison"` hit kind:
+  - `custom_explosion.lua` doses live worms within `max(blast_radius, visual_radius)` after `wa.world.blast`, matching the **Poison** preset (`mode = "blast"`, `poisonPower = 2`, matching `grenade.lua`).
+  - `wfws_firing.lua` doses struck worms once per beam (`b.poisoned` guard so burn DoT ticks do not stack), `STAMP_HIT` calls `o:poison` on worm pierce, and melee callbacks append `victim:poison(n)` after hits.
+- Stopped melee claims from zeroing the turn clock (`not entry.melee` guards `finish = "end_turn"` in `wfws_sprite_builder.lua` / `wfws_swing.lua`), letting WA end the turn from its invisible ghost shot and effective retreat fuse window.
+
+### Swing/melee split (`wfws_swing.lua`) and native Tauri zip save (`wfws.sdk` 1.1.3)
+
+- Split the Space swing clip engine, ghost trail (`swing.echo`), and melee strike box geometry out of `wfws_sprite_builder.lua` into `spec/lua_sdk/wfws_sdk/lib/wfws_swing.lua` (exported as `"wf-lib/wfws_swing"` in `spec/lua_sdk/wfws_sdk/mod.toml`). Updated `src/data/wfwsSdk.ts`, `src/data/sdkModules.ts`, `src/utils/modExporter.ts`, `src/utils/packExporter.ts`, and `tools/lua/` harnesses.
+- Added the `save_export_zip` Tauri command in `src-tauri/src/main.rs`, writing exported ZIP archives directly to the user's Downloads folder with ` (1)..(999)` collision numbering. Superseded: the direct write replaced an existing `grenade.zip` instead of taking the browser's numbered name, so desktop exports now use the native Save As dialog and the exact chosen path. Browser builds keep the normal download.
+
+### Sustained beams, hold draw-out scale parity, cut shapes, Pre-Buffer Beam, and Beam Impact Explosion
+
+- **Sustained beam holding & live aim (`wfws_firing.lua`, `luaGenerator.ts`)**: `beam_guard` / `beam_release_guard` + `M.reset` beam cleanup hold `shots_fired = 0; shots_to_fire = 1` across `buffer + grow + hold`, update live worm aim (`beam_update_live_aim`, re-trace endpoint, periodic `beam_apply_cut`), release on `fade` or interruption (`on_end(owner, b, interrupted)`), swallow post-release repeat `on_fire` frames for `DRAIN_DEFAULT` ticks, and apply `tail_frames` on `M.sequence`. The generator emits `gun.shot_interval_ms = 0`, `on_buffer`, `on_discharge` (`>= grow + hold` ticks), and `on_end`.
+- **Hold draw-out scale parity & role suppression (`wfws_sprite_builder.lua`, `tools/lua/harness_hold_states.py`)**: capped `ws.counter` at `21` (instead of `20`) so aiming reaches `hold_grow(20) = 1.0` and matches `buffer`/`fire` role scale without a ~5% jump, added `sb.hold_trigger(w, "stop")`, suppressed passive fire sheets during buffer when no buffer sheet exists, prevented double-draw during `aiming`/`swinging`, and added `harness_hold_states.py` (10 checks).
+- **Terrain cut shapes**: added `cut_shape = "circle" | "drill" | "torch"` across `wfws_firing.lua`, `BeamCard.tsx`, `BeamPreview.tsx`, `luaGenerator.ts`, `importFeatures.ts`, `tools/check_generator_edges.ts`, and `tools/lua/harness_firing.py` (Cases `14t-err`, `14t-drill`, `14t-torch`).
+- **Pre-Buffer Beam (`beam_prebuffer` tab)**: added `BeamPreBufferConfig`, `BEAM_PRE_BUFFER_PRESETS` (*Targeting Laser*, *Converging Rail*, *Plasma Charge*, *Arcing Static*), `BeamPreBufferCard.tsx`, live `BeamPreview.tsx` rendering, `pre_buffer` parsing + `beam_resolve_buffer_len` terrain trace + multi-pass ribbon/orb drawing (`grow`, `full`, twin-rail `converge`, `straight`/`arc`/`jagged`, orb scale/motes) in both `M.beam` and `M.beam_buffer` (Cases `14u-1`, `14u-2`, `14v`), and round-trip generator/importer support.
+- **Effect Manager Impact Explosion for beams (`beam_explosion` tab)**: enabled `fireType === 'beam'` in `ExplosionEffectCard` (`EffectsCards.tsx`), shared `emitExplosionEffectLines` in `luaGenerator.ts` across `on_explode` and `BEAM.on_impact` (supporting `fx.burst` and `blast.explode` with `damage`, `push`, `hole`, `poison`, `damageType: 'electric'`, `taze_mine`, and `wa.fire.spawn`), replaced the inline `BeamCard.tsx` `impactBurst` controls with an **Impact Explosion** summary card + one-click migration button for legacy bundles while preserving legacy `impactBurst` emission/import when `explosionEffect.enabled` is false, and added full round-trip tests in `tools/check_generator_edges.ts`.
+
+### Hidden hold hand (`wfws.sdk 1.1.4`)
+
+Bows drew a full-size hand in the middle of the worm, and the crowbar drew one while an aim clamp was active. The engine has no `draw_hand` key; it always draws `hold.hand`. `hand_radius = 0.01` only parked that hand on the worm, so at the default `hand_scale = 1` it was still a 60 px hand centred on the sprite.
+
+`sb.hold` now writes `hand_scale = 0.001` whenever it parks the engine hand: `draw_hand = false` or an active `aim_clamp`. The aim layer still draws its own hand from `spec.hand_scale`, so clamped weapons keep a visible hand while the engine copy is gone. Old bundles need only the updated `wf-lib/wfws_sdk`, not a re-export. `tools/lua/harness_hold_states.py` cases 11 and 12 pin both paths.
+
+### Custom brush flight trails (`wfws.sdk 1.1.5`)
+
+- Added `spec/lua_sdk/wfws_sdk/lib/wfws_trail.lua` (exported as `wf-lib/wfws_trail`): one `wa.draw.brush` pool per role, flat SoA particle arrays, one reused `brush:boxes` buffer, deterministic 50 Hz spawn/step/draw, lifetime/loop/pingpong/random frames, tint and rainbow, and no per-particle table allocation. `wfws_sprite_builder.lua` creates a pool at install time from `sb.flight` `trail` or `dig.trail`, advances it on the post frame and `FRAME_FINISH`, and forgets a missile's accumulator when it disappears.
+- Added `FlightTrailConfig` in `src/types/weapon.ts`, defaults/presets/path helpers in `src/data/flightTrail.ts`, generator emission and sheet claims in `luaGenerator.ts`, default puff art in `placeholderSprites.ts` / `defaultArt.ts`, pack export wiring in `packExporter.ts`, and importer round-trip in `importFeatures.ts`.
+- Added `FlightTrailModal.tsx` and one compact trail row in every active `HoldPreview` flight role. Inherited homing, homing bit and roam rows mirror the parent trail's On/Off status but disable editing with an inheritance hint; an inherited cluster bit or dig row also mirrors the owning role's trail, and its modal opens Off so enabling it creates that role's own pool. The 50 Hz preview resolves the same inheritance, draws with additive `lighter`, and uses `trailZoom = missileZoom / 4` at nearest-neighbour sampling. A deduped trail sheet keeps per-role depth bands by scoping `depth = wa.depth.X` to the role's own block on import, covered by a `check_pack_roundtrip.ts` case.
+- Validation: `tools/lua/harness_flight_trail.py` (46 checks), trail cases in `harness_flight.py`, `harness_trail_bits.py`, `tools/gen_test_pack.ts` weapon `57_custom_trail`, plus generator edge and importer checks.
+
+### Airstrike cursor side and the missing takeover tests
+
+`AirstrikeCard` offered **Cursor Side of Map** and `airstrikeSim.ts` modeled it, but `wfws_airstrike.lua`'s `pick_direction` had no `cursor_side` branch: the mode fell through to the click's `vx`, so a right-half click could still launch the jet from the right, and `default_dir` won when `vx` was zero. `pick_direction` now uses `ev.x < map_w / 2` like `nearest`. Harness case 1b pins both halves with `vx` and `default_dir` set to the opposite side.
+
+The test pack now carries three takeover edge cases: 74 fires a nested `stock.cluster_bomb` with a two-burst release, four homing bits and main/bit/homing-bit trails; 75 enters `above` on the cursor side, dives, carpets seven bombs and carries a shootable `airjetb` nose part; 76 drops `offsets` banana crates on chutes with `zero_vx_uses_facing`. Existing tests 25, 33, 26 and 35 gained homing, homing-bit, dig and roam role trails. `check_mod_import.ts` pins the imported trails, nested cluster, above/carpet and crate fields.
+
+### Desktop export uses the native Save As dialog
+
+- Removed the custom `save_export_zip` command and its direct `std::fs::write` into Downloads. It silently replaced an existing `grenade.zip` instead of taking the browser's numbered name, so the toast could point at a file other than the one that was written.
+- `saveExportBlob` now opens the `@tauri-apps/plugin-dialog` `save()` dialog with Downloads as the default folder, appends `.zip` when the chosen name omits it, and writes once with `writeFile` from `@tauri-apps/plugin-fs`. The success notice takes both its displayed filename and path from the chosen file.
+- Browser builds still call `downloadBlob` and report no path. The Tauri capability now grants `dialog:allow-save` and `fs:allow-write-file`.
+- Verified the dialog writes a new ZIP without touching earlier exports, the exported archive opens with 56 entries, and the browser build still downloads `grenade.zip` with no path box.

@@ -35,6 +35,7 @@ from lupa import LuaRuntime
 SDK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'spec', 'lua_sdk', 'wfws_sdk', 'lib')
 SDK = os.path.join(SDK_DIR, 'wfws_sprite_builder.lua')
 SWING = os.path.join(SDK_DIR, 'wfws_swing.lua')
+TRAIL = os.path.join(SDK_DIR, 'wfws_trail.lua')
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -49,6 +50,8 @@ LOOKS = []      # (actor, sheet) for every `a:look`
 DESPAWNS = []   # every actor despawned
 CALLS = {}
 FRAMES = []
+TRAIL_BOXES = []
+TRAIL_BRUSHES = []
 
 wa = lua.table()
 wa.log = lambda msg: LOG.append(str(msg))
@@ -65,11 +68,36 @@ wa.math.cos = math.cos
 # The engine's `wa.math.atan(y, x)` is atan2 (the builder's track angle calls
 # it with the velocity pair); Python's `math.atan` takes one argument.
 wa.math.atan = lambda y, x: math.atan2(y, x)
+wa.depth = lua.table()
+wa.depth.BEHIND = 7
+wa.depth.EFFECTS = 8
+wa.depth.FRONT = 9
+wa.random = lambda *a: 0
 wa.draw = lua.table()
 wa.draw.quad = lambda *a: None
+wa.draw.fraction = lambda: 0.0
+
+
+def make_brush(spec):
+    class Brush:
+        pass
+
+    brush = Brush()
+    brush.spec = dict(spec)
+
+    def boxes(self, buf, count):
+        TRAIL_BOXES.append([buf[i] for i in range(1, count * 7 + 1)])
+
+    brush.boxes = boxes
+    TRAIL_BRUSHES.append(brush)
+    return brush
+
+
+wa.draw.brush = make_brush
 wa.on = lua.table()
+DRAW_HOOKS = []
 wa.on.missile_frame = lambda fn: FRAMES.append(fn)
-wa.on.draw = lambda fn: None
+wa.on.draw = lambda fn: DRAW_HOOKS.append(fn)
 wa.on.worm_message = lambda fn, opts=None: None
 wa.on.body_move = lambda fn, opts=None: None
 wa.weapons = lua.table()
@@ -102,8 +130,9 @@ lua.globals()["wa"] = wa
 # `wf.sdk` only supplies the hold sheets, which this half never names.
 lua.execute(
     'package.preload["wf-lib/holds"] = function() return { PX_HANDS = {}, PX_POSTURE = {} } end\n'
-    'package.preload["wf-lib/wfws_swing"] = function() return assert(loadfile(%r))() end'
-    % SWING.replace("\\", "/")
+    'package.preload["wf-lib/wfws_swing"] = function() return assert(loadfile(%r))() end\n'
+    'package.preload["wf-lib/wfws_trail"] = function() return assert(loadfile(%r))() end'
+    % (SWING.replace("\\", "/"), TRAIL.replace("\\", "/"))
 )
 sb = lua.execute('return assert(loadfile(%r))()' % SDK.replace("\\", "/"))
 
@@ -344,6 +373,66 @@ check(
     len(new_looks) == 1 and new_looks[0][1] == "sprites/test/homing.png",
     repr([sheet for _, sheet in new_looks]),
 )
+
+# ---- A custom brush trail is wired into the same post frame ------------------
+# The generator writes `trail = { ... }` next to the sheet. The builder must
+# create the pool at install/resolve time, emit after the missile is drawn, and
+# the module's draw hook must receive seven values per particle.
+flight(
+    "test.trail",
+    track=False,
+    trail=lua.table_from(
+        {
+            "sheet": "sprites/test/trail.png",
+            "cell_w": 16,
+            "cell_h": 16,
+            "frames": 2,
+            "power": 50,
+            "speed": 100,
+            "life": 20,
+            "life_jitter": 0,
+            "scale_start": 1,
+            "scale_end": 1,
+            "alpha_start": 1,
+            "alpha_end": 1,
+            "rotate": "none",
+            "spin_min": 0,
+            "spin_max": 0,
+            "gravity": 0,
+            "drag": 1,
+            "spread": 0,
+            "jitter": 0,
+            "inherit_vel": 0,
+            "offset_x": 0,
+            "offset_y": 0,
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "blend": "add",
+            "depth": "FRONT",
+            "max_particles": 32,
+        }
+    ),
+)
+step(95, 0, "test.trail")
+step(96, 0, "test.trail")
+TRAIL_BOXES.clear()
+for fn in DRAW_HOOKS:
+    fn()
+check("a custom trail creates its brush", len(TRAIL_BRUSHES) == 1, str(len(TRAIL_BRUSHES)))
+if TRAIL_BRUSHES:
+    check(
+        "the brush names the trail sheet, blend and depth",
+        TRAIL_BRUSHES[-1].spec.get("sprite") == "sprites/test/trail.png"
+        and TRAIL_BRUSHES[-1].spec.get("blend") == "add"
+        and TRAIL_BRUSHES[-1].spec.get("depth") == 9,
+        str(TRAIL_BRUSHES[-1].spec),
+    )
+check("the draw hook received particles", len(TRAIL_BOXES) == 1 and len(TRAIL_BOXES[0]) == 28, str(TRAIL_BOXES))
+if TRAIL_BOXES:
+    check("each particle is seven values", len(TRAIL_BOXES[0]) % 7 == 0)
+    check("the particle uses the trail cell", TRAIL_BOXES[0][2] == 16 and TRAIL_BOXES[0][3] == 16)
+    check("the trail frame is in range", 0 <= TRAIL_BOXES[0][5] <= 1, str(TRAIL_BOXES[0][5]))
 
 if fails > 0:
     print(f"\n{fails} check(s) failed")

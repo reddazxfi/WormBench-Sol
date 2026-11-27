@@ -1,7 +1,7 @@
-# WormForge 1.0 / Lua API 5: what changed
+# WormBench 1.0 / Lua API 5: what changed
 
-This is the migration note for packs written against **API 4** (WormForge
-0.9.x). WormForge 1.0 is **Lua API 5**. The canonical verb list is
+This is the migration note for packs written against **API 4** (WormBench
+0.9.x). WormBench 1.0 is **Lua API 5**. The canonical verb list is
 `spec/verbs.md`; this page is the short version of what moved, vanished or
 started behaving differently.
 

@@ -1,6 +1,6 @@
 -- wfws_firing.lua: WFWS Firing Engine (0.19.0)
 --
--- Unified, lockstep-deterministic firing library for WormForge weapons (API 5):
+-- Unified, lockstep-deterministic firing library for WormBench weapons (API 5):
 --   * Native gun + payload launching (`firing.launch`, `firing.actor`)
 --   * Flexible custom-cadence sequencer (`firing.sequence`) with initial
 --     animation/charge buffer (`first_delay_ms`), uniform or per-shot manual

@@ -7,6 +7,7 @@
     "core:default",
     "core:window:allow-destroy",
     "dialog:default",
+    "dialog:allow-save",
     "fs:default",
     {
       "identifier": "fs:scope",
@@ -46,6 +47,15 @@
     },
     {
       "identifier": "fs:allow-stat",
+      "allow": [
+        { "path": "**" },
+        { "path": "**/*" },
+        { "path": "*" },
+        { "path": "*/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
       "allow": [
         { "path": "**" },
         { "path": "**/*" },

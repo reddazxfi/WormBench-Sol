@@ -33,6 +33,7 @@ TRAIL = os.path.join(SDK, 'effects_sdk', 'libs', 'trail.lua')
 EFFECTS = os.path.join(SDK, 'effects_sdk', 'libs', 'px_effects.lua')
 BUILDER = os.path.join(SDK, 'wfws_sdk', 'lib', 'wfws_sprite_builder.lua')
 SWING = os.path.join(SDK, 'wfws_sdk', 'lib', 'wfws_swing.lua')
+WFWS_TRAIL = os.path.join(SDK, 'wfws_sdk', 'lib', 'wfws_trail.lua')
 
 CHECKS = []
 
@@ -149,6 +150,7 @@ function require(name)
     ["wf-lib/effects/px_effects"] = "%s",
     ["wf-lib/wfws_sprite_builder"] = "%s",
     ["wf-lib/wfws_swing"] = "%s",
+    ["wf-lib/wfws_trail"] = "%s",
   }
   local file = assert(files[name], "no file for " .. tostring(name))
   local fh = assert(io.open(file, "r"))
@@ -163,6 +165,7 @@ end
     EFFECTS.replace('\\', '\\\\'),
     BUILDER.replace('\\', '\\\\'),
     SWING.replace('\\', '\\\\'),
+    WFWS_TRAIL.replace('\\', '\\\\'),
 )
 lua.execute(PACKAGE)
 

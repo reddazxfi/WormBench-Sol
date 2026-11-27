@@ -88,6 +88,7 @@
 
 local shared = require("wf-lib/holds")
 local swing = require("wf-lib/wfws_swing")
+local trail_lib = require("wf-lib/wfws_trail")
 
 local M = {}
 M.clip_pose = swing.clip_pose
@@ -282,6 +283,7 @@ local function dig_settings(o, size)
     scale = t.scale ~= nil and (t.scale * (size or 1.0)) or nil,
     mirror = t.mirror,
     z = t.z,
+    trail = type(t.trail) == "table" and trail_lib.create(t.trail) or nil,
   }
 end
 
@@ -375,6 +377,9 @@ local function resolve(o, size, offset)
   end
   -- `homing = { arm = ms, time = ms, sheet = "...", ... }`: art for the
   -- homing window, resolved once at install like every other role.
+  if type(o.trail) == "table" then
+    cfg.trail = trail_lib.create(o.trail)
+  end
   if type(o.homing) == "table" then
     local h = resolve(o.homing, size, offset)
     h.arm = o.homing.arm or 0
@@ -714,6 +719,7 @@ function M.flight(ctx, opts)
       logged[id] = nil
       age[id] = nil
       deferred[id], deferred_at[id] = nil, nil
+      trail_lib.forget_all(id)
       b:remove()
     end
   end
@@ -1009,6 +1015,11 @@ function M.flight(ctx, opts)
       local cr, sr = wa.math.cos(rad), wa.math.sin(rad)
       b.x = m.x + ox * cr - oy * sr
       b.y = m.y + ox * sr + oy * cr
+    end
+    local trail = (digging and dig.trail) or cfg.trail
+    if trail then
+      trail_lib.emit(trail, id, b.x, b.y, m.vx or 0, m.vy or 0,
+        world_deg, b.facing, frame_now())
     end
   end)
 end
@@ -1754,13 +1765,16 @@ function M.hold(ctx, spec)
     silent = #sheets
   end
 
-  -- An aim clamp moves the hand as well as the weapon (the layer draws it at
-  -- the clamped pose), so the engine's own hand, which it always draws at the
-  -- real aim, has to be parked on the worm or two hands show past the limit.
-  -- `hand_radius = 0.01` is the same fallback `draw_hand = false` needs: the
-  -- engine ignores the flag but honours a radius.
+  -- The engine has no `draw_hand` key: it always draws the hand. Parking it on
+  -- the worm (`hand_radius = 0.01`) is not enough, because at scale 1 the
+  -- full-size hand still shows in the middle of the worm. Shrink it as well.
+  -- This hides a `draw_hand = false` aim hand and the engine's copy under an
+  -- aim clamp, where the layer draws the clamped hand itself.
   local aim_range = hold_aim_range(spec)
-  if aim_range and rust.hand_radius then rust.hand_radius = 0.01 end
+  if spec.draw_hand == false or aim_range then
+    rust.hand_radius = 0.01
+    rust.hand_scale = 0.001
+  end
 
   if not M.hold_needs_lua(spec) then return rust end
   if weapon == nil then

@@ -71,7 +71,7 @@ check(
   bundles.some((bundle) => bundle.id === 'wfws.sdk'),
   bundles.map((bundle) => bundle.id).join(', '),
 );
-check('test pack has 73 weapons', weapons.length === 73, String(weapons.length));
+check('test pack has 77 weapons', weapons.length === 77, String(weapons.length));
 
 const byName = new Map(weapons.map((weapon) => [weapon.name, weapon]));
 const projects = new Map<string, WeaponProject>();
@@ -2092,6 +2092,89 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
       p64.airstrike.payload.kind === 'mine',
     JSON.stringify(p64?.airstrike?.entry),
   );
+  const p74 = project('WF 74 Airstrike Cluster Bits');
+  check(
+    'WF 74: imports a nested cluster projectile, burst release, and all three trail roles',
+    !!p74?.airstrike?.enabled &&
+      p74.airstrike.payload.projectileDonor === 'cluster_bomb' &&
+      p74.airstrike.release.pattern === 'burst' &&
+      p74.airstrike.release.burstSize === 3 &&
+      p74.body?.clustlet.count === 4 &&
+      p74.missileSprite?.trail?.enabled === true &&
+      p74.bitFlight?.trail?.enabled === true &&
+      p74.behaviorArt?.homing_bit?.trail?.enabled === true,
+    JSON.stringify({
+      donor: p74?.airstrike?.payload.projectileDonor,
+      pattern: p74?.airstrike?.release.pattern,
+      burst: p74?.airstrike?.release.burstSize,
+      count: p74?.body?.clustlet.count,
+      main: p74?.missileSprite?.trail?.enabled,
+      bit: p74?.bitFlight?.trail?.enabled,
+      homingBit: p74?.behaviorArt?.homing_bit?.trail?.enabled,
+    }),
+  );
+  const p75 = project('WF 75 Airstrike Above Carpet');
+  check(
+    'WF 75: imports above entry, carpet window, and a stock articulated plane part',
+    !!p75?.airstrike?.enabled &&
+      p75.airstrike.entry.mode === 'above' &&
+      p75.airstrike.release.pattern === 'carpet' &&
+      p75.airstrike.release.window === 120 &&
+      p75.airstrike.speed.altitudeMode === 'dive' &&
+      p75.airstrike.plane.asObject === true &&
+      p75.airstrike.plane.parts?.[0]?.stockSprite === 'airjetb',
+    JSON.stringify({
+      entry: p75?.airstrike?.entry.mode,
+      pattern: p75?.airstrike?.release.pattern,
+      window: p75?.airstrike?.release.window,
+      plane: p75?.airstrike?.plane.asObject,
+      part: p75?.airstrike?.plane.parts?.[0]?.stockSprite,
+    }),
+  );
+  const p76 = project('WF 76 Airstrike Crate Chute');
+  check(
+    'WF 76: imports crate payload, chute drop, contents, offsets, and default side',
+    !!p76?.airstrike?.enabled &&
+      p76.airstrike.payload.kind === 'crate' &&
+      p76.airstrike.payload.crate.drop === 'chute' &&
+      p76.airstrike.payload.crate.contents === 'stock.banana' &&
+      p76.airstrike.release.pattern === 'offsets' &&
+      p76.airstrike.release.offsets?.[2] === 48 &&
+      p76.airstrike.defaultDir === -1 &&
+      p76.airstrike.zeroVxUsesFacing === true,
+    JSON.stringify({
+      kind: p76?.airstrike?.payload.kind,
+      drop: p76?.airstrike?.payload.crate.drop,
+      contents: p76?.airstrike?.payload.crate.contents,
+      pattern: p76?.airstrike?.release.pattern,
+      offsets: p76?.airstrike?.release.offsets,
+      dir: p76?.airstrike?.defaultDir,
+      zeroVx: p76?.airstrike?.zeroVxUsesFacing,
+    }),
+  );
+  const p25 = project('WF 25 Builder State');
+  const p33 = project('WF 33 Builder Bit Homing');
+  const p26 = project('WF 26 Builder Dig');
+  const p35 = project('WF 35 Roam Own Sheet');
+  check(
+    'state roles keep their own trail through import: homing, homing_bit, dig, roam',
+    p25?.behaviorArt?.homing?.trail?.enabled === true &&
+      p33?.behaviorArt?.homing_bit?.trail?.enabled === true &&
+      p26?.behaviorArt?.dig?.trail?.enabled === true &&
+      p35?.behaviorArt?.roam?.trail?.enabled === true,
+    JSON.stringify({
+      homing: p25?.behaviorArt?.homing?.trail?.enabled,
+      homingBit: p33?.behaviorArt?.homing_bit?.trail?.enabled,
+      dig: p26?.behaviorArt?.dig?.trail?.enabled,
+      roam: p35?.behaviorArt?.roam?.trail?.enabled,
+    }),
+  );
+  const p61trail = project('WF 61 Airstrike Takeover');
+  check(
+    'WF 61: imports the takeover bomb trail from the nested projectile table',
+    p61trail?.missileSprite?.trail?.enabled === true && p61trail.missileSprite.trail.lifeFrames === 22,
+    JSON.stringify(p61trail?.missileSprite?.trail),
+  );
   const p65 = project('WF 65 Native Gun Burst');
   check(
     'WF 65: imports native firing engine, burstSize, spreadDeg, and homing',
@@ -2414,6 +2497,28 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
   const wf73 = project('WF 73 Poison Cloud');
   near('WF 73: poison cloud recovered', `${wf73?.explosionEffect.mode}/${wf73?.explosionEffect.poisonPower}/${wf73?.explosionEffect.damage}`, 'blast/5/0');
   near('WF 73: poison cloud radius and colour', `${wf73?.explosionEffect.radius}/${wf73?.explosionEffect.color}`, '96/#7ed957');
+
+  const wf57trail = project('WF 57 Custom Brush Trail');
+  const mainTrail = wf57trail?.missileSprite?.trail;
+  near(
+    'WF 57 trail: main brushes are on with their lifetime and tint',
+    `${mainTrail?.enabled}/${mainTrail?.power}/${mainTrail?.lifeFrames}/${mainTrail?.color}/${mainTrail?.colorEnd}` ,
+    'true/35/30/#ffcc66/#ff3300',
+  );
+  near(
+    'WF 57 trail: layer, blend and native suppression round-trip',
+    `${mainTrail?.depth}/${mainTrail?.blend}/${mainTrail?.hideNativeTrail}`,
+    'FRONT/add/true',
+  );
+  near('WF 57 trail: sheet cell and frame count round-trip', `${mainTrail?.cellW}/${mainTrail?.cellH}/${mainTrail?.frames}`, '16/16/1');
+  hasFile('WF 57 trail: main sheet file recovered', mainTrail ? { sheetFile: mainTrail.sheetFile } : undefined);
+  const bitTrail = wf57trail?.bitFlight?.trail;
+  near(
+    'WF 57 trail: the bit role keeps its own brush (not the main one)',
+    `${bitTrail?.enabled}/${bitTrail?.power}/${bitTrail?.color}/${bitTrail?.sheetFile === mainTrail?.sheetFile}`,
+    'true/45/#66ccff/false',
+  );
+  hasFile('WF 57 trail: bit sheet file recovered', bitTrail ? { sheetFile: bitTrail.sheetFile } : undefined);
 }
 
 if (failures.length > 0) {

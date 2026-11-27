@@ -1094,7 +1094,7 @@ export const ProjectileSimulation: React.FC<ProjectileSimulationProps> = ({ proj
                 <Activity className="w-3.5 h-3.5 text-forge-500" />
                 Live Physics Model Specs
               </span>
-              <span className="font-mono text-[11px] text-stone-500">WormForge</span>
+              <span className="font-mono text-[11px] text-stone-500">WormBench</span>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-stone-600 dark:text-stone-400">

@@ -9,6 +9,8 @@ import {
   RoamSheetAsset,
   ExtraHandConfig,
   WormSpritePoseKey,
+  FlightTrailRoleKey,
+  FlightTrailConfig,
 } from '../types/weapon';
 import {
   bitFlightSheetPath,
@@ -16,6 +18,8 @@ import {
   digArtOverrideRows,
   roamSheetPath,
   missileFlightSheetPath,
+  flightTrailSheetPath,
+  flightTrailRows,
   ROAM_FLY_SENTINEL,
   roamWalkPoseId,
 } from '../utils/luaGenerator';
@@ -23,6 +27,7 @@ import { StockSpriteInput } from './StockSpriteInput';
 import { NumberInput, UnitNumberInput } from './NumberInput';
 import { SheetFrameWarning } from './SheetFrameWarning';
 import { SpritePickButton } from './SpritePickButton';
+import { FlightTrailModal } from './FlightTrailModal';
 import { WormSpritesPanel } from './WormSpritesPanel';
 import {
   HAND_LOWER_SRC,
@@ -36,6 +41,7 @@ import { stockSpriteName } from '../data/stockSprites';
 import { assetUrl } from '../utils/assetUrl';
 import { recordField } from '../utils/recordField';
 import { defaultArtFor } from '../utils/defaultArt';
+import { hexToRgb, mergeFlightTrailConfig, rgbToHex } from '../data/flightTrail';
 import { buildRotationSheet } from '../utils/rotateSheet';
 import {
   DEFAULT_DIG_ROLE_ART,
@@ -82,11 +88,29 @@ import {
   Check,
   AlertTriangle,
   Flame,
+  Palette,
 } from 'lucide-react';
 
 interface HoldPreviewProps {
   project: WeaponProject;
   onChange: (updated: Partial<WeaponProject>) => void;
+}
+
+interface PreviewTrailPool {
+  n: number;
+  x: number[];
+  y: number[];
+  vx: number[];
+  vy: number[];
+  age: number[];
+  life: number[];
+  rot: number[];
+  spin: number[];
+  frame0: number[];
+  acc: number;
+  now: number;
+  lastStep: number;
+  seed: number;
 }
 
 /**
@@ -833,6 +857,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
   type FlightSlotRole = 'primary' | 'homing' | 'clusters' | 'homing_bit' | 'roam' | 'dig';
   const [activeFlightRole, setActiveFlightRole] = useState<FlightSlotRole>('primary');
+  const [trailModalOpen, setTrailModalOpen] = useState(false);
   const [copiedSbLua, setCopiedSbLua] = useState(false);
 
   // Auto-fallback to primary if the weapon configuration disables the active slot
@@ -889,6 +914,23 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
   const [activeFrameDisplay, setActiveFrameDisplay] = useState(0);
   const roleImgRef = useRef<HTMLImageElement | null>(null);
   const [roleLoadedImg, setRoleLoadedImg] = useState<HTMLImageElement | null>(null);
+  const [trailLoadedImg, setTrailLoadedImg] = useState<HTMLImageElement | null>(null);
+  const trailPoolRef = useRef<PreviewTrailPool>({
+    n: 0,
+    x: [],
+    y: [],
+    vx: [],
+    vy: [],
+    age: [],
+    life: [],
+    rot: [],
+    spin: [],
+    frame0: [],
+    acc: 0,
+    now: 0,
+    lastStep: -1,
+    seed: 0x9e3779b9,
+  });
   const roleFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1405,6 +1447,73 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     return missile;
   })();
 
+  // A role's own enabled trail wins. Otherwise a dig preview inherits whichever
+  // round owns the dig: the bit when the bit sheet drives the dig, else the
+  // main round. That mirrors the SDK's `(digging and dig.trail) or cfg.trail`.
+  const previewTrailRaw = (() => {
+    const own = (art: { trail?: FlightTrailConfig } | null | undefined) =>
+      art?.trail?.enabled ? art.trail : null;
+    if (activeFlightRole === 'primary') return own(missile);
+    if (activeFlightRole === 'clusters') {
+      if (!builderOn || bitFlight.mode === 'native') return null;
+      // `bits = "inherit"` can still carry its own explicit trail table, and
+      // the generator emits it; only fall back to the round when it does not.
+      return own(bitFlight) ?? (bitFlight.mode === 'inherit' ? own(missile) : null);
+    }
+    if (activeFlightRole === 'homing') {
+      if (!builderOn) return null;
+      if (homingRole.mode === 'builder') return own(homingRole);
+      return homingRole.mode === 'inherit' ? own(missile) : null;
+    }
+    if (activeFlightRole === 'homing_bit') {
+      if (!builderOn) return null;
+      if (homingBitRole.mode === 'builder') return own(homingBitRole);
+      if (homingBitRole.mode === 'inherit') {
+        return bitFlight.mode === 'builder' ? own(bitFlight) : own(missile);
+      }
+      return null;
+    }
+    if (activeFlightRole === 'roam') {
+      if (!builderOn) return null;
+      if (roamRoleMode === 'builder') return own(roamRole);
+      return roamRoleMode === 'inherit' ? own(missile) : null;
+    }
+    if (digRoleMode === 'native') return null;
+    if (digRole.trail?.enabled) return digRole.trail;
+    const owner =
+      digBitEnabled && !digMainEnabled && bitFlight.mode === 'builder' ? bitFlight : missile;
+    return own(owner);
+  })();
+  const previewTrail = previewTrailRaw ? mergeFlightTrailConfig(previewTrailRaw) : null;
+  const previewTrailKey = JSON.stringify(previewTrail ?? null);
+  const previewTrailSheet = previewTrail?.sheetPreview;
+
+  useEffect(() => {
+    if (previewTrailSheet) {
+      let cancelled = false;
+      const img = new Image();
+      img.onload = () => {
+        if (!cancelled) setTrailLoadedImg(img);
+      };
+      img.src = previewTrailSheet;
+      return () => {
+        cancelled = true;
+      };
+    }
+    setTrailLoadedImg(null);
+  }, [previewTrailSheet]);
+
+  // Switching hotbar role starts a fresh trail pool, exactly as the game drops
+  // the old role's accumulator when the handle changes.
+  useEffect(() => {
+    const pool = trailPoolRef.current;
+    pool.n = 0;
+    pool.acc = 0;
+    pool.now = 0;
+    pool.lastStep = -1;
+    pool.seed = 0x9e3779b9;
+  }, [activeFlightRole]);
+
   // ---------------------------------------------------------------------------
   // 3. MISSILE FLIGHT SPRITE RENDER & ANIMATION LOOP (px_sprite_builder.lua exact)
   // ---------------------------------------------------------------------------
@@ -1436,6 +1545,234 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     let frame = animStateRef.current.frame || 0;
     let started = false;
     let lastFrameDisplay = -1;
+
+    // The brush trail preview mirrors `wfws_trail.lua` in screen units. Game
+    // velocities arrive at 1:1 and are scaled by the missile zoom, so the
+    // nozzle, spread, gravity and particle size all use the same factor.
+    const trail = previewTrail;
+    const trailPool = trailPoolRef.current;
+    const trailZoom = missileZoom / 4;
+    const trailSource = trailLoadedImg;
+    const tintCache = new Map<string, HTMLCanvasElement>();
+    let puffCanvas: HTMLCanvasElement | null = null;
+    const trailRng = () => {
+      trailPool.seed = (Math.imul(trailPool.seed, 1664525) + 1013904223) >>> 0;
+      return trailPool.seed / 4294967296;
+    };
+    const puffSource = () => {
+      if (puffCanvas) return puffCanvas;
+      const c = document.createElement('canvas');
+      c.width = 16;
+      c.height = 16;
+      const pctx = c.getContext('2d');
+      if (pctx) {
+        const grad = pctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.45, 'rgba(255,255,255,0.75)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        pctx.fillStyle = grad;
+        pctx.fillRect(0, 0, 16, 16);
+      }
+      puffCanvas = c;
+      return c;
+    };
+    const tintSprite = (source: CanvasImageSource, sw: number, sh: number, color: string) => {
+      const cached = tintCache.get(color);
+      if (cached) return cached;
+      const c = document.createElement('canvas');
+      c.width = sw;
+      c.height = sh;
+      const cctx = c.getContext('2d');
+      if (!cctx) return c;
+      cctx.drawImage(source, 0, 0, sw, sh);
+      cctx.globalCompositeOperation = 'multiply';
+      cctx.fillStyle = color;
+      cctx.fillRect(0, 0, sw, sh);
+      tintCache.set(color, c);
+      return c;
+    };
+    const hueHex = (h: number) => {
+      const x = (h - Math.floor(h)) * 6;
+      const sector = Math.floor(x);
+      const f = x - sector;
+      if (sector < 1) return rgbToHex(255, Math.floor(f * 255), 0);
+      if (sector < 2) return rgbToHex(Math.floor((1 - f) * 255), 255, 0);
+      if (sector < 3) return rgbToHex(0, 255, Math.floor(f * 255));
+      if (sector < 4) return rgbToHex(0, Math.floor((1 - f) * 255), 255);
+      if (sector < 5) return rgbToHex(Math.floor(f * 255), 0, 255);
+      return rgbToHex(255, 0, Math.floor((1 - f) * 255));
+    };
+
+    const spawnTrail = (
+      x: number,
+      y: number,
+      headingDeg: number,
+      facing: number
+    ) => {
+      if (!trail) return;
+      const r = trailRng();
+      const r2 = trailRng();
+      const r3 = trailRng();
+      let ox = trail.offsetX;
+      const oy = trail.offsetY;
+      if (facing < 0) ox = -ox;
+      const heading = (headingDeg * Math.PI) / 180;
+      const hc = Math.cos(heading);
+      const hs = Math.sin(heading);
+      let sx = x + (ox * hc - oy * hs) * trailZoom;
+      let sy = y + (ox * hs + oy * hc) * trailZoom;
+      if (trail.jitterPx > 0) {
+        const ja = r2 * Math.PI * 2;
+        const jr = r3 * trail.jitterPx * trailZoom;
+        sx += Math.cos(ja) * jr;
+        sy += Math.sin(ja) * jr;
+      }
+      const speed2 = vx * vx + vy * vy;
+      const baseAng =
+        speed2 > 0.000001 ? Math.atan2(-vy, -vx) : heading + Math.PI;
+      const spread = (trail.spreadDeg * Math.PI) / 180;
+      const ang = baseAng + (r - 0.5) * spread;
+      const mag = (trail.speed / 100) * (0.7 + 0.6 * r2) * trailZoom;
+      const pvx = vx * trail.inheritVel * trailZoom + Math.cos(ang) * mag;
+      const pvy = vy * trail.inheritVel * trailZoom + Math.sin(ang) * mag;
+      let prot = 0;
+      if (trail.rotateMode === 'random') prot = r * Math.PI * 2;
+      else if (trail.rotateMode === 'align') prot = ang;
+      else if (trail.rotateMode === 'missile') prot = heading;
+      const spin = (trail.spinMin + (trail.spinMax - trail.spinMin) * r3) * (Math.PI / 180);
+      let life = Math.round(trail.lifeFrames * (1 + (r2 * 2 - 1) * trail.lifeJitter));
+      if (life < 2) life = 2;
+      if (life > 180) life = 180;
+      const i = trailPool.n < trail.maxParticles ? trailPool.n++ : 0;
+      trailPool.x[i] = sx;
+      trailPool.y[i] = sy;
+      trailPool.vx[i] = pvx;
+      trailPool.vy[i] = pvy;
+      trailPool.age[i] = 0;
+      trailPool.life[i] = life;
+      trailPool.rot[i] = prot;
+      trailPool.spin[i] = spin;
+      trailPool.frame0[i] =
+        trail.frames > 1 ? Math.floor(trailRng() * trail.frames) : 0;
+    };
+
+    const stepTrail = (x: number, y: number, headingDeg: number, facing: number) => {
+      if (!trail) {
+        trailPool.n = 0;
+        trailPool.acc = 0;
+        return;
+      }
+      trailPool.now += 1;
+      let i = 0;
+      while (i < trailPool.n) {
+        const age = trailPool.age[i] + 1;
+        if (age >= trailPool.life[i]) {
+          const last = trailPool.n - 1;
+          if (i !== last) {
+            trailPool.x[i] = trailPool.x[last];
+            trailPool.y[i] = trailPool.y[last];
+            trailPool.vx[i] = trailPool.vx[last];
+            trailPool.vy[i] = trailPool.vy[last];
+            trailPool.age[i] = trailPool.age[last];
+            trailPool.life[i] = trailPool.life[last];
+            trailPool.rot[i] = trailPool.rot[last];
+            trailPool.spin[i] = trailPool.spin[last];
+            trailPool.frame0[i] = trailPool.frame0[last];
+          }
+          trailPool.n = last;
+        } else {
+          trailPool.age[i] = age;
+          trailPool.vx[i] *= trail.drag;
+          trailPool.vy[i] = trailPool.vy[i] * trail.drag + trail.gravity * trailZoom;
+          trailPool.x[i] += trailPool.vx[i];
+          trailPool.y[i] += trailPool.vy[i];
+          trailPool.rot[i] += trailPool.spin[i];
+          i += 1;
+        }
+      }
+      const rate = trail.power / 25;
+      if (rate <= 0) return;
+      const acc = trailPool.acc + rate;
+      const count = Math.floor(acc);
+      trailPool.acc = acc - count;
+      for (let k = 0; k < count && k < 32; k += 1) {
+        spawnTrail(x, y, headingDeg, facing);
+      }
+    };
+
+    const drawTrail = (ctx: CanvasRenderingContext2D) => {
+      if (!trail || trailPool.n === 0) return;
+      const source = trailSource || puffSource();
+      const srcW =
+        trailSource && trailSource.naturalWidth > 0
+          ? trailSource.naturalWidth
+          : trailSource
+            ? trailSource.width
+            : 16;
+      const srcH =
+        trailSource && trailSource.naturalHeight > 0
+          ? trailSource.naturalHeight
+          : trailSource
+            ? trailSource.height
+            : 16;
+      const cellW = Math.max(1, Math.min(trail.cellW, srcW));
+      const cellH = Math.max(1, Math.min(trail.cellH, Math.floor(srcH / trail.frames) || 1));
+      const frames = Math.max(1, Math.min(trail.frames, Math.floor(srcH / cellH) || 1));
+      const c0 = hexToRgb(trail.color);
+      const c1 = trail.colorEnd ? hexToRgb(trail.colorEnd) : c0;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalCompositeOperation = trail.blend === 'add' ? 'lighter' : 'source-over';
+      for (let i = 0; i < trailPool.n; i += 1) {
+        const age = trailPool.age[i];
+        const t = Math.max(0, Math.min(1, age / trailPool.life[i]));
+        const scale = trail.scaleStart + (trail.scaleEnd - trail.scaleStart) * t;
+        const w = cellW * scale * trailZoom;
+        const h = cellH * scale * trailZoom;
+        const alpha = Math.max(0, Math.min(1, trail.alphaStart + (trail.alphaEnd - trail.alphaStart) * t));
+        if (alpha <= 0 || w < 0.5 || h < 0.5) continue;
+        const q = Math.round(t * 8) / 8;
+        const color = trail.rainbow
+          ? hueHex((Math.floor((trailPool.now * 0.04 + i * 0.02) * 24) / 24) % 1)
+          : rgbToHex(
+              c0.r + (c1.r - c0.r) * q,
+              c0.g + (c1.g - c0.g) * q,
+              c0.b + (c1.b - c0.b) * q
+            );
+        let frameIndex = 0;
+        if (frames > 1) {
+          if (trail.playMode === 'loop') {
+            frameIndex = Math.floor((age / 50) * trail.fps) % frames;
+          } else if (trail.playMode === 'pingpong') {
+            const span = 2 * frames - 2;
+            const k = Math.floor(t * span) % span;
+            frameIndex = k < frames ? k : span - k;
+          } else if (trail.playMode === 'random') {
+            frameIndex = Math.min(frames - 1, trailPool.frame0[i]);
+          } else {
+            frameIndex = Math.min(frames - 1, Math.floor(t * frames));
+          }
+        }
+        const sprite = color === '#ffffff' ? source : tintSprite(source, srcW, srcH, color);
+        ctx.globalAlpha = alpha;
+        ctx.save();
+        ctx.translate(trailPool.x[i], trailPool.y[i]);
+        ctx.rotate(trailPool.rot[i]);
+        ctx.drawImage(
+          sprite,
+          0,
+          frameIndex * cellH,
+          cellW,
+          cellH,
+          -w / 2,
+          -h / 2,
+          w,
+          h
+        );
+        ctx.restore();
+      }
+      ctx.restore();
+    };
 
     const stepMissile = () => {
       const anim = activeRolePreviewCfg.anim || 'rotation';
@@ -1575,6 +1912,26 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         phase = 0;
         frame = 0;
       }
+
+      // Trail emission uses the builder's post-draw anchor: the art offset
+      // turns with `drawn`, while the trail nozzle turns with the unmodified
+      // world heading. A mirrored roam pose negates both at draw time.
+      const mirrorOn = activeRolePreviewCfg.mirror !== false;
+      const roamMirror = anim === 'roam' && mirrorOn && roamLeft;
+      const facing = anim === 'roam' ? (roamMirror ? -1 : 1) : mirrorOn && vx < 0 ? -1 : 1;
+      const angleOffset =
+        (((missile.angle ?? 0) * Math.PI) / 180) * (roamMirror || facing < 0 ? -1 : 1);
+      const drawRot = roamMirror ? -rot : rot;
+      const drawn = drawRot + angleOffset;
+      const previewScale = (activeRolePreviewCfg.scale || 1.0) * (missile.size ?? 1);
+      let artOx = (missile.offsetX ?? 0) * previewScale;
+      const artOy = (missile.offsetY ?? 0) * previewScale;
+      if (facing < 0) artOx = -artOx;
+      const trailZf = missileZoom / 4;
+      const baseX = posX + (artOx * Math.cos(drawn) - artOy * Math.sin(drawn)) * trailZf;
+      const baseY = posY + (artOx * Math.sin(drawn) + artOy * Math.cos(drawn)) * trailZf;
+      const worldDeg = ((roamMirror ? -rot : rot) * 180) / Math.PI;
+      stepTrail(baseX, baseY, worldDeg, facing);
 
       animStateRef.current.rotation = rot;
       animStateRef.current.phase = phase;
@@ -1726,6 +2083,10 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         ctx.restore();
       }
 
+      // BEHIND and EFFECTS both sit under the missile body; only FRONT paints
+      // its brush over the art, matching the brush depth the exporter writes.
+      if (trail && trail.depth !== 'FRONT') drawTrail(ctx);
+
       // Draw Missile Sprite
       ctx.save();
       ctx.imageSmoothingEnabled = false;
@@ -1792,6 +2153,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
 
       ctx.restore();
 
+      if (trail && trail.depth === 'FRONT') drawTrail(ctx);
+
       animationFrameId = requestAnimationFrame(renderMissile);
     };
 
@@ -1820,6 +2183,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     project.roamSheets?.flight1?.frames,
     project.roamSheets?.flight1?.preview,
     roleLoadedImg,
+    trailLoadedImg,
+    previewTrailKey,
     isMissilePlaying,
     missileZoom,
     flightAngleDeg,
@@ -2321,11 +2686,19 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
     if (missile.offsetX || missile.offsetY) {
       modLines.push(`  offset = { x = ${missile.offsetX ?? 0}, y = ${missile.offsetY ?? 0} },`);
     }
+    if (missile.trail?.enabled) {
+      modLines.push(
+        ...flightTrailRows(missile.trail, flightTrailSheetPath(project, 'main'), '  '),
+      );
+    }
 
     if (clustersEnabled && bitFlight.mode === 'builder') {
       modLines.push(`  bits = {`);
       modLines.push(`    sheet = "${bitFlightSheetPath(project)}",`);
       modLines.push(...roleRowsForPreview(bitFlight, '    '));
+      if (bitFlight.trail?.enabled) {
+        modLines.push(...flightTrailRows(bitFlight.trail, flightTrailSheetPath(project, 'bit'), '    '));
+      }
       if (bitHomingBuilderOn && behaviorArt.homing_bit) {
         modLines.push(`    homing = {`);
         modLines.push(`      sheet = "${behaviorStateSheetPath(project, 'homing_bit')}",`);
@@ -2333,11 +2706,50 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
           `      arm = ${project.body.clustlet.homing_arm_ms ?? 0}, time = ${project.body.clustlet.homing_time_ms ?? 0},`,
         );
         modLines.push(...roleRowsForPreview(behaviorArt.homing_bit, '      '));
+        if (behaviorArt.homing_bit.trail?.enabled) {
+          modLines.push(
+            ...flightTrailRows(
+              behaviorArt.homing_bit.trail,
+              flightTrailSheetPath(project, 'homing_bit'),
+              '      ',
+            ),
+          );
+        }
         modLines.push(`    },`);
       }
       modLines.push(`  },`);
     } else if (clustersEnabled && bitFlight.mode === 'inherit') {
-      modLines.push(`  bits = "inherit",`);
+      if (bitHomingBuilderOn || bitFlight.trail?.enabled) {
+        modLines.push(`  bits = {`);
+        modLines.push(`    sheet = "${missileFlightSheetPath(project)}",`);
+        modLines.push(...roleRowsForPreview(missile as unknown as FlightRoleArt, '    '));
+        if (bitFlight.trail?.enabled) {
+          modLines.push(
+            ...flightTrailRows(bitFlight.trail, flightTrailSheetPath(project, 'bit'), '    '),
+          );
+        }
+        if (bitHomingBuilderOn && behaviorArt.homing_bit) {
+          modLines.push(`    homing = {`);
+          modLines.push(`      sheet = "${behaviorStateSheetPath(project, 'homing_bit')}",`);
+          modLines.push(
+            `      arm = ${project.body.clustlet.homing_arm_ms ?? 0}, time = ${project.body.clustlet.homing_time_ms ?? 0},`,
+          );
+          modLines.push(...roleRowsForPreview(behaviorArt.homing_bit, '      '));
+          if (behaviorArt.homing_bit.trail?.enabled) {
+            modLines.push(
+              ...flightTrailRows(
+                behaviorArt.homing_bit.trail,
+                flightTrailSheetPath(project, 'homing_bit'),
+                '      ',
+              ),
+            );
+          }
+          modLines.push(`    },`);
+        }
+        modLines.push(`  },`);
+      } else {
+        modLines.push(`  bits = "inherit",`);
+      }
     }
 
     if (homingBuilderOn && behaviorArt.homing) {
@@ -2347,11 +2759,29 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         `    arm = ${project.body.homing_arm_ms ?? 0}, time = ${project.body.homing_time_ms ?? 0},`,
       );
       modLines.push(...roleRowsForPreview(behaviorArt.homing, '    '));
+      if (behaviorArt.homing.trail?.enabled) {
+        modLines.push(
+          ...flightTrailRows(
+            behaviorArt.homing.trail,
+            flightTrailSheetPath(project, 'homing'),
+            '    ',
+          ),
+        );
+      }
       modLines.push(`  },`);
     }
 
     if (digActiveInBuilder) {
       const digRows = digArtOverrideRows(project.behaviorArt?.dig, '    ');
+      if (project.behaviorArt?.dig?.trail?.enabled) {
+        digRows.push(
+          ...flightTrailRows(
+            project.behaviorArt.dig.trail,
+            flightTrailSheetPath(project, 'dig'),
+            '    ',
+          ),
+        );
+      }
       if (digRows.length > 0) {
         modLines.push(`  dig = {`);
         modLines.push(...digRows);
@@ -2369,6 +2799,11 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
         modLines.push(`  roam = {`);
         modLines.push(`    sheet = "${behaviorStateSheetPath(project, 'roam')}",`);
         modLines.push(...roleRowsForPreview(roamRole, '    '));
+        if (roamRole.trail?.enabled) {
+          modLines.push(
+            ...flightTrailRows(roamRole.trail, flightTrailSheetPath(project, 'roam'), '    '),
+          );
+        }
         modLines.push(
           roamWalkPose !== 0
             ? `    walk = ${roamWalkPose}, fly = ${ROAM_FLY_SENTINEL},`
@@ -4746,6 +5181,81 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
           (isSecondaryRole && secondaryRoleObj?.mode !== 'builder') ||
           roamInheritsPrimary;
 
+        const trailRoleKey: FlightTrailRoleKey =
+          activeFlightRole === 'primary'
+            ? 'main'
+            : activeFlightRole === 'clusters'
+              ? 'bit'
+              : activeFlightRole === 'homing_bit'
+                ? 'homing_bit'
+                : activeFlightRole === 'homing'
+                  ? 'homing'
+                  : activeFlightRole === 'dig'
+                    ? 'dig'
+                    : 'roam';
+        const trailRoleArt =
+          activeFlightRole === 'primary'
+            ? missile
+            : activeFlightRole === 'clusters'
+              ? bitFlight
+              : activeFlightRole === 'homing'
+                ? homingRole
+                : activeFlightRole === 'homing_bit'
+                  ? homingBitRole
+                  : activeFlightRole === 'roam'
+                    ? roamRole
+                    : digRole;
+        // A role with its own enabled brush shows that brush. Otherwise the
+        // row mirrors the trail the SDK will actually use: the main round for
+        // inherited homing and roam, the owning bit when a bit drives the dig,
+        // and the main trail for a bit that inherits its sheet.
+        const trailOwn = trailRoleArt?.trail;
+        const trailOwnerForInherit =
+          activeFlightRole === 'homing_bit'
+            ? bitFlight.mode === 'builder'
+              ? bitFlight
+              : missile
+            : activeFlightRole === 'dig' &&
+                digBitEnabled &&
+                !digMainEnabled &&
+                bitFlight.mode === 'builder'
+              ? bitFlight
+              : missile;
+        const trailOwnerLabel = trailOwnerForInherit === bitFlight ? 'Cluster Bit' : 'Main';
+        const trailInherits =
+          (activeFlightRole === 'homing' && homingRole.mode === 'inherit') ||
+          (activeFlightRole === 'homing_bit' && homingBitRole.mode === 'inherit') ||
+          (activeFlightRole === 'roam' && roamRoleMode === 'inherit') ||
+          (activeFlightRole === 'clusters' &&
+            bitFlight.mode === 'inherit' &&
+            !trailOwn?.enabled) ||
+          (activeFlightRole === 'dig' && digRoleMode !== 'native' && !trailOwn?.enabled);
+        const trailConfig = mergeFlightTrailConfig(
+          trailInherits ? trailOwnerForInherit?.trail : trailOwn,
+        );
+        const trailBlocked =
+          !builderOn ||
+          (activeFlightRole === 'clusters' && bitFlight.mode === 'native') ||
+          (activeFlightRole === 'homing' && homingRole.mode !== 'builder') ||
+          (activeFlightRole === 'homing_bit' && homingBitRole.mode !== 'builder') ||
+          (activeFlightRole === 'roam' && roamRoleMode !== 'builder') ||
+          (activeFlightRole === 'dig' && digRoleMode === 'native');
+        const trailBlockedHint = !builderOn
+          ? 'Enable Missile Flight Sprite above to use a custom trail.'
+          : trailInherits
+            ? 'Inherits the ' + trailOwnerLabel + ' trail. Switch this role to Builder to customize.'
+            : 'Switch this role to Builder to customize.';
+        const trailActive = trailConfig.enabled && !trailBlocked;
+        const trailStatus = trailActive
+          ? 'On, ' + trailConfig.frames + 'f, ' + trailConfig.blend
+          : 'Off';
+        const updateActiveTrail = (patch: Partial<typeof trailConfig>) => {
+          const next = mergeFlightTrailConfig({ ...trailConfig, ...patch });
+          if (activeFlightRole === 'primary') updateMissile({ trail: next });
+          else if (activeFlightRole === 'dig') updateBehaviorArt('dig', { trail: next });
+          else updateSecondaryRole({ trail: next });
+        };
+
         const digOwningSheetIsBit =
           digBitEnabled && !digMainEnabled && bitFlight.mode === 'builder';
         const digOwningFrames = (digOwningSheetIsBit ? bitFlight.frames : missile.frames) || 1;
@@ -5105,6 +5615,66 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   Enable Missile Flight Sprite
                 </span>
               </label>
+            </div>
+
+            {/* One compact entry point for the brush trail: every knob lives
+                in the modal, so the workbench stays about flight art. */}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200/80 bg-stone-50/70 px-3 py-2 dark:border-stone-800 dark:bg-stone-950/40">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={trailBlocked}
+                  onClick={() => setTrailModalOpen(true)}
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                    trailBlocked
+                      ? 'cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-500'
+                      : 'cursor-pointer border-forge-300 bg-white text-forge-700 hover:bg-forge-50 dark:border-forge-700 dark:bg-stone-900 dark:text-forge-300 dark:hover:bg-forge-950/40'
+                  }`}
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                  Custom Brush Trail
+                </button>
+                <span
+                  className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${
+                    trailActive
+                      ? 'border-forge-300 bg-forge-50 text-forge-700 dark:border-forge-700 dark:bg-forge-950/40 dark:text-forge-300'
+                      : 'border-stone-300 bg-stone-100 text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400'
+                  }`}
+                >
+                  {trailStatus}
+                </span>
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  {trailConfig.sheetPreview ? (
+                    <img
+                      src={trailConfig.sheetPreview}
+                      alt=""
+                      className="h-5 w-5 rounded border border-stone-300 object-contain dark:border-stone-700"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                  ) : (
+                    <span
+                      className="h-5 w-5 rounded border border-stone-300 dark:border-stone-700"
+                      style={{ background: trailConfig.color }}
+                    />
+                  )}
+                  {trailConfig.colorEnd && (
+                    <span
+                      className="h-3 w-3 rounded-full border border-stone-300 dark:border-stone-700"
+                      style={{ background: trailConfig.colorEnd }}
+                    />
+                  )}
+                </span>
+                <span className="truncate text-[10px] text-stone-500 dark:text-stone-400">
+                  {trailBlocked
+                    ? trailBlockedHint
+                    : trailInherits
+                      ? 'Inherits the ' + trailOwnerLabel + ' trail. Enable this role\'s own brush for a separate pool.'
+                      : 'Spawned behind the round and stepped at 50 Hz.'}
+                </span>
+              </div>
+              <span className="font-mono text-[10px] text-stone-400 dark:text-stone-500">
+                {trailConfig.power} power / {trailConfig.lifeFrames} tick life
+              </span>
             </div>
 
             {/* 3-Column Workbench Grid */}
@@ -6178,6 +6748,18 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               </div>
             </div>
             </div>
+            <FlightTrailModal
+              open={trailModalOpen}
+              onClose={() => setTrailModalOpen(false)}
+              title={`${activeSlotMeta.label} Custom Trail`}
+              subtitle={activeSlotMeta.title}
+              sheetPath={flightTrailSheetPath(project, trailRoleKey)}
+              // An overridable role that still inherits opens Off: turning
+              // the brush on is what gives it its own pool, even though the
+              // row above mirrors the inherited trail as active.
+              trail={trailInherits ? { ...trailConfig, enabled: false } : trailConfig}
+              onChange={updateActiveTrail}
+            />
           </div>
         );
       })()}

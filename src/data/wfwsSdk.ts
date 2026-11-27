@@ -7,6 +7,7 @@ import wfwsSpriteBuilderLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_sprite_bu
 import wfwsSwingLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_swing.lua?raw';
 import wfwsAirstrikeLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_airstrike.lua?raw';
 import wfwsFiringLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_firing.lua?raw';
+import wfwsTrailLua from '../../spec/lua_sdk/wfws_sdk/lib/wfws_trail.lua?raw';
 
 /** mod.toml for the wfws.sdk library bundle. */
 export const WFWS_SDK_MOD_TOML = wfwsSdkToml;
@@ -22,6 +23,9 @@ export const WFWS_AIRSTRIKE_LUA = wfwsAirstrikeLua;
 
 /** `wf-lib/wfws_firing`, the lockstep firing & burst sequencer module. */
 export const WFWS_FIRING_LUA = wfwsFiringLua;
+
+/** `wf-lib/wfws_trail`, the brush particle trail module. */
+export const WFWS_TRAIL_LUA = wfwsTrailLua;
 
 /**
  * Sheets declared in `spec/lua_sdk/wfws_sdk/mod.toml` (e.g. `sprites/beam_orb.png`),

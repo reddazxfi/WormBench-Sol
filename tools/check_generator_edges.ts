@@ -23,6 +23,7 @@ import {
   generateProfileToml,
   customSoundPath,
   meleeSoundPath,
+  flightTrailSheetPath,
 } from '../src/utils/luaGenerator';
 import { DEFAULT_ROLE_ART, DEFAULT_DIG_ROLE_ART } from '../src/data/spriteBuilder';
 import { DEFAULT_CLUSTLET } from '../src/data/defaults';
@@ -36,6 +37,7 @@ import { DEFAULT_AIRSTRIKE } from '../src/data/airstrike';
 import { DEFAULT_FIRE_SEQUENCE } from '../src/data/fireSequence';
 import { DEFAULT_BEAM } from '../src/data/beam';
 import { DEFAULT_TERRAIN_STAMP } from '../src/data/terrainStamp';
+import { DEFAULT_FLIGHT_TRAIL } from '../src/data/flightTrail';
 import { scanLua } from '../src/utils/modLib/luaTable';
 import { parseWepBinary } from '../src/utils/wepParser';
 import { DEFAULT_IMPORT_HOLD, readBundleFeatures } from '../src/utils/modLib/importFeatures';
@@ -2742,6 +2744,85 @@ local afterHook = 42`;
       beamFxBlastParsed.project.explosionEffect?.poisonPower === 3 &&
       beamFxBlastParsed.project.explosionEffect?.shape === 'spin_star',
     `${beamFxBlastLua}\n---\n${JSON.stringify(beamFxBlastParsed.project.explosionEffect)}`,
+  );
+}
+
+// ---- Custom brush trails: default sheet, native suppression, manifest -------
+{
+  const pngFile = new File([new Uint8Array([137, 80, 78, 71])], 'trail.png', { type: 'image/png' });
+  const baseMissile = makeProject().missileSprite!;
+  const trail = {
+    ...DEFAULT_FLIGHT_TRAIL,
+    enabled: true,
+    sheetFile: pngFile,
+    frames: 2,
+  };
+  const trailProject = makeProject({
+    customSprites: {},
+    missileSprite: { ...baseMissile, enabled: true, mode: 'custom', hideStock: true, anim: 'track', sheetFile: pngFile, trail },
+  });
+  const trailLua = generateLuaCode(trailProject);
+  const trailToml = generateModToml(trailProject);
+  const mainPath = flightTrailSheetPath(trailProject, 'main');
+  check(
+    'a custom main trail emits its sheet and every knob',
+    trailLua.includes(`sheet = "${mainPath}"`) &&
+      trailLua.includes('hide_native_trail = true,') &&
+      trailLua.includes('play_mode = "lifetime",') &&
+      trailLua.includes('depth = wa.depth.EFFECTS,') &&
+      trailLua.includes('max_particles = 160,'),
+    trailLua,
+  );
+  check(
+    'the custom main trail suppresses the stock record trail',
+    trailLua.includes('trail = { sprite = 0 },'),
+    trailLua,
+  );
+  check(
+    'the manifest declares the trail sheet with its frame count',
+    trailToml.includes(`[sprites."${mainPath}"]`) &&
+      trailToml.includes('frames = 2\n') &&
+      trailToml.includes('play = "loop"'),
+    trailToml,
+  );
+
+  const bitTrailProject = makeProject({
+    burst: 'clusters',
+    body: { ...DEFAULT_BODY, cluster: true, clustlet: { ...DEFAULT_CLUSTLET, bit_action: 'bounce' } },
+    missileSprite: { ...baseMissile, enabled: true, mode: 'custom', hideStock: true, anim: 'track', sheetFile: pngFile },
+    bitFlight: {
+      ...DEFAULT_ROLE_ART,
+      mode: 'builder',
+      sheetFile: pngFile,
+      trail: { ...DEFAULT_FLIGHT_TRAIL, enabled: true, sheetFile: pngFile },
+    },
+  });
+  const bitTrailLua = generateLuaCode(bitTrailProject);
+  check(
+    'a custom bit trail emits its sheet and suppresses the stock bit trail',
+    bitTrailLua.includes(`sheet = "${flightTrailSheetPath(bitTrailProject, 'bit')}"`) &&
+      bitTrailLua.includes('sprite = 0, power = 0, speed = 0,'),
+    bitTrailLua,
+  );
+
+  const homingTrailProject = makeProject({
+    action: 'homing',
+    missileSprite: { ...baseMissile, enabled: true, mode: 'custom', hideStock: true, anim: 'track', sheetFile: pngFile },
+    behaviorArt: {
+      homing: {
+        ...DEFAULT_ROLE_ART,
+        mode: 'builder',
+        sheetFile: pngFile,
+        trail: { ...DEFAULT_FLIGHT_TRAIL, enabled: true, sheetFile: pngFile },
+      },
+    },
+  });
+  const homingTrailLua = generateLuaCode(homingTrailProject);
+  check(
+    'a custom homing trail emits its sheet and suppresses the stock homing trail',
+    homingTrailLua.includes(`sheet = "${flightTrailSheetPath(homingTrailProject, 'homing')}"`) &&
+      homingTrailLua.includes('sprite = 0, power = 0, speed = 0,'),
+    homingTrailLua,
   );
 }
 

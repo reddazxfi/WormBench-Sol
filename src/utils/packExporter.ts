@@ -31,6 +31,7 @@ import {
   holdNeedsAimLayer,
   holdSheetPath,
   missileFlightSheetPath,
+  flightTrailSheetPath,
   packArtPath,
   packIconBundlePath,
   silentHoldSheetPath,
@@ -42,6 +43,7 @@ import {
   wormSpriteEntries,
 } from './luaGenerator';
 import { supportsTerrainStamp } from '../data/terrainStamp';
+import { activeFlightTrails } from '../data/flightTrail';
 import { meleeStrikes } from '../data/melee';
 import { airstrikeActive, mergeAirstrikeConfig } from '../data/airstrike';
 import { beamActive, mergeBeamConfig } from '../data/beam';
@@ -61,6 +63,7 @@ import { ID_MAX, isUnderNamespace } from './weaponId';
 import {
   createDefaultHoldSheet,
   createDefaultMissileSheet,
+  createDefaultTrailSheet,
   createSilentSheet,
 } from './defaultArt';
 
@@ -207,6 +210,12 @@ export async function weaponBundlePart(project: WeaponProject): Promise<WeaponBu
             state.art.frames
           );
       addSheet(behaviorStateSheetPath(project, state.def.key), stateBlob);
+    }
+    // Custom brush trails. No upload means the soft default puff, so every
+    // declared trail path has bytes in the ZIP even before art is chosen.
+    for (const entry of activeFlightTrails(project)) {
+      const blob = entry.trail.sheetFile ?? (await createDefaultTrailSheet());
+      addSheet(flightTrailSheetPath(project, entry.role), blob);
     }
   }
 
@@ -358,6 +367,7 @@ export interface WfwsLibraries {
   swingLua?: string;
   airstrikeLua?: string;
   firingLua?: string;
+  trailLua?: string;
   sheets?: { path: string; url: string }[];
 }
 
@@ -487,6 +497,9 @@ export async function emitPackFiles(
   }
   if (libraries.wfws.firingLua) {
     await put('wf-lib/wfws_sdk/lib/wfws_firing.lua', libraries.wfws.firingLua);
+  }
+  if (libraries.wfws.trailLua) {
+    await put('wf-lib/wfws_sdk/lib/wfws_trail.lua', libraries.wfws.trailLua);
   }
   if (libraries.wfws.sheets) {
     for (const sheet of libraries.wfws.sheets) {

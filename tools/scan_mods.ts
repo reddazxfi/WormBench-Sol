@@ -84,7 +84,7 @@ async function collect(root: string): Promise<ModFile[]> {
   return files;
 }
 
-const root = process.argv[2] ?? 'D:/Worms Armageddon/WormForge/Mods';
+const root = process.argv[2] ?? 'D:/Worms Armageddon/WormBench/Mods';
 const packRoot = 'test_pack/wftest_pack';
 
 const all: ModFile[] = [];

@@ -35,7 +35,7 @@ const LIBRARIES: PackLibraries = {
     firingLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_firing.lua', 'utf8'),
   },
 };
-const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormBench/Mods';
 
 const walk = (dir: string, out: string[] = []): string[] => {
   for (const name of readdirSync(dir)) {

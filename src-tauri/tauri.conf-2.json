@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "WormForge Weapon Studio",
+  "productName": "WormBench Weapon Studio",
   "version": "1.0.0",
   "identifier": "com.wormforge.weaponstudio",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "WormForge Weapon Studio",
+        "title": "WormBench Weapon Studio",
         "width": 1360,
         "height": 860,
         "minWidth": 920,

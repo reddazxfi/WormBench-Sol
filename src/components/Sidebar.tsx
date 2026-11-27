@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { WeaponProject } from '../types/weapon';
 import { hasProjectileBody, type RecordTabId } from '../data/recordTabs';
-import { assetUrl } from '../utils/assetUrl';
 
 type WorkspaceTab = 'editor' | 'hold' | 'effects' | 'code';
 
@@ -142,13 +141,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   <aside className="fixed inset-y-0 left-0 z-40 hidden w-68 flex-col border-r border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900 lg:flex">
     <div className="flex shrink-0 items-center justify-between border-b border-stone-200/80 px-4 py-3.5 dark:border-stone-800">
       <div className="min-w-0">
-        <img
-          src={assetUrl('assets/wormforge-logo.png')}
-          alt="WormForge Weapon Studio"
-          width={327}
-          height={57}
-          className="h-6 w-auto"
-        />
+        <div className="font-heading text-lg font-semibold leading-tight tracking-tight text-stone-900 dark:text-stone-100">
+          WormBench
+        </div>
         <div className="mt-0.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">
           Weapon Studio
         </div>
@@ -248,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         type="button"
         onClick={onBrowseMods}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-sky-300/90 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-500/25 dark:border-sky-400/40 dark:bg-sky-500/20 dark:text-sky-200 dark:hover:bg-sky-500/30 cursor-pointer whitespace-nowrap"
-        title="Read installed WormForge mods"
+        title="Read installed WormBench mods"
       >
         <FolderSearch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>Read mods</span>
@@ -322,7 +317,9 @@ export const MobileBar: React.FC<MobileBarProps> = ({
 }) => (
   <div className="sticky top-0 z-40 border-b border-stone-200/90 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 lg:hidden">
     <div className="flex items-center gap-2 px-4 py-2">
-      <img src={assetUrl('assets/wormforge-logo.png')} alt="WormForge" width={327} height={57} className="h-5 w-auto shrink-0" />
+      <span className="font-heading shrink-0 text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+        WormBench
+      </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{project.name}</div>
       </div>
@@ -355,7 +352,7 @@ export const MobileBar: React.FC<MobileBarProps> = ({
         onClick={onBrowseMods}
         className="rounded-lg border border-sky-300/90 bg-sky-500/15 p-1.5 text-sky-700 hover:bg-sky-500/25 dark:border-sky-400/40 dark:bg-sky-500/20 dark:text-sky-300 dark:hover:bg-sky-500/30"
         aria-label="Read mods"
-        title="Read installed WormForge mods"
+        title="Read installed WormBench mods"
       >
         <FolderSearch className="h-4 w-4" aria-hidden="true" />
       </button>

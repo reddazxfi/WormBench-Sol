@@ -69,7 +69,7 @@ const WFCHECK_CANDIDATES = [
   process.env.WFCHECK,
   'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/target/release/wfcheck.exe',
   'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wfcheck.exe',
-  'C:/Users/lucia/wormforge-code/compiler-cli/wfcheck.exe',
+  'C:/Users/lucia/WormBench-code/compiler-cli/wfcheck.exe',
 ].filter((path): path is string => Boolean(path));
 const WFCHECK = WFCHECK_CANDIDATES.find((path) => existsSync(path)) ?? null;
 /**
@@ -96,7 +96,7 @@ const PENDING_FINDING = new RegExp(
   `warning\\[spec-key-typo\\] Unrecognized spec key "(?:${PENDING_ENGINE_KEYS.join('|')})"[^\\n]*\\n(?:[^\\n]*The engine ignores unknown keys[^\\n]*\\n)?`,
   'g',
 );
-const MODS = 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = 'D:/Worms Armageddon/WormBench/Mods';
 const TEST_PACK = 'test_pack/wftest_pack';
 /** Real bundles with art on disk, so the fixture reads a foreign pack too. */
 const REAL_BUNDLES = [

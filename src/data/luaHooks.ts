@@ -14,7 +14,7 @@
  * argument, not its body.
  *
  * The counts are the installed corpus (255 weapon modules under
- * `WormForge/Mods`, SDKs and `lib/` folders excluded, from
+ * `WormBench/Mods`, SDKs and `lib/` folders excluded, from
  * `bun run tools/scan_mods.ts`). They decided the order of the carrying work:
  * `on_fire` and `on_explode` are the two that matter, `on_proximity` and
  * `on_select` are in the engine's key set and appear nowhere.

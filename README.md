@@ -1,13 +1,13 @@
-# WormForge Weapon Studio
+# WormBench Weapon Studio
 
-> Modern TypeScript & React Weapon Studio and Record Architect for **WormForge**.  
+> Modern TypeScript & React Weapon Studio and Record Architect for **WormBench**.  
 > Import legacy Project X `.wep` files, configure weapon records, preview PX hold art and 50 Hz missile flight sprites, and export ready-to-play mod packages.
 
 Maintenance and hand-off notes live in [AGENTS.md](AGENTS.md).
 
 ## Features
 
-- **Current WormForge bundle format**:
+- **Current WormBench bundle format**:
   - Automatically exports modern `wa.weapons.replace{ ... }` component specifications.
   - Generates complete bundle layout with `mod.toml`, `weapons/<mod_name>.lua`, and `profiles/<Profile Name>.toml`.
   - Automatically declares `dependencies = ["wf.sdk"]` for holds and `["wfws.sdk"]` for the flight sprite builder.
@@ -130,13 +130,22 @@ When clicking **Export Mod (.zip)**, the archive contains:
 wf-lib/wfws_sdk/ (the flight and aiming builder, so the weapon needs no separate install)
 wf-lib/effects_sdk/ (the ribbon, burst and emitter library, written only when the weapon uses it)
 ```
-Drop the extracted folder into `WormForge/Mods/` next to `wf-lib/` and launch Worms Armageddon! If `Mods/wf-lib/effects_sdk` already exists, extracting updates it in place; keep one copy, because the engine refuses a mod installed twice.
+Drop the extracted folder into `WormBench/Mods/` next to `wf-lib/` and launch Worms Armageddon! If `Mods/wf-lib/effects_sdk` already exists, extracting updates it in place; keep one copy, because the engine refuses a mod installed twice.
 
 ## Credits and disclaimer
 
+### Credits
+
+- **WormBench modding engine:** [Eule](https://github.com/EdLud)
+- **Sprite Builder:** PyroMan
+- **Terrain Stamp idea (Project X):** Zed
+- **WormBench Weapon Studio:** all other features, previews, SDK extensions and ideas by the project author
+
+### Disclaimer
+
 **This is an unofficial fan tool, not affiliated with Team17.**
 
-**Worms Armageddon and its artwork belong to Team17.** The stock art this editor displays is Team17's, used only to preview a mod: the sprite-builder tab icons (Main, Home, Bits, HomeBit, Sheep, Dig), the frozen worm preview, and the terrain preview backdrop. The fallback sprite that fills an untouched export is hand-drawn for this project, not taken from the game. WormForge, the engine these bundles run on, is a separate community project, and this editor is a separate fan tool again.
+**Worms Armageddon and its artwork belong to Team17.** The stock art this editor displays is Team17's, used only to preview a mod: the sprite-builder tab icons (Main, Home, Bits, HomeBit, Sheep, Dig), the frozen worm preview, and the terrain preview backdrop. The fallback sprite that fills an untouched export is hand-drawn for this project, not taken from the game. WormBench, the modding engine these bundles run on, is created by [Eule](https://github.com/EdLud) as a separate community project, and this editor is a separate fan tool again.
 
 **What an export contains:** the art you upload and, when you leave it in place, this project's hand-drawn fallback sprite. You can also import weapons, sprites and WAVs locally from Project X `.pxl` libraries into your own bundle. The editor never copies game art into your mod, and nothing is uploaded anywhere: it runs entirely on your machine.
 

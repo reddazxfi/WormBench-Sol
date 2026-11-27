@@ -54,7 +54,7 @@ export function beamArtStyleFromPath(path?: string | null): BeamArtStyle {
 
 export const BEAM_ART_STYLES: { id: BeamArtStyle; label: string; desc: string }[] = [
   { id: 'classic', label: 'Classic', desc: 'Crisp PX beam, halo, end-cap, and radial orb.' },
-  { id: 'soft', label: 'Soft (NN)', desc: 'Wide Gaussian falloff tuned for WormForge nearest-neighbor sampling.' },
+  { id: 'soft', label: 'Soft (NN)', desc: 'Wide Gaussian falloff tuned for WormBench nearest-neighbor sampling.' },
   { id: 'plasma', label: 'Plasma', desc: 'Thick super-Gaussian core, dome end-cap, and star-flare orb.' },
 ];
 

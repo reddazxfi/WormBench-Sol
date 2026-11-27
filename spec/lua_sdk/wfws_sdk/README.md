@@ -17,7 +17,7 @@ working and `sb.PX_POSTURE` / `sb.PX_HANDS` are still available.
 
 ## Install
 
-Copy the `wfws_sdk` folder into `WormForge/Mods/wf-lib/` (any folder name works;
+Copy the `wfws_sdk` folder into `WormBench/Mods/wf-lib/` (any folder name works;
 the dependency id is what matters), next to `wf-lib/sdk` (`wf.sdk`) and
 `wf-lib/effects_sdk` (`effects.sdk`). The editor's exported bundles declare
 `wfws.sdk` and ship this folder at `wf-lib/wfws_sdk/`, so unpacking a ZIP into
@@ -25,8 +25,8 @@ the dependency id is what matters), next to `wf-lib/sdk` (`wf.sdk`) and
 
 ## Why it exists
 
-PX's `px_sprite_builder` draws one sheet for the primary missile. This fork adds
-two more layers:
+PyroMan's original PX Sprite Builder (`px_sprite_builder`) draws one sheet for
+the primary missile. This fork builds on it and adds two more layers:
 
 - **Identity** (once, on a missile's first sight): primary, cluster bit, or a
   named extra role.
@@ -623,7 +623,7 @@ worms.
   order are identical on every peer. `spare_shooter` (default on) skips the worm
   that swung, `once` (default on) records each victim for that swing, and the flag
   resets on the next Space press rather than on a timer.
-- **`log = true`** prints the strike to WormForge's log: the swing's start (tick,
+- **`log = true`** prints the strike to WormBench's log: the swing's start (tick,
   position, weapon, aim, facing), **one line per worm with its own
   `along`/`across`** and why it was skipped, a summary with the hit tick, the scan
   vector and the reach, and the swing's end. An empty box therefore names its own
@@ -671,7 +671,7 @@ These are engine behaviours, not static checks:
 Lockstep Lua airstrike takeover (`on_click = function(ev) air.strike(ev) end`) for cursor weapons (`fireType = "cursor"`, non-teleport).
 
 - **Entry modes**: `"offmap"` (fly in from the left/right map edge), `"above"` (spawn above the drop window), and `"payload"` (instant cursor/sky drop with no plane actor).
-- **Direction rules**: `"arrows"` keeps directional strike arrow input via `copy_from = "stock.air_strike"` without `on_select = { cursor = true }` (emitting `on_select = { cursor = true }` forces `apply_drop_fire` and zeroes arrow selection). Non-directional direct clicks (`direction = "none"`) emit `on_select = { cursor = true }`.
+- **Direction rules**: `"arrows"` keeps directional strike arrow input via `copy_from = "stock.air_strike"` without `on_select = { cursor = true }` (emitting `on_select = { cursor = true }` forces `apply_drop_fire` and zeroes arrow selection); `"cursor_side"` picks the flyover side from the clicked half of the map. Non-directional direct clicks (`direction = "none"`) emit `on_select = { cursor = true }`.
 - **Missile takeover & hooks**: Declare a separate `projectile = { copy_from = "stock.<missile>", ... }` table on `wa.weapons.replace{...}` so `wa.weapons.launch{ weapon = ctx.id }` assigns `m.weapon == ctx.id` to bombs and cluster bits (`air.is_main(m.id)`, `air.is_bit(m)`), enabling `sb.flight`, `on_explode`, ribbon trails, explosion bursts, round emitters, and terrain stamps.
 - **Release & speed**: Supports `"drop"` and `"strafe"` modes (plus mixed `release.phases`), 7 release patterns (`sequential`, `burst`, `ripple`, `pairs`, `carpet`, `random_window`, `offsets`), 5-phase speed ramps (`approach -> slow -> release -> recover -> exit`), additive/multiplicative speed control, `crash_dive` terrain/water crash (`wa.land.trace`/`solid` + `wa.world.blast` / `hull:explode`), and `pcall` retries on `"object pool is full"`. Notice `boom_hit_kind == "blast"` is normalized to `nil` when calling `wa.world.blast` (0.9.9 treats `nil` as plain blast).
 
@@ -686,6 +686,6 @@ Unified lockstep firing engine (API 5) replacing `px.fire_seq`, adding a native 
   - **Phases**: Optional pre-fire charge `buffer` frames (tracks live aim and plays optional `charge_sound`), `reach = "instant" | "progressive"` (`grow` + `grow_ease`), `hold`, and `fade` (`dissipate = "fade" | "retract" | "dissolve" | "none"`).
   - **Hurt shapes & throttling**: `hits = "corridor"` (parallel band of half-width `width`), `"cone"` (expanding cone starting at `width0` opening at `cone_deg`), `"first"` (swept circle stopping at nearest wall or body), or `"none"` (visual only). Progressive beams gate damage strictly to the advancing `head`. `hit_cooldown = 0` latches once per beam per body; `hit_cooldown > 0` throttles repeated ticks to every N frames during `grow`/`hold`.
   - **Damage & burn split**: `interact = "hit"` calls API 5 `worm:hit{ amount, vx, vy, kind }`, `mine:arm(400)`, and `obj:hit(amount, vx, vy, kind)`. `interact = "burn"` calls `worm:hit{ amount, react = false }` on worms only (refuses `kind` and nonzero `push`). Optional `on_hit(body, amount, dx, dy, beam)` lets weapon files attach `px.electric` taze holds or `effects.sdk` sparks without adding library dependencies.
-  - **Rendering**: one painter, the additive ribbon (core + glow passes scaling RGB for fades, forks, the softened ends, the tip flare, the eight impact rays, `straight`/`arc`/`jagged`, flicker). `look = "trail"` is accepted and drawn as a ribbon as well: `wa.draw.trail` is a *projectile* trail whose width ramps with a point's age and whose tail sheds points, so a ray fed into it looks like a round dragging a smear and can't grow or retract, which isn't the look the card previews. The painter is the editor's `BeamPreview` maths, so the two agree frame for frame: the glow pass runs at 0.55 alpha under the full-strength core, there is no third white filament pass, the tip flare is `max(8, tipW * 0.9)` of the radial orb, and the tip throws the same eight back-scattered ticks the preview draws. The ribbon is drawn at **3x `points`** (`points` is the bolt's kink count) and the end taper never goes below **45% of the band's width**, because WormForge samples point-wise: a quad under one pixel wide is a dotted line of bright pixels at the muzzle and the tip, which reads in game as a lumpy start on a straight beam.
+  - **Rendering**: one painter, the additive ribbon (core + glow passes scaling RGB for fades, forks, the softened ends, the tip flare, the eight impact rays, `straight`/`arc`/`jagged`, flicker). `look = "trail"` is accepted and drawn as a ribbon as well: `wa.draw.trail` is a *projectile* trail whose width ramps with a point's age and whose tail sheds points, so a ray fed into it looks like a round dragging a smear and can't grow or retract, which isn't the look the card previews. The painter is the editor's `BeamPreview` maths, so the two agree frame for frame: the glow pass runs at 0.55 alpha under the full-strength core, there is no third white filament pass, the tip flare is `max(8, tipW * 0.9)` of the radial orb, and the tip throws the same eight back-scattered ticks the preview draws. The ribbon is drawn at **3x `points`** (`points` is the bolt's kink count) and the end taper never goes below **45% of the band's width**, because WormBench samples point-wise: a quad under one pixel wide is a dotted line of bright pixels at the muzzle and the tip, which reads in game as a lumpy start on a straight beam.
   - **Softened ends**: `end_sprite` (the editor ships `beam_end.png`, the glow sheet with one faded side) is the band's *own* first and last piece: the glow body is shifted inward by `cap_len` at each end and the two pieces read the sheet with the fade outward and the bright side facing the body, so nothing is drawn outside the beam. Appending the sheet outside the band hung over the worm at the muzzle and smeared past the impact. The core fades and narrows into the same span, and the ribbon is drawn at three times its `points` so an end fade has geometry to resolve (16 points on a long beam are ~29 px apart, which left a one-quad notch at the muzzle).
   - **Jagged is a shape with corners, not noise and not a wave**: `path = "jagged"` bends along one table of kinks (`JAG_N` entries, seeded once at spawn through `beam_hash01`, one smoothing pass, ends pinned to 0) read by linear interpolation at the point's place on the whole bolt, so the corners stay put for the beam's life and a growing bolt reveals more of the same shape. Two seeded sines were smooth by construction (a sine has no corner), which is why a bolt bent that way stops reading as an electric arc. Forks carry their own seven-point table seeded from their phase and reach `(1 - t) * head * 0.3`, so a close-range shot has short side bolts. Re-rolling per point per frame turns a bolt into a sawtooth that shimmers. A cap drawn *over* the band can't work: additive blending can't subtract, so it steps up at both of its own edges. The core converges into the ends over the same span the endpoint sheet covers, since the pieces hide the band's edge but not a bright filament ending square. `hit_branches = true` adds a branch to each struck body, which the preview doesn't show and which therefore defaults off. Strict spec validation rejects unknown keys and unsupported combinations.

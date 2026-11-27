@@ -55,7 +55,8 @@ import {
   weaponIdFromComponent,
 } from '../src/utils/modLib/importPack';
 import { stockDonor, stockDonorBaseline } from '../src/data/stockDonors';
-import { DEFAULT_BODY } from '../src/data/defaults';
+import { DEFAULT_BODY, DEFAULT_CLUSTLET } from '../src/data/defaults';
+import { DEFAULT_FLIGHT_TRAIL } from '../src/data/flightTrail';
 import { DEFAULT_ROLE_ART } from '../src/data/spriteBuilder';
 import { DEFAULT_TERRAIN_STAMP } from '../src/data/terrainStamp';
 import type { PackProject, WeaponProject } from '../src/types/weapon';
@@ -493,6 +494,86 @@ const DECLARED_HOLD = /\[sprites\."[^"]*\/hold\.png"\]/g;
     'and the sheet is where the module says it is',
     holds.length === 1 && holds[0] === `pack/${named[0]}`,
     `${holds[0]} vs pack/${named[0]}`,
+  );
+}
+
+// ---- a deduped trail sheet keeps each role's band ---------------------------
+{
+  // Main and Cluster Bits get the same pixels but different depth bands. The
+  // exporter aliases the two trail files to one; the importer still has to give
+  // each role the band from its own `trail = { ... }` block, not the last one
+  // that happened to name the alias.
+  const flightPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+  const trailPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 5, 6, 7, 8]);
+  const flightSheet = new File([flightPng], 'flight.png', { type: 'image/png' });
+  const trailSheet = new File([trailPng], 'trail.png', { type: 'image/png' });
+  const base = bareProject();
+  const trail = (depth: 'FRONT' | 'BEHIND') => ({
+    ...DEFAULT_FLIGHT_TRAIL,
+    enabled: true,
+    sheetFile: trailSheet,
+    depth,
+  });
+  const alpha = bareProject({
+    id: 'wfws.pack.traildedupe',
+    name: 'Trail Dedupe',
+    burst: 'clusters',
+    body: {
+      ...DEFAULT_BODY,
+      cluster: true,
+      clustlet: { ...DEFAULT_CLUSTLET, bit_action: 'bounce' },
+    },
+    missileSprite: {
+      ...(base.missileSprite ?? {}),
+      enabled: true,
+      mode: 'custom',
+      hideStock: true,
+      anim: 'track',
+      sheetFile: flightSheet,
+      trail: trail('FRONT'),
+    } as WeaponProject['missileSprite'],
+    bitFlight: {
+      ...DEFAULT_ROLE_ART,
+      mode: 'builder',
+      sheetFile: flightSheet,
+      trail: trail('BEHIND'),
+    },
+  });
+  const files = await emitPack(pack([alpha]));
+  const trailPaths = [...files.keys()].filter((name) => /\/trail_[^/]+\.png$/.test(name));
+  ok(
+    'a deduped trail sheet is written once for both roles',
+    trailPaths.length === 1,
+    trailPaths.join(', ') || 'none',
+  );
+  const moduleText = String(files.get('pack/weapons/traildedupe.lua') ?? '');
+  const namedTrails = [...moduleText.matchAll(/trail = \{[\s\S]*?sheet = "([^"]*trail_[^"]*\.png)"/g)].map(
+    (match) => match[1],
+  );
+  ok(
+    'and both modules name the trail sheet that survived',
+    namedTrails.length === 2 &&
+      new Set(namedTrails).size === 1 &&
+      namedTrails[0] === trailPaths[0]?.replace(/^pack\//, ''),
+    namedTrails.join(', ') || 'none',
+  );
+  const modFiles: ModFile[] = [...files.entries()].map(([path, content]) =>
+    typeof content === 'string'
+      ? { path, text: content }
+      : { path, text: '', bytes: content },
+  );
+  const bundles = readBundles(modFiles);
+  const weapons = readWeapons(bundles, modFiles);
+  const imported = await importBundleWeapon(weapons[0]!, modFiles);
+  ok(
+    'main keeps FRONT after the trail paths dedupe',
+    imported.project.missileSprite?.trail?.depth === 'FRONT',
+    String(imported.project.missileSprite?.trail?.depth),
+  );
+  ok(
+    'and the bit keeps BEHIND',
+    imported.project.bitFlight?.trail?.depth === 'BEHIND',
+    String(imported.project.bitFlight?.trail?.depth),
   );
 }
 

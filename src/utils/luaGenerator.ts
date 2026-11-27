@@ -11,6 +11,8 @@ import {
   EmitterConfig,
   ExplosionEffectConfig,
   FlightRoleArt,
+  FlightTrailConfig,
+  FlightTrailRoleKey,
   HoldConfig,
   MeleeSound,
   PackArtSlot,
@@ -54,6 +56,7 @@ import {
   mergeBeamConfig,
 } from '../data/beam';
 import { SDK_MODULE_EXPORTS, SDK_MODULE_PREFIXES } from '../data/sdkModules';
+import { activeFlightTrails, mergeFlightTrailConfig } from '../data/flightTrail';
 import { maskLuaCode, NOT_GENERATED_CLOSE, NOT_GENERATED_OPEN, scanBlockEnd } from './luaText';
 import { recordField } from './recordField';
 import { defaultArtFor } from './defaultArt';
@@ -1604,6 +1607,64 @@ export function behaviorStateSheetPath(
   key: BehaviorArtKey,
 ): string {
   return `sprites/${sanitizeModFolder(project.id)}/state_${key}.png`;
+}
+
+/** Bundle path of one role's custom brush trail sheet. */
+export function flightTrailSheetPath(
+  project: WeaponProject,
+  role: FlightTrailRoleKey,
+): string {
+  return `sprites/${sanitizeModFolder(project.id)}/trail_${role}.png`;
+}
+
+/**
+ * One `trail = { ... }` table for `sb.flight`. Every knob is written so an
+ * imported bundle reads back exactly what the modal showed; colours are bytes
+ * because Lua 5.4 packs the brush colour with shifts, not a CSS string.
+ */
+export function flightTrailRows(
+  raw: FlightTrailConfig,
+  sheet: string,
+  indent: string,
+): string[] {
+  const t = mergeFlightTrailConfig(raw);
+  const start = hexToRgb(t.color);
+  const end = t.colorEnd.trim() ? hexToRgb(t.colorEnd) : null;
+  const rows = [
+    `${indent}trail = {`,
+    `${indent}  sheet = ${luaQuote(sheet)},`,
+    `${indent}  cell_w = ${Math.round(t.cellW)}, cell_h = ${Math.round(t.cellH)}, frames = ${t.frames},`,
+    `${indent}  play_mode = ${luaQuote(t.playMode)}, fps = ${formatNumber(t.fps)},`,
+    `${indent}  power = ${formatNumber(t.power)}, speed = ${formatNumber(t.speed)}, bubbles = ${formatNumber(t.bubblesPerSecond)},`,
+    `${indent}  life = ${Math.round(t.lifeFrames)}, life_jitter = ${formatNumber(t.lifeJitter)},`,
+    `${indent}  scale_start = ${formatNumber(t.scaleStart)}, scale_end = ${formatNumber(t.scaleEnd)},`,
+    `${indent}  alpha_start = ${formatNumber(t.alphaStart)}, alpha_end = ${formatNumber(t.alphaEnd)},`,
+    `${indent}  rotate = ${luaQuote(t.rotateMode)}, spin_min = ${formatNumber(t.spinMin)}, spin_max = ${formatNumber(t.spinMax)},`,
+    `${indent}  gravity = ${formatNumber(t.gravity)}, drag = ${formatNumber(t.drag)},`,
+    `${indent}  spread = ${formatNumber(t.spreadDeg)}, jitter = ${formatNumber(t.jitterPx)}, inherit_vel = ${formatNumber(t.inheritVel)},`,
+    `${indent}  offset_x = ${formatNumber(t.offsetX)}, offset_y = ${formatNumber(t.offsetY)},`,
+    `${indent}  r = ${start.r}, g = ${start.g}, b = ${start.b},`,
+  ];
+  if (end) rows.push(`${indent}  r_end = ${end.r}, g_end = ${end.g}, b_end = ${end.b},`);
+  rows.push(
+    `${indent}  rainbow = ${t.rainbow ? 'true' : 'false'},`,
+    `${indent}  hide_native_trail = ${t.hideNativeTrail ? 'true' : 'false'},`,
+    `${indent}  blend = ${luaQuote(t.blend)}, depth = wa.depth.${t.depth},`,
+    `${indent}  max_particles = ${Math.round(t.maxParticles)},`,
+    `${indent}},`,
+  );
+  return rows;
+}
+
+/** The rows for this role, or nothing when its trail is off. */
+function roleTrailRows(
+  art: { trail?: FlightTrailConfig } | undefined,
+  project: WeaponProject,
+  role: FlightTrailRoleKey,
+  indent: string,
+): string[] {
+  if (!art?.trail?.enabled) return [];
+  return flightTrailRows(art.trail, flightTrailSheetPath(project, role), indent);
 }
 
 /** `arm` / `time` in ms for `sb.flight`'s homing art, from the record's own
@@ -3774,6 +3835,10 @@ export function generateLuaCode(project: WeaponProject): string {
       packSprites.push(luaQuote(behaviorStateSheetPath(project, 'homing_bit')));
     }
     if (roamRole) packSprites.push(luaQuote(behaviorStateSheetPath(project, 'roam')));
+    for (const entry of activeFlightTrails(project)) {
+      const quoted = luaQuote(flightTrailSheetPath(project, entry.role));
+      if (!packSprites.includes(quoted)) packSprites.push(quoted);
+    }
   }
   // A shared effects library registers one draw callback per mod, so the claim
   // that has to resolve a quad need not be the mod that made the effect. List
@@ -3906,7 +3971,7 @@ export function generateLuaCode(project: WeaponProject): string {
   }
 
   // Pack WAVs are declared by path in `sounds`; the engine loads them into
-  // WormForge's own sample bank (WA's record sound fields take native ids).
+  // WormBench's own sample bank (WA's record sound fields take native ids).
   const packSounds: string[] = [];
   if (launchSoundPath) packSounds.push(luaQuote(launchSoundPath));
   // A melee strike's uploaded WAVs are played by the swing, so they are declared
@@ -4515,6 +4580,14 @@ export function generateLuaCode(project: WeaponProject): string {
     if (meleeGhost) {
       // No trail either: `sprite = 0` is the engine's "no trail" value.
       lines.push('        trail = { sprite = 0 },');
+    } else if (
+      builderOn &&
+      project.missileSprite?.trail?.enabled &&
+      (project.missileSprite.trail.hideNativeTrail ?? true)
+    ) {
+      // The custom brush owns this round's smoke. Sprite 0 is the engine's
+      // "no trail" value, so the stock puffs do not draw under the particles.
+      lines.push('        trail = { sprite = 0 },');
     } else if (missileTrailArt) {
       // A pack image replaces the stock trail sprite for this weapon only; the
       // engine loads it and writes its id into the native trail field.
@@ -4737,10 +4810,16 @@ export function generateLuaCode(project: WeaponProject): string {
       const homingTrailPower = groupVal('missile.homing.trail.power');
       const homingTrailSpeed = groupVal('missile.homing.trail.speed');
       const homingTrailBubbles = groupVal('missile.homing.trail.bubbles_per_second');
+      const hideHomingNativeTrail =
+        builderOn &&
+        homingBuilder &&
+        !!project.behaviorArt?.homing?.trail?.enabled &&
+        (project.behaviorArt.homing.trail.hideNativeTrail ?? true);
       // Written in full on an action switch: 0xB4 is also the bounce sound, so
       // a donor's leftover (the grenade's 113) would be drawn as the homing
       // trail's sprite -- `oildrum4` with its own odd particle gravity.
       if (
+        hideHomingNativeTrail ||
         fullGroup ||
         homingTrailSprite !== undefined ||
         homingTrailPower !== undefined ||
@@ -4748,24 +4827,30 @@ export function generateLuaCode(project: WeaponProject): string {
         homingTrailBubbles !== undefined
       ) {
         lines.push('          trail = {');
-        const hts = fullGroup ? (homingTrailSprite ?? 0) : homingTrailSprite;
-        if (hts !== undefined) {
-          if (hts === 0 || hts === '0' || hts === '') {
-            lines.push('            sprite = 0,');
-          } else if (!isNaN(Number(hts))) {
-            lines.push(`            sprite = ${Number(hts)},`);
-          } else {
-            lines.push(`            sprite = ${luaQuote(String(hts))},`);
+        if (hideHomingNativeTrail) {
+          // The custom brush owns this window; zero the engine's own trail so
+          // its puffs never draw under the particles.
+          lines.push('            sprite = 0, power = 0, speed = 0,');
+        } else {
+          const hts = fullGroup ? (homingTrailSprite ?? 0) : homingTrailSprite;
+          if (hts !== undefined) {
+            if (hts === 0 || hts === '0' || hts === '') {
+              lines.push('            sprite = 0,');
+            } else if (!isNaN(Number(hts))) {
+              lines.push(`            sprite = ${Number(hts)},`);
+            } else {
+              lines.push(`            sprite = ${luaQuote(String(hts))},`);
+            }
           }
-        }
-        if (fullGroup || homingTrailPower !== undefined) {
-          lines.push(`            power = ${homingTrailPower ?? 0},`);
-        }
-        if (fullGroup || homingTrailSpeed !== undefined) {
-          lines.push(`            speed = ${homingTrailSpeed ?? 0},`);
-        }
-        if (fullGroup || homingTrailBubbles !== undefined) {
-          lines.push(`            bubbles_per_second = ${homingTrailBubbles ?? 0},`);
+          if (fullGroup || homingTrailPower !== undefined) {
+            lines.push(`            power = ${homingTrailPower ?? 0},`);
+          }
+          if (fullGroup || homingTrailSpeed !== undefined) {
+            lines.push(`            speed = ${homingTrailSpeed ?? 0},`);
+          }
+          if (fullGroup || homingTrailBubbles !== undefined) {
+            lines.push(`            bubbles_per_second = ${homingTrailBubbles ?? 0},`);
+          }
         }
         lines.push('          },');
       }
@@ -5122,7 +5207,13 @@ export function generateLuaCode(project: WeaponProject): string {
           lines.push(`          animation = ${c.animation ?? 0},`);
         }
 
+        const hideBitNativeTrail =
+          builderOn &&
+          bitMode !== null &&
+          !!project.bitFlight?.trail?.enabled &&
+          (project.bitFlight.trail.hideNativeTrail ?? true);
         if (
+          hideBitNativeTrail ||
           clusterBitTrailArt ||
           clustletChanged('trail') ||
           clustletChanged('trail_power') ||
@@ -5130,32 +5221,36 @@ export function generateLuaCode(project: WeaponProject): string {
           clustletChanged('trail_bubbles')
         ) {
           lines.push('          trail = {');
-          const t = c.trail;
-          if (clusterBitTrailArt) {
-            // Pack image: `clusters.bit.trail.sprite` accepts a bundle path
-            // (unlike `bit.sprite`, which only takes stock ids in the record).
-            // The engine loads the sheet for this weapon and writes its id in.
-            lines.push(`            sprite = ${luaQuote(clusterBitTrailArt)},`);
-          } else if (!t || t === 'none' || t === '0') {
-            lines.push('            sprite = 0,');
+          if (hideBitNativeTrail) {
+            lines.push('            sprite = 0, power = 0, speed = 0,');
           } else {
-            // Same rule as the primary's trail: an unknown name would be read
-            // as a bundle path and break the install.
-            const bitTrailSprite = resolveStockSprite(t);
-            if (typeof bitTrailSprite === 'number') {
-              lines.push(`            sprite = ${bitTrailSprite},`);
-            } else if (typeof bitTrailSprite === 'string') {
-              lines.push(`            sprite = ${luaQuote(bitTrailSprite)},`);
+            const t = c.trail;
+            if (clusterBitTrailArt) {
+              // Pack image: `clusters.bit.trail.sprite` accepts a bundle path
+              // (unlike `bit.sprite`, which only takes stock ids in the record).
+              // The engine loads the sheet for this weapon and writes its id in.
+              lines.push(`            sprite = ${luaQuote(clusterBitTrailArt)},`);
+            } else if (!t || t === 'none' || t === '0') {
+              lines.push('            sprite = 0,');
+            } else {
+              // Same rule as the primary's trail: an unknown name would be read
+              // as a bundle path and break the install.
+              const bitTrailSprite = resolveStockSprite(t);
+              if (typeof bitTrailSprite === 'number') {
+                lines.push(`            sprite = ${bitTrailSprite},`);
+              } else if (typeof bitTrailSprite === 'string') {
+                lines.push(`            sprite = ${luaQuote(bitTrailSprite)},`);
+              }
             }
-          }
-          if (clustletChanged('trail_power')) {
-            lines.push(`            power = ${c.trail_power ?? 0},`);
-          }
-          if (clustletChanged('trail_speed')) {
-            lines.push(`            speed = ${c.trail_speed ?? 0},`);
-          }
-          if (clustletChanged('trail_bubbles')) {
-            lines.push(`            bubbles_per_second = ${c.trail_bubbles ?? 0},`);
+            if (clustletChanged('trail_power')) {
+              lines.push(`            power = ${c.trail_power ?? 0},`);
+            }
+            if (clustletChanged('trail_speed')) {
+              lines.push(`            speed = ${c.trail_speed ?? 0},`);
+            }
+            if (clustletChanged('trail_bubbles')) {
+              lines.push(`            bubbles_per_second = ${c.trail_bubbles ?? 0},`);
+            }
           }
           lines.push('          },');
         }
@@ -5301,9 +5396,15 @@ export function generateLuaCode(project: WeaponProject): string {
           lines.push('          },');
         }
 
+        const hideBitHomingNativeTrail =
+          builderOn &&
+          bitHomingBuilder &&
+          !!project.behaviorArt?.homing_bit?.trail?.enabled &&
+          (project.behaviorArt.homing_bit.trail.hideNativeTrail ?? true);
         if (
           bitAction === 'homing' &&
-          (!!homingBitState ||
+          (hideBitHomingNativeTrail ||
+            !!homingBitState ||
             bitHomingBuilder ||
             zeroBitHoming ||
             clustletChanged('homing') ||
@@ -5345,23 +5446,28 @@ export function generateLuaCode(project: WeaponProject): string {
             lines.push(`            time = ${c.homing_time_ms ?? 8000},`);
           }
           if (
+            hideBitHomingNativeTrail ||
             clustletChanged('homing_trail_sprite') ||
             clustletChanged('homing_trail_power') ||
             clustletChanged('homing_trail_speed') ||
             clustletChanged('homing_trail_bubbles')
           ) {
             lines.push('            trail = {');
-            if (clustletChanged('homing_trail_sprite')) {
-              lines.push(`              sprite = ${c.homing_trail_sprite ?? 0},`);
-            }
-            if (clustletChanged('homing_trail_power')) {
-              lines.push(`              power = ${c.homing_trail_power ?? 0},`);
-            }
-            if (clustletChanged('homing_trail_speed')) {
-              lines.push(`              speed = ${c.homing_trail_speed ?? 0},`);
-            }
-            if (clustletChanged('homing_trail_bubbles')) {
-              lines.push(`              bubbles_per_second = ${c.homing_trail_bubbles ?? 0},`);
+            if (hideBitHomingNativeTrail) {
+              lines.push('              sprite = 0, power = 0, speed = 0,');
+            } else {
+              if (clustletChanged('homing_trail_sprite')) {
+                lines.push(`              sprite = ${c.homing_trail_sprite ?? 0},`);
+              }
+              if (clustletChanged('homing_trail_power')) {
+                lines.push(`              power = ${c.homing_trail_power ?? 0},`);
+              }
+              if (clustletChanged('homing_trail_speed')) {
+                lines.push(`              speed = ${c.homing_trail_speed ?? 0},`);
+              }
+              if (clustletChanged('homing_trail_bubbles')) {
+                lines.push(`              bubbles_per_second = ${c.homing_trail_bubbles ?? 0},`);
+              }
             }
             lines.push('            },');
           }
@@ -6122,6 +6228,7 @@ export function generateLuaCode(project: WeaponProject): string {
         `      offset = { x = ${formatNumber(m.offsetX ?? 0)}, y = ${formatNumber(m.offsetY ?? 0)} },`,
       );
     }
+    for (const row of roleTrailRows(m, project, 'main', '      ')) lines.push(row);
 
     // Cluster-bit art. `inherit` gives the bits the primary sheet; a builder
     // role gets its own. Anything else leaves WA's bit sprite alone.
@@ -6138,23 +6245,33 @@ export function generateLuaCode(project: WeaponProject): string {
         for (const row of roleArtRows(project.behaviorArt!.homing_bit!, '          ')) {
           lines.push(row);
         }
-        lines.push('        },');
-      }
-      lines.push('      },');
-    } else if (bitMode === 'inherit') {
-      if (bitHomingBuilder) {
-        lines.push('      bits = {');
-        lines.push(`        sheet = ${luaQuote(missileFlightSheetPath(project))},`);
-        for (const row of roleArtRows(m, '        ')) lines.push(row);
-        lines.push('        homing = {');
-        lines.push(
-          `          sheet = ${luaQuote(behaviorStateSheetPath(project, 'homing_bit'))},`,
-        );
-        lines.push(homingWindowRow(project.body.clustlet, '          '));
-        for (const row of roleArtRows(project.behaviorArt!.homing_bit!, '          ')) {
+        for (const row of roleTrailRows(project.behaviorArt!.homing_bit, project, 'homing_bit', '          ')) {
           lines.push(row);
         }
         lines.push('        },');
+      }
+      for (const row of roleTrailRows(project.bitFlight, project, 'bit', '        ')) lines.push(row);
+      lines.push('      },');
+    } else if (bitMode === 'inherit') {
+      if (bitHomingBuilder || project.bitFlight?.trail?.enabled) {
+        lines.push('      bits = {');
+        lines.push(`        sheet = ${luaQuote(missileFlightSheetPath(project))},`);
+        for (const row of roleArtRows(m, '        ')) lines.push(row);
+        for (const row of roleTrailRows(project.bitFlight, project, 'bit', '        ')) lines.push(row);
+        if (bitHomingBuilder) {
+          lines.push('        homing = {');
+          lines.push(
+            `          sheet = ${luaQuote(behaviorStateSheetPath(project, 'homing_bit'))},`,
+          );
+          lines.push(homingWindowRow(project.body.clustlet, '          '));
+          for (const row of roleArtRows(project.behaviorArt!.homing_bit!, '          ')) {
+            lines.push(row);
+          }
+          for (const row of roleTrailRows(project.behaviorArt!.homing_bit, project, 'homing_bit', '          ')) {
+            lines.push(row);
+          }
+          lines.push('        },');
+        }
         lines.push('      },');
       } else {
         lines.push('      bits = "inherit",');
@@ -6169,6 +6286,9 @@ export function generateLuaCode(project: WeaponProject): string {
       lines.push(`        sheet = ${luaQuote(behaviorStateSheetPath(project, 'homing'))},`);
       lines.push(homingWindowRow(project.body, '        '));
       for (const row of roleArtRows(project.behaviorArt!.homing!, '        ')) lines.push(row);
+      for (const row of roleTrailRows(project.behaviorArt!.homing, project, 'homing', '        ')) {
+        lines.push(row);
+      }
       lines.push('      },');
     }
 
@@ -6177,9 +6297,11 @@ export function generateLuaCode(project: WeaponProject): string {
     // author overrides underground animation parameters (e.g. faster spin/speed).
     if (zeroMainDig || zeroBitDig) {
       const digRows = digArtOverrideRows(project.behaviorArt?.dig, '        ');
-      if (digRows.length > 0) {
+      const digTrail = roleTrailRows(project.behaviorArt?.dig, project, 'dig', '        ');
+      if (digRows.length > 0 || digTrail.length > 0) {
         lines.push('      dig = {');
         for (const row of digRows) lines.push(row);
+        for (const row of digTrail) lines.push(row);
         lines.push('      },');
       } else {
         lines.push('      dig = true,');
@@ -6224,6 +6346,7 @@ export function generateLuaCode(project: WeaponProject): string {
         lines.push('      roam = {');
         lines.push(`        sheet = ${luaQuote(behaviorStateSheetPath(project, 'roam'))},`);
         for (const row of roleArtRows(roamArt, '        ')) lines.push(row);
+        for (const row of roleTrailRows(roamArt, project, 'roam', '        ')) lines.push(row);
         if (roamWalkPose !== 0) {
           lines.push(`        walk = ${roamWalkPose}, fly = ${ROAM_FLY_SENTINEL},`);
         } else {
@@ -6695,6 +6818,22 @@ export function weaponManifestPart(project: WeaponProject): WeaponManifestPart {
     lines.push('play = "loop"');
   }
 
+  // Custom brush trail strips. A single frame needs no animation keys; a strip
+  // declares its count so the engine slices the cells and the manifest matches
+  // the particle frame index the SDK asks for.
+  for (const entry of activeFlightTrails(project)) {
+    const trailPath = flightTrailSheetPath(project, entry.role);
+    if (emitted.has(trailPath)) continue;
+    emitted.add(trailPath);
+    lines.push('');
+    lines.push(`[sprites.${luaQuote(trailPath)}]`);
+    if (entry.trail.frames > 1) {
+      lines.push(`frames = ${entry.trail.frames}`);
+      lines.push(`fps = ${entry.trail.fps || 15}`);
+      lines.push('play = "loop"');
+    }
+  }
+
   // The terrain stamp's strip: 32 cells, frame 0 up and clockwise. `frames` is
   // the only key it needs -- nothing animates it, the frame is the argument --
   // but the engine slices by it, and a declared path must be a file the ZIP
@@ -6802,7 +6941,7 @@ export function weaponManifestPart(project: WeaponProject): WeaponManifestPart {
   }
 
   // Shared beam textures (`wf-lib/wfws/sprites/beam*.png`) are declared once
-  // inside `wfws.sdk/mod.toml` to conserve WormForge's GPU atlas budget.
+  // inside `wfws.sdk/mod.toml` to conserve WormBench's GPU atlas budget.
 
   for (const cs of Object.values(project.customSprites)) {
     if (emitted.has(cs.path)) continue;
@@ -6837,7 +6976,7 @@ export function generatePackToml(pack: PackProject): string {
     `id = ${luaQuote(pack.id)}`,
     `name = ${luaQuote(pack.name)}`,
     `version = ${luaQuote(pack.version || '0.1.0')}`,
-    `author = ${luaQuote(pack.author || 'WormForge Creator')}`,
+    `author = ${luaQuote(pack.author || 'WormBench Creator')}`,
     'api_version = 5',
     'format_version = 2',
   ];

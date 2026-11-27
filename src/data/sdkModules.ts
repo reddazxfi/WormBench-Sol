@@ -29,6 +29,7 @@ export const SDK_MODULE_EXPORTS: Record<string, string[]> = {
     'wf-lib/wfws_swing',
     'wf-lib/wfws_airstrike',
     'wf-lib/wfws_firing',
+    'wf-lib/wfws_trail',
   ],
   'effects.sdk': [
     'wf-lib/effects/trail',

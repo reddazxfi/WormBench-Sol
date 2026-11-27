@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title WormForge Weapon Editor - Vite only (port 5175)
+title WormBench Weapon Studio - Vite only (port 5175)
 cd /d "%~dp0"
 
 echo ============================================================
-echo  WormForge Weapon Editor - Vite-only mode
+echo  WormBench Weapon Studio - Vite-only mode
 echo ============================================================
 echo.
 echo This starts the UI without the Express/Gemini API.

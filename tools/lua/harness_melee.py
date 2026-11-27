@@ -21,6 +21,7 @@ from lupa import LuaRuntime
 SDK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'spec', 'lua_sdk', 'wfws_sdk', 'lib')
 SDK = os.path.join(SDK_DIR, 'wfws_sprite_builder.lua')
 SWING = os.path.join(SDK_DIR, 'wfws_swing.lua')
+TRAIL = os.path.join(SDK_DIR, 'wfws_trail.lua')
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -187,7 +188,10 @@ end
 package.preload["wf-lib/wfws_swing"] = function()
   return assert(loadfile(%r))()
 end
-""" % SWING.replace("\\", "/"))
+package.preload["wf-lib/wfws_trail"] = function()
+  return assert(loadfile(%r))()
+end
+""" % (SWING.replace("\\", "/"), TRAIL.replace("\\", "/")))
 
 sb = lua.execute('return assert(loadfile(%r))()' % SDK.replace("\\", "/"))
 

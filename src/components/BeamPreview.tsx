@@ -717,7 +717,7 @@ export const BeamPreview: React.FC<BeamPreviewProps> = ({
       return created;
     };
 
-    // WormForge samples its quads point-wise (see `cell_uv`'s half-texel inset),
+    // WormBench samples its quads point-wise (see `cell_uv`'s half-texel inset),
     // so the canvas has to as well: bilinear scaling softens every edge and
     // makes the same beam read dimmer here than in game.
     ctx.imageSmoothingEnabled = false;

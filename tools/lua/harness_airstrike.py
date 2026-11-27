@@ -1,7 +1,8 @@
 """Run `wfws_airstrike.lua` against a deterministic fake `wa` in Lua 5.5 (`lupa`).
 
-Verifies entry modes, 7 drop/strafe patterns, 5-phase speed ramps (additive,
-multiplicative, hover recovery, dive altitude), discrete ballistic lead,
+Verifies entry modes, cursor-side direction, 7 drop/strafe patterns, 5-phase
+speed ramps (additive, multiplicative, hover recovery, dive altitude), discrete
+ballistic lead,
 multi-part hull + `on.hit` destruction, `strafe` missile steering/fuse/trail/
 casings/quad draw, object-pool-full resilience, `release.phases` mixed drop +
 strafe, `0`/`false` preservation, bounded lifetimes, and replay determinism.
@@ -705,6 +706,33 @@ for dir_sign, ev_vx in [(1, 1), (-1, -1)]:
               bool(air.is_main(first_mid)) and not bool(air.is_bit(lua.table_from({"id": first_mid}))) and bool(air.is_bit(fake_bit)),
               f"is_main={air.is_main(first_mid)}, is_bit(main)={air.is_bit(lua.table_from({'id': first_mid}))}")
 
+
+# ---- Case 1b: cursor_side uses the click's half, not vx/default ----
+for label, click_x, default_dir, expected_dir in [
+    ("left half", 400, -1, 1),
+    ("right half", 1500, 1, -1),
+]:
+    py_reset(map_w=1920)
+    w_id = "test.air.cursor_" + label.replace(" ", "_")
+    ctx = to_lua({"id": w_id})
+    h = air.install(ctx, to_lua({
+        "direction": "cursor_side",
+        "default_dir": default_dir,
+        "entry": {"mode": "offmap", "y": -208, "side": 16},
+        "plane": {"sprite": "airjetg", "facing_flip": True, "exit_margin": 32},
+        "speed": {"cruise": 16},
+        "release": {"mode": "drop", "pattern": "sequential", "count": 2, "cadence_unit": "distance", "spacing": 32, "lead": False},
+        "payload": {"kind": "missile", "inherit_vx": 0, "vx": 0, "vy": 0},
+    }))
+    worm = lua.eval("_make_worm(1, 500, 400, 1)")
+    h.strike(to_lua({"worm": worm, "x": click_x, "y": 400, "sky": -208, "vx": 1, "vy": 0, "weapon": w_id}))
+    trace = step_until_done(h, max_ticks=200)
+    hull = ACTORS[1]
+    expected_start = -16 if expected_dir > 0 else 1936
+    expected_facing = -expected_dir
+    check(f"case 1b ({label}): click side picks dir={expected_dir} over vx=1/default={default_dir}",
+          abs(trace[0][2] - expected_start) < 1e-6 and hull["handle"]["facing"] == expected_facing,
+          f"start={trace[0][2]}, facing={hull['handle']['facing']}")
 
 # ---- Case 2: All 7 Release Patterns ----
 pattern_specs = [

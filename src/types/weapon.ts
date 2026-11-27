@@ -693,7 +693,7 @@ export interface CustomSoundAsset {
 /**
  * Custom pack WAVs. `explosion` plays once from the claim's `on_explode`; the
  * `interval` sound plays while the round flies, from `wa.on.missile_frame`.
- * WormForge resolves the paths from this bundle at load (`sounds = {...}`).
+ * WormBench resolves the paths from this bundle at load (`sounds = {...}`).
  */
 export interface CustomSoundsConfig {
   /**
@@ -1096,6 +1096,84 @@ export type MissileAnimType =
    *  and resting at a fixed angle when the animal has no speed (on the ground). */
   | 'roam';
 
+/** The flight role a custom brush trail is attached to. */
+export type FlightTrailRoleKey = 'main' | 'bit' | 'homing' | 'homing_bit' | 'roam' | 'dig';
+export type FlightTrailPlayMode = 'lifetime' | 'loop' | 'pingpong' | 'random';
+export type FlightTrailRotateMode = 'none' | 'random' | 'align' | 'missile';
+export type FlightTrailDepth = 'BEHIND' | 'EFFECTS' | 'FRONT';
+
+/**
+ * A custom particle trail drawn with `wa.draw.brush`. One list of knobs shared
+ * by every role: the primary round, cluster bits, and each behaviour state.
+ *
+ * The first group mirrors WA's own record trail, so a converted weapon keeps
+ * its familiar density, ejection speed and bubble rate. The rest is the
+ * particle simulation that the `wfws_trail` SDK module steps at 50 Hz.
+ */
+export interface FlightTrailConfig {
+  enabled: boolean;
+  /** Hide WA's native record trail for this role when enabled (default true). */
+  hideNativeTrail: boolean;
+  // Sprite sheet (supports both a single-frame PNG and a multi-frame vertical strip)
+  sheetFile?: File;
+  sheetPreview?: string;
+  /** Natural single-cell dimensions (measured on upload, defaults 16x16). */
+  cellW: number;
+  cellH: number;
+  frames: number;
+  playMode: FlightTrailPlayMode;
+  fps: number;
+  // Original WA trail knobs (familiar defaults matching missile.trail.*)
+  /** Emission density (0..100, WA-style; maps to particles per tick). */
+  power: number;
+  /** Ejection speed along the opposite flight direction (WA-style 0..500). */
+  speed: number;
+  /** Underwater bubble emission rate (0..16, in 0.25 steps; 0 = off). */
+  bubblesPerSecond: number;
+  // Extended particle simulation knobs
+  /** Particle lifetime in 50 Hz ticks (4..180). */
+  lifeFrames: number;
+  /** Random +/- fraction on lifetime (0..0.8). */
+  lifeJitter: number;
+  /** Initial scale multiplier applied to cellW/cellH (0.1..6). */
+  scaleStart: number;
+  /** Final scale multiplier at death (0..6). */
+  scaleEnd: number;
+  /** Opacity at spawn (0..1). */
+  alphaStart: number;
+  /** Opacity at death (0..1; 0 = smooth fade-out). */
+  alphaEnd: number;
+  /** Rotation behavior at spawn. */
+  rotateMode: FlightTrailRotateMode;
+  /** Min / max angular spin in degrees per 50 Hz tick (-30..30). */
+  spinMin: number;
+  spinMax: number;
+  /** Gravity acceleration in px/tick^2 (negative = rising smoke). */
+  gravity: number;
+  /** Velocity drag multiplier per tick (0.75..1.0). */
+  drag: number;
+  /** Ejection cone spread in degrees around backward velocity (0..360). */
+  spreadDeg: number;
+  /** Random spawn position jitter radius in px (0..24). */
+  jitterPx: number;
+  /** Fraction of missile velocity inherited by spawned particles (-0.5..1.0). */
+  inheritVel: number;
+  /** Exhaust nozzle offset in missile sheet px (rotated with the heading). */
+  offsetX: number;
+  offsetY: number;
+  // Color, blend and layer
+  /** Tint hex at spawn (#ffffff = untinted original PNG). */
+  color: string;
+  /** Optional end-of-life tint hex ('' = keep start color). */
+  colorEnd: string;
+  /** Cycle hue smoothly over the simulation clock. */
+  rainbow: boolean;
+  blend: 'alpha' | 'add';
+  depth: FlightTrailDepth;
+  /** Max live particles kept in this role's brush pool (16..512). */
+  maxParticles: number;
+}
+
 /**
  * One extra role the WFWS builder draws. The primary round keeps its own
  * `MissileSpriteConfig` (it also owns the preview canvas); cluster bits and
@@ -1123,6 +1201,7 @@ export interface FlightRoleArt {
   scale: number;
   mirror: boolean;
   z: number;
+  trail?: FlightTrailConfig;
 }
 
 /**
@@ -1158,6 +1237,7 @@ export interface MissileSpriteConfig {
   animate: boolean;
   spin: boolean;
   hideStock: boolean;
+  trail?: FlightTrailConfig;
   /**
    * Weapon-wide builder parameters (PX's sprite builder has no equivalent):
    * one scale multiplier for every role's sheet -- primary, bits, states --
@@ -1753,7 +1833,7 @@ export interface WeaponProject {
   /**
    * PX `'Weapon Sprite'` index decoded from `.wep` offset `+0x2C` (2 grenade,
    * 3 banana, 4 cluster, 7 bazooka, 11 homing/pigeon, 12 sheep launcher).
-   * Unmapped in WormForge Lua records, so kept only to pick `copy_from` /
+   * Unmapped in WormBench Lua records, so kept only to pick `copy_from` /
    * `hold_as` fallback poses on zeroed-sprite imports.
    */
   wepWeaponSprite?: number;

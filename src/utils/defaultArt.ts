@@ -1,6 +1,7 @@
 import type { MissileAnimType, WeaponProject } from '../types/weapon';
 import { assetUrl } from './assetUrl';
 import {
+  createDefaultTrailSheet as createTrailPuff,
   createPlaceholderHoldSheet,
   createPlaceholderMissileSheet,
 } from './placeholderSprites';
@@ -107,6 +108,14 @@ export async function createDefaultMissileSheet(
   } catch {
     return createPlaceholderMissileSheet(anim, frames);
   }
+}
+
+/** The 16x16 soft puff written when a trail is on but no PNG was picked. */
+export async function createDefaultTrailSheet(): Promise<Blob> {
+  if (typeof document === 'undefined') {
+    return new Blob([SILENT_PNG], { type: 'image/png' });
+  }
+  return createTrailPuff();
 }
 
 /**

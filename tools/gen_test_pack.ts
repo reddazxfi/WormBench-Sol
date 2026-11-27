@@ -1,7 +1,7 @@
 /**
  * Dev-only test pack generator.
  *
- * Writes one WormForge bundle with one component per test plus a profile that
+ * Writes one WormBench bundle with one component per test plus a profile that
  * places all of them, so an engine behaviour can be checked in one match.
  *
  * Every entry's slot is one of WA's own weapons, checked before anything is
@@ -30,7 +30,7 @@
  *
  * Run: `bun run tools/gen_test_pack.ts`
  * Output: `test_pack/wftest_pack/` (git-ignored), copy that folder into
- * `WormForge/Mods/`, pick the "WF Test Pack" profile, and every weapon is on
+ * `WormBench/Mods/`, pick the "WF Test Pack" profile, and every weapon is on
  * the panel with infinite ammo.
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -48,6 +48,7 @@ import {
   bitFlightSheetPath,
   behaviorStateSheetPath,
   missileFlightSheetPath,
+  flightTrailSheetPath,
   holdSheetPath,
   holdNeedsAimLayer,
   roamSheetPath,
@@ -72,6 +73,7 @@ import { DEFAULT_FIRE_SEQUENCE, mergeFireSequenceConfig } from '../src/data/fire
 import { DEFAULT_TERRAIN_STAMP, STAMP_FRAMES } from '../src/data/terrainStamp';
 import { DEFAULT_EMITTER, DEFAULT_EMITTER_RING, DEFAULT_EMITTER_TRAIL } from '../src/data/emitter';
 import { DEFAULT_AIM_CLIP } from '../src/data/aimClip';
+import { activeFlightTrails, DEFAULT_FLIGHT_TRAIL } from '../src/data/flightTrail';
 import { DEFAULT_MELEE } from '../src/data/melee';
 import {
   DEFAULT_ROAM_ROLE_ART,
@@ -587,7 +589,7 @@ function makeOp(partial: {
     name: partial.name,
     description: partial.name,
     version: '0.1.0',
-    author: 'WormForge Test Pack',
+    author: 'WormBench Test Pack',
     slot: partial.slot,
     based_on: partial.slot,
     fireType: partial.fireType ?? 'power',
@@ -1085,15 +1087,36 @@ const TESTS: TestCase[] = [
       body: { homing: 'lock', homing_arm_ms: 800, homing_time_ms: 6000 },
       missileSprite: { enabled: true, mode: 'custom', anim: 'rotation', hideStock: true },
       behaviorArt: {
-        homing: { ...DEFAULT_ROLE_ART, mode: 'builder', anim: 'rotation', frames: 32, fps: 15 },
+        homing: {
+          ...DEFAULT_ROLE_ART,
+          mode: 'builder',
+          anim: 'rotation',
+          frames: 32,
+          fps: 15,
+          // The homing state owns its own brush trail, so the trail has to
+          // switch on and off with the sheet at the arm/time boundaries.
+          trail: {
+            ...DEFAULT_FLIGHT_TRAIL,
+            enabled: true,
+            power: 38,
+            speed: 90,
+            lifeFrames: 26,
+            scaleStart: 1.4,
+            scaleEnd: 0.2,
+            rotateMode: 'align',
+            color: '#66ccff',
+            depth: 'FRONT',
+            blend: 'add',
+          },
+        },
       },
     }),
     intent:
-      'Timed homing art: the flight sheet until `arm` (800 ms), then the homing sheet for `time` (6000 ms), then back.',
+      'Timed homing art with its own custom brush trail: the flight sheet until `arm` (800 ms), then the homing sheet and a cyan trail for `time` (6000 ms).',
     expect:
-      'The ice sprite for 0.8 s, then the 32-frame bazooka sheet spins while the missile steers, and the flight art returns after 6.8 s.',
+      'The ice sprite flies for 0.8 s, then the 32-frame bazooka sheet spins with a cyan aligned trail while the missile steers, and the homing art and trail both stop after 6.8 s.',
     watch:
-      'The homing sheet from launch (arm ignored), no swap at 800 ms (timing), art that never ends (time), or the pigeon sprite showing under it.',
+      'The homing sheet from launch (arm ignored), no swap at 800 ms (timing), a cyan trail before 800 ms or after 6.8 s (the state table losing `trail`), stock smoke under it (`hide_native_trail`), or art that never ends (time).',
   },
   {
     project: makeOp({
@@ -1116,15 +1139,36 @@ const TESTS: TestCase[] = [
       // so a bit that keeps the flight sheet (or shows all 20 cells at once) is
       // obvious; the record's `clusters.bit.homing.sprite` is zeroed for it.
       behaviorArt: {
-        homing_bit: { ...DEFAULT_ROLE_ART, mode: 'builder', anim: 'track', frames: 20, fps: 20 },
+        homing_bit: {
+          ...DEFAULT_ROLE_ART,
+          mode: 'builder',
+          anim: 'track',
+          frames: 20,
+          fps: 20,
+          // The bit's homing window owns a second trail, so a bit has to swap
+          // art and particles together at arm and again at time.
+          trail: {
+            ...DEFAULT_FLIGHT_TRAIL,
+            enabled: true,
+            power: 50,
+            speed: 60,
+            lifeFrames: 18,
+            scaleStart: 1.2,
+            scaleEnd: 0.15,
+            rotateMode: 'align',
+            color: '#ff66dd',
+            depth: 'FRONT',
+            blend: 'add',
+          },
+        },
       },
     }),
     intent:
-      'Timed homing art for cluster bits: the bit sheet until `arm` (600 ms), then the drum strip for `time` (5000 ms).',
+      'Timed homing art for cluster bits, each state carrying its own custom brush trail: the bit sheet until `arm` (600 ms), then the drum strip and a pink trail for `time` (5000 ms).',
     expect:
-      'The parent tracks with the ice sprite and bursts into four bits; each bit tracks with the grenade for 0.6 s, swaps to the spinning drum for 5 s, then returns to the grenade.',
+      'The parent tracks with the ice sprite and bursts into four bits; each bit tracks with the grenade for 0.6 s, swaps to the spinning drum with a pink trail for 5 s, then returns to the grenade sheet and its trail ends.',
     watch:
-      'Bits keeping the flight sheet (the timed window is lost), the drum never appearing (the arm/time rows), the whole 20-cell strip drawn as one frame (frames not declared), or the parent drawing bit art (`m.sprite` identity).',
+      'Bits keeping the flight sheet (the timed window is lost), the drum never appearing (the arm/time rows), the whole 20-cell strip drawn as one frame (frames not declared), the pink trail never switching (homing table lacks `trail`), or the parent drawing bit art (`m.sprite` identity).',
   },
   {
     project: makeOp({
@@ -1143,15 +1187,35 @@ const TESTS: TestCase[] = [
       // Underground overrides: the round spins instead of tracking, at twice the
       // base spin, and keeps its sheet cycling, a dig is unmistakable.
       behaviorArt: {
-        dig: { ...DEFAULT_ROLE_ART, mode: 'inherit', anim: 'rotation', spinRate: 2, frames: 32 },
+        dig: {
+          ...DEFAULT_ROLE_ART,
+          mode: 'inherit',
+          anim: 'rotation',
+          spinRate: 2,
+          frames: 32,
+          // Dust only while the probes say the nose is in the land: the dig
+          // table's own trail replaces the flight trail for that window.
+          trail: {
+            ...DEFAULT_FLIGHT_TRAIL,
+            enabled: true,
+            power: 28,
+            speed: 45,
+            lifeFrames: 22,
+            scaleStart: 0.9,
+            scaleEnd: 0.2,
+            color: '#ffaa33',
+            depth: 'BEHIND',
+            gravity: 0,
+          },
+        },
       },
     }),
     intent:
-      'Digging with the WFWS builder: the record dig sprites are zeroed, the round tracks in the air and spins once it is underground.',
+      'Digging with the WFWS builder, with a custom brush trail that only runs underground: the record dig sprites are zeroed, the round tracks in the air and spins once it is inside the land.',
     expect:
-      'Tracks its arc in flight; once the nose is in the land it spins (twice the base speed) while it tunnels, with no mole and no Salvation-Army `wsv*` art, then tracks again in open air.',
+      'Tracks its arc in flight with no dust; once the nose is in the land it spins (twice the base speed) and leaves an orange dust trail while it tunnels, with no mole and no Salvation-Army `wsv*` art, then tracks again in open air with the dust gone.',
     watch:
-      'The mole (dig sprites not zeroed), a `wsv*` frame, art frozen underground (probes never firing), no spin in the dirt (`dig.anim`/`dig.spin` lost), or the sheet spinning in mid-air.',
+      'The mole (dig sprites not zeroed), a `wsv*` frame, art frozen underground (probes never firing), no spin in the dirt (`dig.anim`/`dig.spin` lost), the orange trail in mid-air (the dig table\'s trail used outside the probes), or no trail underground (the `dig` table dropping `trail`).',
   },
   {
     project: makeOp({
@@ -1264,15 +1328,28 @@ const TESTS: TestCase[] = [
           animSpeed: 1.5,
           scale: 1.5,
           sheetFile: file(roleSheet(SHEEP_BMP, SHEEP_PNG, 4), 'state_roam.png'),
+          // Only the flown role gets a trail: the walking sheep is still WA's
+          // art, so no particles may follow it on the ground.
+          trail: {
+            ...DEFAULT_FLIGHT_TRAIL,
+            enabled: true,
+            power: 20,
+            speed: 40,
+            lifeFrames: 36,
+            scaleStart: 1.0,
+            scaleEnd: 0.4,
+            color: '#aaff66',
+            depth: 'BEHIND',
+          },
         },
       },
     }),
     intent:
-      'A roaming animal\'s flown art as its own role: `roam = { sheet = state_roam.png, anim = roam, cyclical = 4, scale = 1.5 }` with `walk`/`fly` for the takeoff.',
+      'A roaming animal\'s flown art as its own role with a custom brush trail: `roam = { sheet = state_roam.png, anim = roam, cyclical = 4, scale = 1.5 }` with `walk`/`fly` for the takeoff.',
     expect:
-      'The sheep walks with WA\'s pose, then on Space flies on the sheep sheet at 1.5x with its own four-frame cycle; the primary sheet and its `track` animation are unchanged on Slot 1.',
+      'The sheep walks with WA\'s pose and no trail, then on Space flies on the sheep sheet at 1.5x with its own four-frame cycle and a soft green trail behind it; the primary sheet and its `track` animation are unchanged on Slot 1.',
     watch:
-      'The primary sheet after takeoff (`roam.sheet` missing or overridden by Slot 1), the sheep at the primary scale (role params leaking into or out of Slot 1), no takeoff (`fly` lost), or WA\'s two flight strips drawing under ours.',
+      'The primary sheet after takeoff (`roam.sheet` missing or overridden by Slot 1), the sheep at the primary scale (role params leaking into or out of Slot 1), no takeoff (`fly` lost), a trail on the walking sheep (trail emitted before the flown role is active), or WA\'s two flight strips drawing under ours.',
   },
   {
     project: makeOp({
@@ -2212,6 +2289,55 @@ const TESTS: TestCase[] = [
   },
   {
     project: makeOp({
+      id: 'wftest.57_custom_trail',
+      name: 'WF 57 Custom Brush Trail',
+      slot: 'ming_vase',
+      burst: 'clusters',
+      body: { sprite: 'grenade', cluster: true },
+      clustlet: { count: 5, sprite_count: 1, animation: 2, bit_action: 'bounce' },
+      missileSprite: {
+        enabled: true,
+        mode: 'custom',
+        anim: 'track',
+        hideStock: true,
+        trail: {
+          ...DEFAULT_FLIGHT_TRAIL,
+          enabled: true,
+          power: 35,
+          speed: 90,
+          lifeFrames: 30,
+          scaleStart: 1.2,
+          scaleEnd: 0.2,
+          color: '#ffcc66',
+          colorEnd: '#ff3300',
+          depth: 'FRONT',
+          blend: 'add',
+        },
+      },
+      bitFlight: {
+        mode: 'builder',
+        anim: 'track',
+        frames: 1,
+        trail: {
+          ...DEFAULT_FLIGHT_TRAIL,
+          enabled: true,
+          power: 45,
+          speed: 70,
+          color: '#66ccff',
+          depth: 'FRONT',
+        },
+      },
+      packArt: { cluster_sprite: art('cluster_sprite', roleSheet(GRENADE_BMP, GRENADE_PNG, 16), 16) },
+    }),
+    intent:
+      'Custom brush trails on the round and on its cluster bits. Both roles own a brush, so the stock smoke has to be suppressed and the particles have to draw in FRONT of the missile art.',
+    expect:
+      'An orange trail behind the bomb, then short blue trails behind the five bits after the burst. No stock smoke anywhere.',
+    watch:
+      'No particles (the trail table missing from `sb.flight`, a nil SoA array in `wfws_trail`, or the brush created outside `install`), stock puffs under the particles (the record trail not zeroed), particles behind the missile (the draw order for FRONT), or no blue bit trail (the bits table not emitted because only the primary trail was checked).',
+  },
+  {
+    project: makeOp({
       id: 'wftest.56_emitter_ring',
       name: 'WF 56 Emitter Ring',
       slot: 'grenade',
@@ -2543,15 +2669,29 @@ const TESTS: TestCase[] = [
         frames: 1,
         fps: 15,
         sheetFile: file(ICE_PNG, 'bomb.png'),
+        // The trail lives inside the nested `projectile` table, so this also
+        // proves a takeover bomb gets the same builder trail as a fired round.
+        trail: {
+          ...DEFAULT_FLIGHT_TRAIL,
+          enabled: true,
+          power: 30,
+          speed: 100,
+          lifeFrames: 22,
+          scaleStart: 1.1,
+          scaleEnd: 0.2,
+          color: '#88ddff',
+          depth: 'FRONT',
+          blend: 'add',
+        },
       },
       explosion: { ...DEFAULT_EXPLOSION_EFFECT, enabled: true, preset: 'electric', damageType: 'blast' },
     }),
     intent:
-      '`wf-lib/wfws_airstrike` sequential drop takeover with directional arrows (`copy_from = "stock.air_strike"`, no `on_select.cursor`), `projectile = { copy_from = "stock.bazooka" }`, `sb.flight`, and `fx.burst` on impact.',
+      '`wf-lib/wfws_airstrike` sequential drop takeover with directional arrows (`copy_from = "stock.air_strike"`, no `on_select.cursor`), `projectile = { copy_from = "stock.bazooka" }`, `sb.flight` with a custom brush trail, and `fx.burst` on impact.',
     expect:
-      'Press Left or Right while targeting the map to flip the flyover side; the green jet releases 5 custom-art bombs spaced 32 px apart leading onto the click X, and each impact plays `fx.burst` via `m.weapon == ctx.id`.',
+      'Press Left or Right while targeting the map to flip the flyover side; the green jet releases 5 custom-art bombs with cyan trails, spaced 32 px apart leading onto the click X, and each impact plays `fx.burst` via `m.weapon == ctx.id`.',
     watch:
-      'Only dropping from one side (`on_select = { cursor = true }` emitted on a directional strike), or bombs exploding without `fx.burst` / custom art (missing `projectile = { copy_from = ... }`).',
+      'Only dropping from one side (`on_select = { cursor = true }` emitted on a directional strike), bombs exploding without `fx.burst` / custom art (missing `projectile = { copy_from = ... }`), or no trail behind a bomb (the nested `projectile` dropping `trail`).',
   },
   {
     project: makeOp({
@@ -3228,6 +3368,274 @@ const TESTS: TestCase[] = [
     watch:
       'No poison at all (preset left in overlay mode), only the directly hit worm dosed, or the cloud doing ordinary blast damage.',
   },
+  {
+    project: makeOp({
+      id: 'wftest.74_airstrike_cluster_bits',
+      name: 'WF 74 Airstrike Cluster Bits',
+      slot: 'air_strike',
+      fireType: 'cursor',
+      body: { damage: 18 },
+      burst: 'clusters',
+      clustlet: {
+        count: 4,
+        sprite_count: 1,
+        bit_action: 'homing',
+        homing: 'lock',
+        homing_arm_ms: 500,
+        homing_time_ms: 3500,
+        animation: 0,
+      },
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'arrows',
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'offmap', y: -230, side: 24 },
+        plane: { ...DEFAULT_AIRSTRIKE.plane, spriteMode: 'stock', stockSprite: 'airjetb', facingFlip: true },
+        speed: {
+          ...DEFAULT_AIRSTRIKE.speed,
+          cruise: 17,
+          release: 9,
+          min: 5,
+          decel: 1.5,
+          recoverMode: 'ramp',
+          slowDistance: 90,
+        },
+        release: {
+          ...DEFAULT_AIRSTRIKE.release,
+          mode: 'drop',
+          pattern: 'burst',
+          count: 6,
+          cadenceUnit: 'frames',
+          framesBetween: 10,
+          burstSize: 3,
+          minFrames: 3,
+          lead: true,
+          leadMaxBack: 10,
+          jitterX: 2,
+          jitterVx: 0.2,
+        },
+        payload: {
+          ...DEFAULT_AIRSTRIKE.payload,
+          kind: 'missile',
+          projectileDonor: 'cluster_bomb',
+          inheritVx: 0.4,
+        },
+      },
+      missileSprite: {
+        enabled: true,
+        mode: 'custom',
+        anim: 'track',
+        frames: 1,
+        hideStock: true,
+        trail: {
+          ...DEFAULT_FLIGHT_TRAIL,
+          enabled: true,
+          power: 32,
+          speed: 95,
+          lifeFrames: 24,
+          scaleStart: 1.1,
+          scaleEnd: 0.2,
+          color: '#88ddff',
+          depth: 'FRONT',
+          blend: 'add',
+        },
+      },
+      bitFlight: {
+        mode: 'builder',
+        anim: 'track',
+        frames: 1,
+        trail: {
+          ...DEFAULT_FLIGHT_TRAIL,
+          enabled: true,
+          power: 40,
+          speed: 70,
+          lifeFrames: 20,
+          color: '#77ff99',
+          depth: 'FRONT',
+        },
+      },
+      behaviorArt: {
+        homing_bit: {
+          ...DEFAULT_ROLE_ART,
+          mode: 'builder',
+          anim: 'track',
+          frames: 20,
+          fps: 20,
+          trail: {
+            ...DEFAULT_FLIGHT_TRAIL,
+            enabled: true,
+            power: 48,
+            speed: 55,
+            lifeFrames: 18,
+            rotateMode: 'align',
+            color: '#ff66dd',
+            depth: 'FRONT',
+            blend: 'add',
+          },
+        },
+      },
+    }),
+    intent:
+      'Airstrike takeover firing a nested cluster bomb from `projectile = { copy_from = "stock.cluster_bomb" }`: `release.pattern = "burst"` drops two groups of three, `air.is_bit` separates the four homing bits, and the round, bit and homing-bit roles each own a custom brush trail.',
+    expect:
+      'The jet makes one pass and releases two bursts of three cluster bombs; each bomb leaves a cyan trail, bursts into four bits with green trails, and each bit swaps to a pink aligned trail for 3.5 s before returning to its flight sheet.',
+    watch:
+      'All six bombs dropped as one group (`burst_size` lost), bits treated as main rounds (`is_bit` missing so every bit draws the primary trail), the pink homing trail never appearing (the homing-bit table dropping `trail`), or the nested `projectile` losing the cluster table (bits never spawn).',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.75_airstrike_above_parts',
+      name: 'WF 75 Airstrike Above Carpet',
+      slot: 'air_strike',
+      fireType: 'cursor',
+      body: { damage: 24 },
+      missileSprite: { enabled: true, mode: 'custom', anim: 'rotation', frames: 1, hideStock: true },
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'cursor_side',
+        defaultDir: 1,
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'above', y: -200, side: 24 },
+        plane: {
+          ...DEFAULT_AIRSTRIKE.plane,
+          spriteMode: 'stock',
+          stockSprite: 'cpttruck',
+          facingFlip: true,
+          asObject: true,
+          collide: true,
+          hp: 180,
+          deadDamage: 35,
+          bankAngleApproach: -10,
+          bankAngleRelease: 6,
+          bankRate: 0.5,
+          boomBelow: true,
+          parts: [
+            {
+              id: 'nose',
+              label: 'nose gun',
+              spriteMode: 'stock',
+              stockSprite: 'airjetb',
+              ox: -12,
+              oy: 2,
+              frames: 1,
+              fps: 15,
+              play: 'loop',
+              scale: 0.8,
+              depthOffset: 1,
+              facingFlip: true,
+              trackGun: false,
+              aimSync: false,
+              firingFrames: false,
+              bankScale: 1,
+              angleOffset: 0,
+            },
+          ],
+        },
+        speed: {
+          ...DEFAULT_AIRSTRIKE.speed,
+          cruise: 15,
+          release: 8,
+          min: 3,
+          exit: 15,
+          decel: 1.2,
+          accel: 1,
+          recoverMode: 'ramp',
+          slowDistance: 110,
+          altitudeMode: 'dive',
+          diveVy: 1.5,
+        },
+        release: {
+          ...DEFAULT_AIRSTRIKE.release,
+          mode: 'drop',
+          pattern: 'carpet',
+          count: 7,
+          cadenceUnit: 'frames',
+          framesBetween: 3,
+          minFrames: 2,
+          window: 120,
+          perTick: 1,
+          lead: false,
+          jitterX: 4,
+          jitterVx: 0.3,
+        },
+        payload: {
+          ...DEFAULT_AIRSTRIKE.payload,
+          kind: 'missile',
+          projectileDonor: 'grenade',
+          inheritVx: 0.3,
+          vx: 0.5,
+        },
+      },
+    }),
+    intent:
+      'Airstrike takeover that starts over the map (`entry.mode = "above"`), picks the side from the cursor (`direction = "cursor_side"`), and spreads seven bombs with `pattern = "carpet"` from a high-altitude dive. The plane is a shootable object with a stock nose part and bank angles.',
+    expect:
+      'Clicking ahead of the worm starts the truck above the map on the cursor side, banking into a dive and releasing seven grenades across a 120 px window; the nose part rides the bank, and shooting the plane down blasts below it.',
+    watch:
+      'The plane starts off-map instead (entry mode ignored), all seven bombs land on one spot (`window`/`frames_between` lost), the nose part is missing (the `parts` table dropped), the plane cannot be hit (`as_object`/`collide` lost), or a crash blast appears at the wrong height (`boom_below` ignored).',
+  },
+  {
+    project: makeOp({
+      id: 'wftest.76_airstrike_crate_chute',
+      name: 'WF 76 Airstrike Crate Chute',
+      slot: 'air_strike',
+      fireType: 'cursor',
+      body: { damage: 18 },
+      airstrike: {
+        ...DEFAULT_AIRSTRIKE,
+        enabled: true,
+        direction: 'arrows',
+        defaultDir: -1,
+        zeroVxUsesFacing: true,
+        entry: { ...DEFAULT_AIRSTRIKE.entry, mode: 'offmap', y: -240, side: 20 },
+        plane: { ...DEFAULT_AIRSTRIKE.plane, spriteMode: 'stock', stockSprite: 'airjetg', facingFlip: true },
+        speed: {
+          ...DEFAULT_AIRSTRIKE.speed,
+          cruise: 16,
+          release: 10,
+          min: 6,
+          decel: 1.2,
+          recoverMode: 'ramp',
+          slowDistance: 80,
+        },
+        release: {
+          ...DEFAULT_AIRSTRIKE.release,
+          mode: 'drop',
+          pattern: 'offsets',
+          count: 3,
+          offsets: [-48, 0, 48],
+          cadenceUnit: 'distance',
+          spacing: 24,
+          lead: true,
+          windup: 10,
+          jitterX: 3,
+          jitterVx: 0.4,
+        },
+        payload: {
+          ...DEFAULT_AIRSTRIKE.payload,
+          kind: 'crate',
+          inheritVx: 0,
+          vx: 0,
+          vy: 1,
+          spreadVx: 0.2,
+          spreadVy: 0.1,
+          crate: {
+            kind: 'weapon',
+            health: 35,
+            drop: 'chute',
+            contents: 'stock.banana',
+            amount: 2,
+          },
+        },
+      },
+    }),
+    intent:
+      'Airstrike takeover with a `crate` payload instead of a missile: `offsets` drops three banana crates on chutes around the click, and a zero click vx follows the worm\'s facing instead of the raw default side.',
+    expect:
+      'Left or Right chooses the flyover side; with no arrow key and no click drag, the jet enters from the worm\'s facing side (`zero_vx_uses_facing`). It releases three weapon crates at -48, 0 and +48 px around the click, each drifting down on a chute and containing two bananas.',
+    watch:
+      'No crates (payload kind not emitted), crates falling without chutes (`drop = "chute"` lost), empty crates (the `crate.contents` table dropped), all three at the same spot (offsets ignored), or a zero-vx click ignoring the worm\'s facing (`zero_vx_uses_facing` lost).',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -3411,6 +3819,21 @@ for (const test of TESTS) {
       usedSheets.add(statePath);
       spriteDecls.set(statePath, { frames, fps: role.fps || 15, play: 'loop' });
     }
+
+    // Custom brush trail sheets. The generator claims every active role at
+    // `trail_<role>.png`, so the test pack has to write a file at each path and
+    // declare its cell count exactly as the editor's exporter does.
+    for (const entry of activeFlightTrails(project)) {
+      const trailPath = flightTrailSheetPath(project, entry.role);
+      const trailFrames = Math.max(1, Math.round(entry.trail.frames ?? 1));
+      writeFileSync(join(BUNDLE, trailPath), roleSheet(ICE_BMP, ICE_PNG, trailFrames));
+      usedSheets.add(trailPath);
+      spriteDecls.set(trailPath, {
+        frames: trailFrames,
+        fps: entry.trail.fps || 15,
+        play: 'loop',
+      });
+    }
   }
 
   // A roaming animal's two flying sheets (`sheep_sprites`). WA rotates the
@@ -3547,9 +3970,9 @@ if (usesFireSeq) dependencies.push('px.fire_seq');
 
 const toml: string[] = [
   `id = ${quote(MOD_ID)}`,
-  `name = "WormForge Test Pack"`,
+  `name = "WormBench Test Pack"`,
   'version = "0.1.0"',
-  'author = "WormForge Weapon Editor"',
+  'author = "WormBench Weapon Studio"',
   'api_version = 5',
   'format_version = 2',
 ];
@@ -3598,7 +4021,7 @@ for (const rel of [
 // Profile: every test weapon placed, infinite ammo, plus the stock donors and
 // the two always-available utilities.
 const profile: string[] = [
-  `description = "All ${TESTS.length} WormForge behaviour tests in one match."`,
+  `description = "All ${TESTS.length} WormBench behaviour tests in one match."`,
   '',
   '[weapons]',
 ];
@@ -3620,9 +4043,9 @@ writeFileSync(join(BUNDLE, 'profiles', `${PROFILE}.toml`), profile.join('\n'));
 
 // README for the in-game run.
 const readme: string[] = [
-  '# WormForge Test Pack',
+  '# WormBench Test Pack',
   '',
-  `Drop \`wftest_pack/\` into \`WormForge/Mods/\`, pick the **${PROFILE}** profile, and`,
+  `Drop \`wftest_pack/\` into \`WormBench/Mods/\`, pick the **${PROFILE}** profile, and`,
   'every test weapon is on the panel with infinite ammo.',
   '',
   'All art is derived from the FAMAS sheets in `spec/`, not from WA: the main missile sheets are',
@@ -3630,6 +4053,9 @@ const readme: string[] = [
   '(32 or 16 frames, frame 0 up, clockwise), and native trail puffs use a 4-frame',
   'rotation strip. Records that cannot draw stock sprite 50 (strike munitions,',
   'cluster bits, claim-level body sheets) carry their own pack sheet.',
+  '',
+  'Custom brush trails get one `trail_<role>.png` per active role (main, bit,',
+  'homing, homing_bit, roam, dig), with the same cell count the editor declares.',
   '',
   '`WF 23 Custom Sounds` also ships two generated PCM WAVs under `sounds/`,',
   'declared in its claim\'s `sounds` list and played with `wa.sound.play`.',

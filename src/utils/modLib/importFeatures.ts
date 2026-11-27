@@ -54,6 +54,11 @@ import type {
   ExplosionPreset,
   FireSequenceConfig,
   FlightRoleArt,
+  FlightTrailConfig,
+  FlightTrailDepth,
+  FlightTrailRoleKey,
+  FlightTrailPlayMode,
+  FlightTrailRotateMode,
   GlowShape,
   HoldConfig,
   MissileSpriteConfig,
@@ -69,6 +74,7 @@ import type {
   WormSpritePoseKey,
 } from '../../types/weapon';
 import { DEFAULT_MELEE } from '../../data/melee';
+import { mergeFlightTrailConfig } from '../../data/flightTrail';
 import { cloneAirstrikeConfig, DEFAULT_AIRSTRIKE } from '../../data/airstrike';
 import {
   beamArtStyleFromPath,
@@ -396,6 +402,167 @@ const animOf = (value: LuaValue | undefined, fallback: MissileSpriteConfig['anim
     ? value
     : fallback;
 
+const TRAIL_PLAY: readonly FlightTrailPlayMode[] = ['lifetime', 'loop', 'pingpong', 'random'];
+const TRAIL_ROTATE: readonly FlightTrailRotateMode[] = ['none', 'random', 'align', 'missile'];
+const TRAIL_DEPTH: readonly FlightTrailDepth[] = ['BEHIND', 'EFFECTS', 'FRONT'];
+const pick = <T extends string>(value: LuaValue | undefined, allowed: readonly T[], fallback: T): T =>
+  typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+
+type MaskedBlock = { open: number; close: number };
+
+/** The matching `}` for a `{` at `open`, in masked Lua. */
+function blockEnd(masked: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < masked.length; i += 1) {
+    if (masked[i] === '{') depth += 1;
+    else if (masked[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** `key = { ... }` at or after `from`, before `to`. */
+function findBlock(
+  masked: string,
+  key: string,
+  from = 0,
+  to = masked.length,
+): MaskedBlock | undefined {
+  const pattern = new RegExp('\\b' + key + '\\s*=\\s*\\{', 'g');
+  pattern.lastIndex = from;
+  const match = pattern.exec(masked);
+  if (!match || match.index >= to) return undefined;
+  const open = match.index + match[0].lastIndexOf('{');
+  const close = blockEnd(masked, open);
+  return close < 0 || close > to ? undefined : { open, close };
+}
+
+/**
+ * The band a trail block asked for. The generator writes `depth = wa.depth.X`,
+ * which the Lua table reader intentionally drops as an expression, so the band
+ * is read from the role's own block. A deduped sheet can sit in several roles
+ * with different depths, so scoping to the role keeps main, bit, homing, dig
+ * and roam from stealing each other's band.
+ */
+function trailDepthFromText(
+  text: string,
+  sheetPath: string | undefined,
+  role: FlightTrailRoleKey,
+): FlightTrailDepth | undefined {
+  if (!sheetPath) return undefined;
+  const masked = maskLuaCode(text);
+  const bits = findBlock(masked, 'bits');
+  let scope: MaskedBlock = { open: -1, close: masked.length };
+  if (role === 'bit') {
+    if (!bits) return undefined;
+    scope = bits;
+  } else if (role === 'homing_bit') {
+    if (!bits) return undefined;
+    const homing = findBlock(masked, 'homing', bits.open + 1, bits.close);
+    if (!homing) return undefined;
+    scope = homing;
+  } else if (role !== 'main') {
+    // The primary `homing`, `dig` and `roam` tables sit outside `bits`; the
+    // bit's own `homing` is the one nested there.
+    let from = 0;
+    for (;;) {
+      const candidate = findBlock(masked, role, from);
+      if (!candidate) break;
+      if (!bits || candidate.open < bits.open || candidate.open > bits.close) {
+        scope = candidate;
+        break;
+      }
+      from = candidate.open + 1;
+    }
+  }
+  let from = scope.open + 1;
+  while (from < scope.close) {
+    const trail = findBlock(masked, 'trail', from, scope.close);
+    if (!trail) break;
+    const body = text.slice(trail.open + 1, trail.close);
+    if (body.includes(sheetPath)) {
+      const expression = /\bdepth\s*=\s*(?:wa\.)?depth\.([A-Z_]+)/.exec(body);
+      const literal = /\bdepth\s*=\s*["']([A-Z_]+)["']/.exec(body);
+      const band = (expression?.[1] ?? literal?.[1]) as FlightTrailDepth | undefined;
+      return band && TRAIL_DEPTH.includes(band) ? band : undefined;
+    }
+    from = trail.close + 1;
+  }
+  return undefined;
+}
+
+/**
+ * A custom brush trail from its `trail` table. Presence is the switch: the
+ * generator writes the table only while the role's trail is on. The path in
+ * that table is the ownership: `sb.flight` names it directly, so a deduped
+ * sheet shared by several roles is not re-classified as pack, strike or bit
+ * art. There is no heuristic scan for it to satisfy.
+ */
+async function readFlightTrail(
+  value: LuaValue | undefined,
+  moduleText: string,
+  files: ModFile[],
+  bundleDir: string,
+  weapon: ModWeapon,
+  role: FlightTrailRoleKey,
+): Promise<FlightTrailConfig | undefined> {
+  if (!isTable(value)) return undefined;
+  const sheetPath = str(value.sheet);
+  const loaded = await readAsset(files, bundleDir, sheetPath);
+  const decl = spriteDecl(weapon, sheetPath);
+  const frames = Math.max(
+    1,
+    Math.round(num(value.frames) ?? numFrom(decl?.frames) ?? loaded?.frames ?? 1),
+  );
+  const cellW = Math.round(num(value.cell_w) ?? loaded?.width ?? 16);
+  const cellH = Math.round(num(value.cell_h) ?? (loaded?.height ?? 16 * frames) / frames);
+  const start = rgbOf(value);
+  const endR = num(value.r_end);
+  const endG = num(value.g_end);
+  const endB = num(value.b_end);
+  const hasEnd = endR !== undefined && endG !== undefined && endB !== undefined;
+  return mergeFlightTrailConfig({
+    enabled: true,
+    hideNativeTrail: bool(value.hide_native_trail) ?? true,
+    sheetFile: loaded?.file,
+    sheetPreview: loaded?.preview,
+    cellW,
+    cellH,
+    frames,
+    playMode: pick(value.play_mode, TRAIL_PLAY, 'lifetime'),
+    fps: num(value.fps) ?? numFrom(decl?.fps) ?? 15,
+    power: num(value.power) ?? 25,
+    speed: num(value.speed) ?? 120,
+    bubblesPerSecond: num(value.bubbles) ?? 0,
+    lifeFrames: num(value.life) ?? 24,
+    lifeJitter: num(value.life_jitter) ?? 0.2,
+    scaleStart: num(value.scale_start) ?? 1,
+    scaleEnd: num(value.scale_end) ?? 0.15,
+    alphaStart: num(value.alpha_start) ?? 0.9,
+    alphaEnd: num(value.alpha_end) ?? 0,
+    rotateMode: pick(value.rotate, TRAIL_ROTATE, 'random'),
+    spinMin: num(value.spin_min) ?? -4,
+    spinMax: num(value.spin_max) ?? 4,
+    gravity: num(value.gravity) ?? -0.04,
+    drag: num(value.drag) ?? 0.94,
+    spreadDeg: num(value.spread) ?? 28,
+    jitterPx: num(value.jitter) ?? 2,
+    inheritVel: num(value.inherit_vel) ?? 0.15,
+    offsetX: num(value.offset_x) ?? 0,
+    offsetY: num(value.offset_y) ?? 0,
+    color: start ? hexColor(start.r, start.g, start.b) : '#ffffff',
+    colorEnd: hasEnd ? hexColor(endR, endG, endB) : '',
+    rainbow: bool(value.rainbow) ?? false,
+    blend: value.blend === 'alpha' || value.blend === 'add' ? value.blend : 'alpha',
+    depth:
+      trailDepthFromText(moduleText, sheetPath, role) ??
+      pick(value.depth, TRAIL_DEPTH, 'EFFECTS'),
+    maxParticles: num(value.max_particles) ?? 160,
+  });
+}
+
 /** A role's builder art (`bits`, `bits.homing`, `homing`) from its table. */
 async function readRoleArt(
   table: LuaTable,
@@ -404,9 +571,12 @@ async function readRoleArt(
   bundleDir: string,
   weapon: ModWeapon,
   base: FlightRoleArt,
+  moduleText: string,
+  role: FlightTrailRoleKey,
 ): Promise<FlightRoleArt> {
   const asset = await readAsset(files, bundleDir, sheetPath);
   const decl = spriteDecl(weapon, sheetPath);
+  const trail = await readFlightTrail(table.trail, moduleText, files, bundleDir, weapon, role);
   return {
     ...base,
     mode: 'builder',
@@ -421,6 +591,7 @@ async function readRoleArt(
     scale: num(table.scale) ?? base.scale,
     mirror: bool(table.mirror) ?? base.mirror,
     z: num(table.z) ?? base.z,
+    ...(trail ? { trail } : {}),
   };
 }
 
@@ -1499,6 +1670,15 @@ export async function readBundleFeatures(args: {
         : {}),
       logIdentity: f.log === true,
     };
+    const mainTrail = await readFlightTrail(
+      f.trail,
+      moduleText,
+      files,
+      bundleDir,
+      weapon,
+      'main',
+    );
+    if (mainTrail) project.missileSprite.trail = mainTrail;
 
     const behaviorArt: Partial<Record<BehaviorArtKey, FlightRoleArt>> = {};
     const bits = f.bits;
@@ -1510,6 +1690,8 @@ export async function readBundleFeatures(args: {
         bundleDir,
         weapon,
         DEFAULT_ROLE_ART,
+        moduleText,
+        'bit',
       );
       const bitHoming = isTable(bits.homing) ? bits.homing : undefined;
       if (bitHoming) {
@@ -1520,6 +1702,8 @@ export async function readBundleFeatures(args: {
           bundleDir,
           weapon,
           DEFAULT_ROLE_ART,
+          moduleText,
+          'homing_bit',
         );
       }
     } else if (bits === 'inherit') {
@@ -1537,6 +1721,8 @@ export async function readBundleFeatures(args: {
         bundleDir,
         weapon,
         DEFAULT_ROLE_ART,
+        moduleText,
+        'homing',
       );
     }
     // Digging is a probe, not a state: `dig = true` or `dig = { ... }` means
@@ -1545,6 +1731,14 @@ export async function readBundleFeatures(args: {
     if (f.dig === true) {
       behaviorArt.dig = { ...DEFAULT_DIG_ROLE_ART, mode: 'builder' };
     } else if (isTable(f.dig)) {
+      const digTrail = await readFlightTrail(
+        f.dig.trail,
+        moduleText,
+        files,
+        bundleDir,
+        weapon,
+        'dig',
+      );
       behaviorArt.dig = {
         ...DEFAULT_DIG_ROLE_ART,
         mode: 'builder',
@@ -1556,6 +1750,7 @@ export async function readBundleFeatures(args: {
         scale: num(f.dig.scale) ?? 1,
         mirror: bool(f.dig.mirror) ?? true,
         z: num(f.dig.z) ?? 5,
+        ...(digTrail ? { trail: digTrail } : {}),
       };
     } else if (args.digging) {
       behaviorArt.dig = { ...DEFAULT_DIG_ROLE_ART, mode: 'native' };
@@ -1572,6 +1767,8 @@ export async function readBundleFeatures(args: {
           bundleDir,
           weapon,
           DEFAULT_ROAM_ROLE_ART,
+          moduleText,
+          'roam',
         );
       } else {
         // Roam has no native role of its own: the round's own sheet flies.

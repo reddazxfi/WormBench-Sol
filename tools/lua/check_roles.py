@@ -19,6 +19,7 @@ from lupa import LuaRuntime
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "spec" / "lua_sdk" / "wfws_sdk" / "lib" / "wfws_sprite_builder.lua"
 SWING = ROOT / "spec" / "lua_sdk" / "wfws_sdk" / "lib" / "wfws_swing.lua"
+TRAIL = ROOT / "spec" / "lua_sdk" / "wfws_sdk" / "lib" / "wfws_trail.lua"
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -46,7 +47,8 @@ wa = {
 }
 package.preload["wf-lib/holds"] = function() return { PX_POSTURE = {}, PX_HANDS = {} } end
 package.preload["wf-lib/wfws_swing"] = function() return assert(loadfile(%r))() end
-""" % str(SWING).replace("\\", "/")
+package.preload["wf-lib/wfws_trail"] = function() return assert(loadfile(%r))() end
+""" % (str(SWING).replace("\\", "/"), str(TRAIL).replace("\\", "/"))
 )
 
 sb = lua.execute(
@@ -61,8 +63,8 @@ spec = lua.table_from(
         "weapon": "test.roles",
         "sheet": "sprites/test.roles/missile.png",
         "anim": "track",
-        # The bit role: any nonzero sprite at first sight is a bit while a bits
-        # table exists, which is the classifier this check exercises.
+        # The bit role: the faked missile carries the engine's pellet flag, so
+        # the classifier exercises the bit branch without the burst heuristic.
         "bits": lua.table_from({"sheet": "sprites/test.roles/bit.png", "anim": "track"}),
         "log": False,
     }
@@ -80,12 +82,16 @@ def check(name, ok, detail=""):
 
 
 def pre(mid, sprite, weapon="test.roles"):
+    # This check is about the remembered identity, not the proximity heuristic
+    # that tells a burst bit from a second shot, so mark the bit explicitly the
+    # way a build with MissileEntity+0x150 would.
     m = lua.table_from(
         {
             "id": mid,
             "weapon": weapon,
             "phase": "pre",
             "sprite": sprite,
+            "bit": sprite != 0,
             "x": 100.0,
             "y": 100.0,
             "vx": 1.0,

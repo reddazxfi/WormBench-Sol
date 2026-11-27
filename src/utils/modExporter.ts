@@ -2,8 +2,10 @@
 // download. The emitter itself lives in `packExporter.ts`, which takes the
 // libraries as arguments and so can be exercised without Vite's `?raw` imports.
 import JSZip from 'jszip';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { isTauri } from '@tauri-apps/api/core';
 import { downloadDir, join } from '@tauri-apps/api/path';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
 import { PackProject, WeaponProject } from '../types/weapon';
 import {
   WFWS_AIRSTRIKE_LUA,
@@ -12,6 +14,7 @@ import {
   WFWS_SDK_SHEETS,
   WFWS_SPRITE_BUILDER_LUA,
   WFWS_SWING_LUA,
+  WFWS_TRAIL_LUA,
 } from '../data/wfwsSdk';
 import {
   EFFECTS_SDK_FILES,
@@ -40,6 +43,7 @@ const LIBRARIES: PackLibraries = {
     swingLua: WFWS_SWING_LUA,
     airstrikeLua: WFWS_AIRSTRIKE_LUA,
     firingLua: WFWS_FIRING_LUA,
+    trailLua: WFWS_TRAIL_LUA,
     sheets: WFWS_SDK_SHEETS,
   },
   effects: {
@@ -93,32 +97,36 @@ export function downloadBlob(blob: Blob, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Resolve the user's Downloads target path when running in the Tauri desktop EXE build. */
-export async function resolveDesktopDownloadPath(fileName: string): Promise<string | null> {
-  if (typeof window === 'undefined' || !isTauri()) return null;
-  try {
-    const dir = await downloadDir();
-    return await join(dir, fileName);
-  } catch {
-    return `Downloads\\${fileName}`;
-  }
-}
+export type ExportSaveResult = {
+  /** The exact path the desktop save dialog wrote. Null for a browser download. */
+  path: string | null;
+  /** True when the user dismissed the desktop save dialog. */
+  cancelled: boolean;
+};
 
 /**
- * Save an exported ZIP: in the desktop EXE build, write directly via Tauri to the
- * Downloads folder (overwriting or returning the exact numbered fallback path);
- * in browsers, trigger a standard download and return null.
+ * Save an exported ZIP. The desktop build asks for a destination with the native
+ * Save As dialog and writes there once, so a repeated export never replaces an
+ * earlier ZIP and the notice can name the exact file. A browser (the GitHub Pages
+ * build) keeps its normal download.
  */
-export async function saveExportBlob(blob: Blob, fileName: string): Promise<string | null> {
+export async function saveExportBlob(blob: Blob, fileName: string): Promise<ExportSaveResult> {
   if (typeof window !== 'undefined' && isTauri()) {
+    let defaultPath = fileName;
     try {
-      const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-      return await invoke<string>('save_export_zip', { fileName, bytes });
+      defaultPath = await join(await downloadDir(), fileName);
     } catch {
-      downloadBlob(blob, fileName);
-      return await resolveDesktopDownloadPath(fileName);
+      // A missing Downloads handle only changes where the dialog opens.
     }
+    const selected = await save({
+      defaultPath,
+      filters: [{ name: 'WormBench bundle', extensions: ['zip'] }],
+    });
+    if (!selected) return { path: null, cancelled: true };
+    const path = /\.zip$/i.test(selected) ? selected : `${selected}.zip`;
+    await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
+    return { path, cancelled: false };
   }
   downloadBlob(blob, fileName);
-  return null;
+  return { path: null, cancelled: false };
 }

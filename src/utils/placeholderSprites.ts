@@ -112,6 +112,31 @@ function drawProceduralMissile(
   ctx.fillRect(-2, 5, 4, 4);
 }
 
+/**
+ * A 16x16 soft radial puff. A trail can be switched on before a PNG is picked,
+ * and a declared sprite path must never dangle in the ZIP, so this stands in
+ * until real art arrives. White so the trail colour tints it cleanly.
+ */
+export async function createDefaultTrailSheet(): Promise<Blob> {
+  const size = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D is unavailable.');
+
+  ctx.imageSmoothingEnabled = false;
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.45, 'rgba(255,255,255,0.85)');
+  gradient.addColorStop(0.75, 'rgba(255,255,255,0.35)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  return canvasToPng(canvas);
+}
+
 /** 32x32 cells stacked vertically, matching the builder's procedural preview. */
 export async function createPlaceholderMissileSheet(
   anim: MissileAnimType,

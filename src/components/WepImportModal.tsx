@@ -244,7 +244,7 @@ export const WepImportModal: React.FC<WepImportModalProps> = ({ isOpen, onClose,
       preset = {
         id: 'wfws.moon_grenade',
         name: 'Moon Grenade',
-        description: "WormForge tutorial weapon: Grenade with low gravity and 3 crater excavation.",
+        description: "WormBench tutorial weapon: Grenade with low gravity and 3 crater excavation.",
         slot: 'grenade',
         based_on: 'grenade',
         fireType: 'power',
@@ -354,7 +354,7 @@ end,`,
                 Import Project X (.wep) Binary
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Reads the native 0x1D0 record slab and translates it into WormForge Lua.
+                Reads the native 0x1D0 record slab and translates it into WormBench Lua.
               </p>
             </div>
           </div>
@@ -398,7 +398,7 @@ end,`,
               Drag & drop a <span className="font-mono text-forge-600 dark:text-forge-400">.wep</span> file here, or click to browse
             </p>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
-              Supports native Project X weapon records (from PX library or WormForge mods)
+              Supports native Project X weapon records (from PX library or WormBench mods)
             </p>
           </div>
 

@@ -105,7 +105,7 @@ export async function importBundlePack(
   const base: PackProject = {
     id: packId,
     name: bundle.name || packId,
-    author: bundle.author || 'WormForge Author',
+    author: bundle.author || 'WormBench Author',
     version: bundle.version || '0.1.0',
     weapons: [],
     // What the source retires. Dropping it would change what installing this

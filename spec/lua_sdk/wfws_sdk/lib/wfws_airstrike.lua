@@ -562,6 +562,10 @@ local function pick_direction(spec, ev)
     local map_w = wa.world.size().w
     return ev.x < map_w / 2 and 1 or -1
   end
+  if mode == "cursor_side" then
+    local map_w = wa.world.size().w
+    return ev.x < map_w / 2 and 1 or -1
+  end
   local evx = opt(ev.vx, 0)
   if evx < 0 then return -1 end
   if evx > 0 then return 1 end

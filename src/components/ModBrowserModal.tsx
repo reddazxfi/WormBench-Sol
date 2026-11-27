@@ -266,7 +266,7 @@ export function ModBrowserModal({
                 Drop a mod folder or `.zip` here
               </div>
               <p className="text-[11px] text-stone-500 max-w-sm">
-                `D:\Worms Armageddon\WormForge\Mods` works as a whole: nested bundles like
+                `D:\Worms Armageddon\WormBench\Mods` works as a whole: nested bundles like
                 `wf-lib/px` are found by their own `mod.toml`.
               </p>
             </div>

@@ -9,8 +9,8 @@ interface BundleDependenciesProps {
 }
 
 /**
- * `mod.toml` libraries this bundle loads. WormForge resolves each id from
- * `WormForge/Mods/` at load, so nothing is copied into the ZIP; the panel only
+ * `mod.toml` libraries this bundle loads. WormBench resolves each id from
+ * `WormBench/Mods/` at load, so nothing is copied into the ZIP; the panel only
  * records which bundles must be installed next to this one.
  */
 export function BundleDependencies({ project, onChange }: BundleDependenciesProps) {
@@ -62,7 +62,7 @@ export function BundleDependencies({ project, onChange }: BundleDependenciesProp
 
       <div className="p-4 space-y-4">
         <p className="text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
-          Libraries are resolved by id from <code className="font-mono">WormForge/Mods/</code> when the match loads; the export only
+          Libraries are resolved by id from <code className="font-mono">WormBench/Mods/</code> when the match loads; the export only
           declares them, it doesn't copy their files. The features above add their own entries
           automatically, so this list is for a bundle the custom Lua uses, or one this editor doesn't
           model.
@@ -163,7 +163,7 @@ export function BundleDependencies({ project, onChange }: BundleDependenciesProp
             <span className="text-[11px] text-stone-500 dark:text-stone-400">Known:</span>
             {[
               { id: 'effects.sdk', hint: 'Project X effects (trail, bursts, emitters)' },
-              { id: 'wf.sdk', hint: 'WormForge SDK (holds, shared sprites)' },
+              { id: 'wf.sdk', hint: 'WormBench SDK (holds, shared sprites)' },
               { id: 'wfws.sdk', hint: 'WFWS flight sprite builder (primary, bits, states)' },
               { id: 'px.fire_seq', hint: 'Sequential-fire burst library (wf-lib/fire_seq)' },
               { id: 'px.electric', hint: 'Project X electric hold (tazed blast, electric weapons)' },

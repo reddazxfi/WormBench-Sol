@@ -22,6 +22,7 @@ SDK_DIR = os.path.join(
 )
 SDK = os.path.join(SDK_DIR, "wfws_sprite_builder.lua")
 SWING = os.path.join(SDK_DIR, "wfws_swing.lua")
+TRAIL = os.path.join(SDK_DIR, "wfws_trail.lua")
 
 lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -164,8 +165,11 @@ end
 package.preload["wf-lib/wfws_swing"] = function()
   return assert(loadfile(%r))()
 end
+package.preload["wf-lib/wfws_trail"] = function()
+  return assert(loadfile(%r))()
+end
 """
-    % SWING.replace("\\", "/")
+    % (SWING.replace("\\", "/"), TRAIL.replace("\\", "/"))
 )
 
 sb = lua.execute(f'return assert(loadfile({SDK!r}))()')
@@ -366,6 +370,40 @@ sb.hold(
     ),
 )
 
+# 5) Bows: a plain hold with draw_hand=false. The engine has no such key, so
+# sb.hold still has to park and shrink its own hand.
+bow_hold = sb.hold(
+    build_ctx("w.bow"),
+    lua.table_from(
+        {
+            "weapon": "w.bow",
+            "sheet": "hold_bow.png",
+            "frames": 8,
+            "hand": "hand.png",
+            "hand_radius": 0.01,
+            "hand_scale": 1.0,
+            "draw_hand": False,
+        }
+    ),
+)
+
+# 6) Crowbar-style aim clamp: the engine's hand is parked, but must shrink too.
+clamp_hold = sb.hold(
+    build_ctx("w.clamp"),
+    lua.table_from(
+        {
+            "weapon": "w.clamp",
+            "sheet": "hold_clamp.png",
+            "silent_sheet": "silent.png",
+            "frames": 1,
+            "hand": "hand.png",
+            "hand_radius": 9,
+            "hand_scale": 1.0,
+            "aim_clamp": lua.table_from({"up": 40, "down": 40}),
+        }
+    ),
+)
+
 failures = []
 
 
@@ -543,6 +581,20 @@ check(
     "10: aim hold reaches full 1.0 scale (90px) after 21 ticks, matching buffer and fire role widths with zero size jump",
     abs(aim_w - 90.0) < 1e-4 and abs(aim_w - buf_w) < 1e-4 and abs(aim_w - fire_w) < 1e-4,
     f"aim_w={aim_w:.4f}, buf_w={buf_w:.4f}, fire_w={fire_w:.4f}",
+)
+
+check(
+    "11: draw_hand=false parks the engine hand on the worm and shrinks it away",
+    abs(float(bow_hold["hand_radius"]) - 0.01) < 1e-6
+    and abs(float(bow_hold["hand_scale"]) - 0.001) < 1e-9,
+    f"radius={bow_hold['hand_radius']}, scale={bow_hold['hand_scale']}",
+)
+
+check(
+    "12: an aim clamp parks and shrinks the engine hand too",
+    abs(float(clamp_hold["hand_radius"]) - 0.01) < 1e-6
+    and abs(float(clamp_hold["hand_scale"]) - 0.001) < 1e-9,
+    f"radius={clamp_hold['hand_radius']}, scale={clamp_hold['hand_scale']}",
 )
 
 print()

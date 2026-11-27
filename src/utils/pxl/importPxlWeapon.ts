@@ -677,7 +677,7 @@ export function importPxlWeapon(
     }
   }
 
-  // Trail fields WormForge only takes as numeric IDs (homing trails): replace any PX
+  // Trail fields WormBench only takes as numeric IDs (homing trails): replace any PX
   // SetSpriteOverride slot with ID 131 (`hexhaust`) so dark/unloaded `wsv*` or
   // >690 slots are not drawn while homing.
   const clustlet = body?.clustlet;
@@ -751,7 +751,7 @@ export function importPxlWeapon(
     const hit = resolveSpriteOverride(id, allLibraries, library.key);
     if (hit && hit.art.kind === 'image') {
       summary.push(
-        `override #${id} (${field}): ${hit.art.name} (WormForge ${field} uses numeric IDs only)`,
+        `override #${id} (${field}): ${hit.art.name} (WormBench ${field} uses numeric IDs only)`,
       );
     } else if (isPxOverrideSlotId(id)) {
       unresolvedOverride = true;

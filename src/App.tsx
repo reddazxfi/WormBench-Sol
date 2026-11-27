@@ -77,7 +77,7 @@ const INITIAL_PROJECT: WeaponProject = {
   name: 'Grenade',
   description: "The stock Grenade record, ready to be changed.",
   version: '0.1.0',
-  author: 'WormForge Author',
+  author: 'WormBench Author',
   slot: 'grenade',
   based_on: 'grenade',
   panel_icon: 'grenade',
@@ -617,7 +617,9 @@ export default function App() {
       const blob = await exportPackZip(pack);
       const modFolder = sanitizeModFolder(pack.id);
       const fileName = `${modFolder}.zip`;
-      const savedPath = await saveExportBlob(blob, fileName);
+      const saved = await saveExportBlob(blob, fileName);
+      if (saved.cancelled) return;
+      const savedName = saved.path?.split(/[\\/]/).pop() ?? fileName;
       const contents =
         pack.weapons.length > 1
           ? `${pack.weapons.length} weapons, one mod.toml & profile`
@@ -630,7 +632,7 @@ export default function App() {
       setJustExported(true);
       if (exportBadgeTimerRef.current !== null) window.clearTimeout(exportBadgeTimerRef.current);
       exportBadgeTimerRef.current = window.setTimeout(() => setJustExported(false), 2500);
-      setExportNotice({ fileName, path: savedPath, contents, warning });
+      setExportNotice({ fileName: savedName, path: saved.path, contents, warning });
       if (exportNoticeTimerRef.current !== null) window.clearTimeout(exportNoticeTimerRef.current);
       exportNoticeTimerRef.current = window.setTimeout(() => setExportNotice(null), 10000);
     } catch (err: any) {
@@ -863,9 +865,23 @@ export default function App() {
         <footer className="border-t border-stone-200/80 bg-white/60 py-4 dark:border-stone-800 dark:bg-stone-900/40">
           <div className="mx-auto w-full max-w-6xl space-y-2 px-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500 dark:text-stone-400">
-              <span>WormForge Weapon Studio</span>
+              <span>
+                WormBench Weapon Studio{' '}
+                <span className="text-stone-400 dark:text-stone-500">
+                  (for WormBench by{' '}
+                  <a
+                    href="https://github.com/EdLud"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-stone-300 underline-offset-2 hover:text-stone-700 dark:decoration-stone-700 dark:hover:text-stone-200"
+                  >
+                    Eule
+                  </a>
+                  )
+                </span>
+              </span>
               <span className="font-mono">
-                WormForge/Mods/{sanitizeModFolder(pack.id)}/
+                WormBench/Mods/{sanitizeModFolder(pack.id)}/
                 {pack.weapons.length > 1 ? ` · ${pack.weapons.length} weapons` : ''}
               </span>
             </div>
@@ -879,12 +895,35 @@ export default function App() {
               </summary>
               <div className="mt-2 max-w-4xl space-y-1.5">
                 <p>
+                  <strong className="font-semibold text-stone-500 dark:text-stone-400">
+                    Credits:
+                  </strong>{' '}
+                  WormBench modding engine by{' '}
+                  <a
+                    href="https://github.com/EdLud"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-stone-300 underline-offset-2 hover:text-stone-700 dark:decoration-stone-700 dark:hover:text-stone-200"
+                  >
+                    Eule
+                  </a>
+                  ; Sprite Builder by{' '}
+                  <strong className="font-semibold text-stone-500 dark:text-stone-400">
+                    PyroMan
+                  </strong>
+                  ; Terrain Stamp idea (Project X) by{' '}
+                  <strong className="font-semibold text-stone-500 dark:text-stone-400">Zed</strong>
+                  . All other studio features, previews, SDK extensions and ideas by the project
+                  author.
+                </p>
+                <p>
                   Worms Armageddon and its artwork belong to Team17. The stock art this page
                   displays is Team17&apos;s, borrowed only to preview a mod: the sprite-builder tab
                   icons (Main, Home, Bits, HomeBit, Sheep, Dig), the frozen worm preview, and the
                   terrain preview backdrop. The fallback sprite that fills an untouched export is
-                  hand-drawn for this project instead, not taken from the game. WormForge itself is
-                  a separate community project, and this editor is a separate fan tool again.
+                  hand-drawn for this project instead, not taken from the game. WormBench itself is
+                  created by Eule as a separate community project, and this editor is a separate fan
+                  tool again.
                 </p>
                 <p>
                   This is unofficial and unaffiliated: not made by, endorsed by, sponsored by or

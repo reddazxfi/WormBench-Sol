@@ -30,7 +30,7 @@ export const DEFAULT_CUSTOM_SOUNDS: CustomSoundsConfig = {
 };
 
 /**
- * Voice priorities. WormForge keeps 64 custom voices and a higher priority may
+ * Voice priorities. WormBench keeps 64 custom voices and a higher priority may
  * replace an older lower one; WA's own positional attenuation still applies.
  */
 export const SOUND_PRIORITIES = [

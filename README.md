@@ -1,3 +1,7 @@
+<p>
+  <img src="spec/icon/WormForge-SolIcon.png" alt="WormBench Sol Weapon Studio" width="72" height="72" />
+</p>
+
 # WormBench Sol Weapon Studio
 
 > Modern TypeScript & React Weapon Studio and Record Architect for **WormBench**.  

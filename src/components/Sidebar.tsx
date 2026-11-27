@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { WeaponProject } from '../types/weapon';
 import { hasProjectileBody, type RecordTabId } from '../data/recordTabs';
+import { assetUrl } from '../utils/assetUrl';
 
 type WorkspaceTab = 'editor' | 'hold' | 'effects' | 'code';
 
@@ -140,12 +141,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => (
   <aside className="fixed inset-y-0 left-0 z-40 hidden w-68 flex-col border-r border-stone-200/90 bg-white dark:border-stone-800 dark:bg-stone-900 lg:flex">
     <div className="flex shrink-0 items-center justify-between border-b border-stone-200/80 px-4 py-3.5 dark:border-stone-800">
-      <div className="min-w-0">
-        <div className="font-heading text-lg font-semibold leading-tight tracking-tight text-stone-900 dark:text-stone-100">
-          WormBench Sol
-        </div>
-        <div className="mt-0.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">
-          Weapon Studio
+      <div className="flex min-w-0 items-center gap-2.5">
+        <img
+          src={assetUrl('assets/wormbench-sol-icon.png')}
+          alt=""
+          width={36}
+          height={36}
+          className="h-9 w-9 shrink-0 rounded-lg shadow-xs"
+          style={{ imageRendering: 'pixelated' }}
+        />
+        <div className="min-w-0">
+          <div className="font-heading text-lg font-semibold leading-tight tracking-tight text-stone-900 dark:text-stone-100">
+            WormBench Sol
+          </div>
+          <div className="mt-0.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">
+            Weapon Studio
+          </div>
         </div>
       </div>
       <button
@@ -317,9 +328,19 @@ export const MobileBar: React.FC<MobileBarProps> = ({
 }) => (
   <div className="sticky top-0 z-40 border-b border-stone-200/90 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 lg:hidden">
     <div className="flex items-center gap-2 px-4 py-2">
-      <span className="font-heading shrink-0 text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-        WormBench Sol
-      </span>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <img
+          src={assetUrl('assets/wormbench-sol-icon.png')}
+          alt=""
+          width={24}
+          height={24}
+          className="h-6 w-6 shrink-0 rounded-md"
+          style={{ imageRendering: 'pixelated' }}
+        />
+        <span className="font-heading shrink-0 text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+          WormBench Sol
+        </span>
+      </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{project.name}</div>
       </div>

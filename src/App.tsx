@@ -21,6 +21,7 @@ import {
 import type { PxlLibrary } from './types/pxl';
 import { parsePxlLibrary } from './utils/pxl/loadPxl';
 import { exportPackZip, saveExportBlob } from './utils/modExporter';
+import { assetUrl } from './utils/assetUrl';
 import { DEFAULT_ID_NAMESPACE } from './utils/weaponId';
 import { generateLuaCode, sanitizeModFolder } from './utils/luaGenerator';
 import {
@@ -865,19 +866,29 @@ export default function App() {
         <footer className="border-t border-stone-200/80 bg-white/60 py-4 dark:border-stone-800 dark:bg-stone-900/40">
           <div className="mx-auto w-full max-w-6xl space-y-2 px-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500 dark:text-stone-400">
-              <span>
-                WormBench Sol Weapon Studio{' '}
-                <span className="text-stone-400 dark:text-stone-500">
-                  (for WormBench by{' '}
-                  <a
-                    href="https://github.com/EdLud"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-stone-300 underline-offset-2 hover:text-stone-700 dark:decoration-stone-700 dark:hover:text-stone-200"
-                  >
-                    Eule
-                  </a>
-                  )
+              <span className="inline-flex items-center gap-2">
+                <img
+                  src={assetUrl('assets/wormbench-sol-mark.png')}
+                  alt=""
+                  width={20}
+                  height={20}
+                  className="h-5 w-5 shrink-0 object-contain"
+                  style={{ imageRendering: 'pixelated' }}
+                />
+                <span>
+                  WormBench Sol Weapon Studio{' '}
+                  <span className="text-stone-400 dark:text-stone-500">
+                    (for WormBench by{' '}
+                    <a
+                      href="https://github.com/EdLud"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline decoration-stone-300 underline-offset-2 hover:text-stone-700 dark:decoration-stone-700 dark:hover:text-stone-200"
+                    >
+                      Eule
+                    </a>
+                    )
+                  </span>
                 </span>
               </span>
               <span className="font-mono">

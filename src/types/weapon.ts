@@ -1282,6 +1282,13 @@ export interface RoamActionConfig {
   gas_animal_sprite: number;
   flight_1: number;
   flight_2: number;
+  /**
+   * This animal stays on the ground: no Space takeoff. The record's
+   * `sheep.flight_1/2` are written as 0 and `sb.flight` gets no `roam` table,
+   * so the builder draws the ground pose only. False/undefined keeps the
+   * normal builder takeoff, including the sentinel that hides WA's flown art.
+   */
+  grounded?: boolean;
   hits: CollisionMask;
   flight_hits: CollisionMask;
 }

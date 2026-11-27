@@ -1,7 +1,7 @@
-# AGENTS.md, WormBench Weapon Studio
+# AGENTS.md, WormBench Sol Weapon Studio
 
-Canonical repository: `C:\Users\lucia\Documents\GitHub\WormForge Weapon Editor` (the folder name predates the WormBench rename).
-Do not edit the old duplicate at `...\Worm-Forge-Lua-Editor\WormForgeWeaponEditor` or the companion code editor in `...\Worm-Forge-Lua-Editor`.
+Canonical repository: `C:\Users\lucia\Documents\GitHub\WormForge Weapon Editor` (the folder name predates the WormBench-Sol rename).
+Do not edit the old duplicate at `...\Worm-Forge-Lua-Editor\WormForgeWeaponEditor` or the companion code editor (**WormBench-Luna**, local folder `...\Worm-Forge-Lua-Editor` / `...\WormBench-Luna`).
 The engine ground truth is the `WormBench-engine` checkout (a local copy may still be named `WormForgeNew`).
 Detailed bug postmortems, changelogs, and design history live in `wf_weapon_editor_notes.md`; keep this file focused, factual, and under 21 KB.
 
@@ -101,7 +101,7 @@ bun run tauri:build    # desktop installer
 
 - **WormBench bundle layout**: `mod.toml` (`api_version = 5`, `format_version = 2`), `weapons/<mod>.lua`, `profiles/<Name>.toml`, optional `weps/<file>.wep`, `sprites/<mod>/*`, `sounds/<mod>/*`, plus `wf-lib/wfws_sdk/` (always) and `wf-lib/effects_sdk/` (when effects are used). `copy_from = "stock.<slot>"` and `wep = "..."` are mutually exclusive.
 - **Weapon options (`[[components.options]]`)**: Declared on the component; only non-default values are written to `profiles/<Name>.toml` under `[options."<id>"]`. `data = true` binds an integer weapon data field.
-- **API 5 compatibility**: Importer dual-reads API 4 (`cluster = { ... }`, `:hurt`, `on_bump`) and API 5 (`cluster_sprite`, `cluster_homing_sprite`, `:hit`, `on_contact`) and auto-runs `migrateApi4Lua` (`src/utils/api4Migration.ts`) on `api_version < 5` bundles. Pending engine keys missing from older `wfcheck` builds live in `PENDING_ENGINE_KEYS` in `tools/check_pack_fixture.ts`.
+- **API 5 compatibility**: Importer dual-reads API 4 (`cluster = { ... }`, `:hurt`, `on_bump`) and API 5 (`cluster_sprite`, `cluster_homing_sprite`, `:hit`, `on_contact`) and auto-runs `migrateApi4Lua` (`src/utils/api4Migration.ts`) on `api_version < 5` bundles. Pending engine keys missing from older `wbcheck` builds live in `PENDING_ENGINE_KEYS` in `tools/check_pack_fixture.ts`.
 - **`.wep` parser (`wepParser.ts`)**: Magic `[0x06, 0xDD, 0xBB, 0x5A]`, Latin-1 name at `0x1E4`, `0x1D0` record slab at byte 4. Air strikes apply `STRIKE_SHIFT = 0x14` to body fields (not `strike.*`). Use `decodeRecordId()` to strip `0x10000` flags and `??` everywhere for numbers so `0` survives. Stores decoded `wepBaseline` for diffing; never trust filenames over decoded fields.
 - **`.pxl` reader (`src/utils/pxl/`)**: Zero-copy slice parser `readPxl`, `0x1E4` trailer `readWepManifest`, C-script scanner `readSpriteScripts` (`GetAttachment`/`LoadSprite`, `CWormAnimParams`, `WeapSpriteParams`, `CSoundFile`), and `importPxlWeapon` (`scriptHold` vs `project.wormSprites` poses + `SpritePickButton` picker).
 - **Mod reader (`src/utils/modLib/`)**:
@@ -109,7 +109,7 @@ bun run tauri:build    # desktop installer
   - `luaTable.ts` / `luaStrings.ts`: Extracts literal tables + `readCallTable` call arguments + `local CONST = "..."` string concatenations without executing Lua.
   - `mapRecord.ts` / `importFeatures.ts`: Full inverse of `luaGenerator.ts` (record groups, `recordExtra`, hold, flight roles, trail, explosion burst/blast, emitter, `fireSequence`, `airstrike`, `beam` + `pre_buffer` + `explosionEffect`, `terrainStamp` + `STAMP_HIT`, custom WAVs, `melee`). Balanced block scanner `extractBalancedLuaBody` + `maskLuaCode` avoids comment/nested-`end` misparses. Legacy beam `fx.burst` without `thickness`/`duration` stays in `beam.impactBurst`; full bursts/blasts import into `project.explosionEffect`.
   - `splitModule.ts` / `ownOutput.ts` / `carryClosure.ts`: Splits modules into preamble, install statements, `wa.on.*` registrations (filtering `worm_message` -> `msgs`, `body_move` -> `kinds`), and claim hooks; traces lexical block closures transitively, strips/re-emits `NOT_GENERATED_OPEN/CLOSE` markers around unmodelled code for idempotent round-trips, rewrites lockstep RNG/trig (`fixLockstepRng`), moves art paths cleanly, and wires `CarriedLuaPanel`.
-  - `stockDonors.json` & `recordField.ts`: 70 decoded donors; panels read override -> donor/wep baseline -> fallback (`tools/gen_stock_donors.ts` regenerates). `checkLua` (`luaCheck.ts`) mirrors `wfcheck` rule IDs/severities (`error` findings block export).
+  - `stockDonors.json` & `recordField.ts`: 70 decoded donors; panels read override -> donor/wep baseline -> fallback (`tools/gen_stock_donors.ts` regenerates). `checkLua` (`luaCheck.ts`) mirrors `wbcheck` rule IDs/severities (`error` findings block export).
 
 ---
 
@@ -120,7 +120,7 @@ bun run tauri:build    # desktop installer
 - **Flight sprite builder (`sb.flight`, `wfws_sprite_builder.lua`)**:
   - Forces `sprite = 0` on primary missiles (except stock walk poses) and emits `hold_as = "stock.<weapon>"` (`holdAsFor`) on thrown/placed donors unless hold art or melee owns the hands.
   - `classify` detects cluster bits by time/radius burst spawn window (`bit_window`/`bit_radius`, or `is_bit` / future `m.bit`), returning `sb.role(id)`.
-  - `anim = "roam"` mirrors horizontally (`facing = -1`, negated angle) with `roamTilt`; `sheep_sprites = { a, b }` uses two 32-frame strips and zeroes `sheep.flight_1/2` to `699` (never `0`!). Digging zeroes native `dig.*` sprites and probes terrain. Homing swaps timing via `a:look(sheet)`. Per-missile state expiry uses `wa.world.frame()`.
+  - `anim = "roam"` mirrors horizontally (`facing = -1`, negated angle) with `roamTilt`; `sheep_sprites = { a, b }` uses two 32-frame strips and writes the `699` sentinel to `sheep.flight_1/2` while flying; a grounded animal (`roamConfig.grounded`) writes `0` and drops `roam` instead. Digging zeroes native `dig.*` sprites and probes terrain. Homing swaps timing via `a:look(sheet)`. Per-missile state expiry uses `wa.world.frame()`.
 - **Aim layer & Melee (`sb.hold` / `wfws_swing.lua`)**:
   - `holdNeedsAimLayer` switches to `wa.draw.quad` rendering, muting WA's engine hand via `silent.png` and claiming every sheet path (`params = { gpu_prefix = "sprites/" }`).
   - `anim_speed = fps / (1.5 * frames)`. `hold.sheetFrames` controls `[sprites] frames`; `hold.frames` indexes cells. `draw_hand = false` emits `hand_radius = 0.01`, and `sb.hold` parks the engine hand at that radius but scales it to `0.001`; a parked hand at full scale still draws in the middle of the worm because the engine has no `draw_hand` key.
@@ -153,7 +153,7 @@ bun run tauri:build    # desktop installer
 
 ## 7. Validation Recipes
 
-Run core checks before finishing any change (add Playwright UI checks for UI work, and `wfcheck.exe` on exported bundles when verifying manifest/Lua compliance):
+Run core checks before finishing any change (add Playwright UI checks for UI work, and `wbcheck.exe` on exported bundles when verifying manifest/Lua compliance):
 
 ```powershell
 bun run lint                               # tsc --noEmit (0 errors)
@@ -162,7 +162,7 @@ bun run tools/gen_test_pack.ts             # builds test_pack/wftest_pack + READ
 bun run tools/check_copyfrom.ts            # donor baselines, diffs, hold_as
 bun run tools/check_sheet_dedupe.ts        # sheet dedupe & TOML declarations
 bun run tools/check_pack_roundtrip.ts      # pack emitter, namespacing, validation
-bun run tools/check_pack_fixture.ts        # byte-identical disk round-trip + wfcheck
+bun run tools/check_pack_fixture.ts        # byte-identical disk round-trip + wbcheck
 bun run tools/check_generator_edges.ts     # edge cases (beams, preBuffer, poison, cutShape, etc.)
 bun run tools/check_mod_import.ts          # full feature import round-trip
 bun run tools/check_lua_hooks.ts           # module splitting & hook registry
@@ -181,7 +181,7 @@ Python `lupa` SDK harnesses (`python tools/lua/<name>`):
 - `harness_flight.py`, `harness_flight_trail.py`, `harness_effects.py`, `harness_emitter_weapon.py`, `harness_trail_bits.py`, `check_roles.py`
 
 Compiler & smoke checks:
-- `& 'C:\Users\lucia\Documents\GitHub\Worm-Forge-Lua-Editor\compiler-cli\target\release\wfcheck.exe' --format pretty '<bundle>'`
+- `& 'C:\Users\lucia\Documents\GitHub\Worm-Forge-Lua-Editor\compiler-cli\target\release\wbcheck.exe' --format pretty '<bundle>'` (WormBench-Luna CLI)
 - Playwright headless Edge smoke (`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`), plus serve `dist/` under a fake `/repo/` subpath to verify relative `assetUrl()` paths.
 
 ---
@@ -193,5 +193,5 @@ Compiler & smoke checks:
 - **`wa._mod` is the component ID, not bundle ID**: Keep per-component registries aware of sibling components.
 - **One handler, one `onChange`**: Spreading stale `project` twice drops the first edit; batch via `updateOverrides(patch)` or single `onChange`.
 - **Keep `0` and `false`**: Always use `??` (never `||`) for record numbers and booleans; remember `stampAngleForFrame` returns degrees.
-- **Out of scope**: Companion Lua editor (`Worm-Forge-Lua-Editor`), silencing `wfcheck` upstream positives inside this repo, AI Studio leftovers (`metadata.json`), "API 4.0" strings.
+- **Out of scope**: Companion Lua editor (**WormBench-Luna** / `Worm-Forge-Lua-Editor`), silencing `wbcheck` upstream positives inside this repo, AI Studio leftovers (`metadata.json`), "API 4.0" strings.
 - **Maintenance**: Keep generator diff-based, parser zero-safe, `AGENTS.md` concise (**<= 21 KB**), and append detailed engineering write-ups to `wf_weapon_editor_notes.md`.

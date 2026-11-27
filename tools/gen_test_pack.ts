@@ -3972,7 +3972,7 @@ const toml: string[] = [
   `id = ${quote(MOD_ID)}`,
   `name = "WormBench Test Pack"`,
   'version = "0.1.0"',
-  'author = "WormBench Weapon Studio"',
+  'author = "WormBench Sol Weapon Studio"',
   'api_version = 5',
   'format_version = 2',
 ];

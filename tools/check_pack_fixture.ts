@@ -65,21 +65,26 @@ const fetchLocalBytes = async (url: string): Promise<Uint8Array | null> =>
 // by candidate instead of hard-coding one path: a stale path made this whole
 // assertion a silent no-op (`existsSync` false, nothing printed) for as long as
 // the binary had moved.
-const WFCHECK_CANDIDATES = [
+const WBCHECK_CANDIDATES = [
+  process.env.WBCHECK,
   process.env.WFCHECK,
+  'C:/Users/lucia/Documents/GitHub/WormBench-Luna/compiler-cli/target/release/wbcheck.exe',
+  'C:/Users/lucia/Documents/GitHub/WormBench-Luna/compiler-cli/wbcheck.exe',
+  'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/target/release/wbcheck.exe',
+  'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wbcheck.exe',
   'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/target/release/wfcheck.exe',
   'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wfcheck.exe',
-  'C:/Users/lucia/WormBench-code/compiler-cli/wfcheck.exe',
+  'C:/Users/lucia/WormBench-code/compiler-cli/wbcheck.exe',
 ].filter((path): path is string => Boolean(path));
-const WFCHECK = WFCHECK_CANDIDATES.find((path) => existsSync(path)) ?? null;
+const WBCHECK = WBCHECK_CANDIDATES.find((path) => existsSync(path)) ?? null;
 /**
- * Claim keys the engine reads in wkLua 1.0.0 RC3 (API 5) that the checker's own
- * schema is missing: `hold_as` lends a stock weapon's held pose,
+ * Claim keys the engine reads in WormBench 1.0.0 RC3 (API 5) that the checker's
+ * own schema is missing: `hold_as` lends a stock weapon's held pose,
  * `collects_crates` stops a ghost shot collecting a crate
  * (`crates/lua-host/src/bundles.rs` reads it, `crates/engine/src/grants.rs`
  * implements it), and `cluster_sprite`, `cluster_homing_sprite`,
  * `cluster_homing`, `armageddon` are API 5 claim keys. The 1.0 RC3.5 build
- * (`compiler-cli/target/release/wfcheck.exe`, `wfcheck 0.1.0`) still reports
+ * (`compiler-cli/target/release/wbcheck.exe`, `wbcheck 0.1.0`) still reports
  * `collects_crates`, so this is the checker's list to fix, not the bundle's.
  * Named one by one rather than filtered by rule, so any other unknown key
  * still fails the pack.
@@ -198,7 +203,7 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
   ok(`${label}: exports`, before.size > 0, `${before.size} files`);
 
   // What the engine would refuse, refused here instead.
-  if (WFCHECK) {
+  if (WBCHECK) {
     const dir = mkdtempSync(join(tmpdir(), 'wfpack-'));
     const folder = `${dirname([...before.keys()][0])}`;
     const root = join(dir, folder.split('/')[0]);
@@ -207,7 +212,7 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, typeof content === 'string' ? content : Buffer.from(content));
     }
-    const run = spawnSync(WFCHECK, ['--format', 'pretty', root], { encoding: 'utf8' });
+    const run = spawnSync(WBCHECK, ['--format', 'pretty', root], { encoding: 'utf8' });
     const raw = `${run.stdout ?? ''}${run.stderr ?? ''}`.trim();
     // Those keys are expected: they are the engine's own fields from 1.0.0.
     const pending = PENDING_ENGINE_KEYS.filter((key) => new RegExp(`Unrecognized spec key "${key}"`).test(raw));
@@ -222,13 +227,13 @@ async function roundTrip(label: string, files: ModFile[], ownOutput: boolean): P
     const findings = output.match(/\b(?:info|warning|error)\w*\[/g) ?? [];
     const errors = findings.filter((finding) => finding.startsWith('error')).length;
     ok(
-      ownOutput ? `${label}: wfcheck finds nothing` : `${label}: wfcheck finds no errors`,
+      ownOutput ? `${label}: wbcheck finds nothing` : `${label}: wbcheck finds no errors`,
       ownOutput ? findings.length === 0 : errors === 0,
       `${findings.length} finding line(s) left: ` + (raw.split(String.fromCharCode(10)).slice(0, 2).join(' | ') || 'no output'),
     );
     rmSync(dir, { recursive: true, force: true });
   } else {
-    console.log('  note: no wfcheck binary found, the engine-refusal check did not run');
+    console.log('  note: no wbcheck binary found, the engine-refusal check did not run');
   }
 
   const againFiles = toFiles(before);

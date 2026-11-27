@@ -455,7 +455,7 @@ export async function importBundleWeapon(
   }));
   // Read the module itself before anything is carried out of it: a bundle whose
   // own code would desync a match or fail at load is worth saying out loud at
-  // import, not discovering in game. The rules are `wfcheck`'s.
+  // import, not discovering in game. The rules are `wbcheck`'s.
   const luaFindings = checkLua(moduleText, { mode: 'module' });
   if (luaFindings.length > 0) {
     const errors = luaFindings.filter((finding) => finding.severity === 'error');

@@ -77,6 +77,7 @@ export const DEFAULT_ROAM: RoamActionConfig = {
   gas_animal_sprite: 0,
   flight_1: 0,
   flight_2: 0,
+  grounded: false,
   hits: { land: true, worms: true, mines: true, crates: true, water: true },
   flight_hits: { land: true, worms: true, mines: true, crates: true, water: true },
 };

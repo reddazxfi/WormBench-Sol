@@ -104,6 +104,7 @@ import { clampPoisonPower } from '../../data/poison';
 import { DEFAULT_EMITTER } from '../../data/emitter';
 import { DEFAULT_FIRE_SEQUENCE, DEFAULT_FIRE_SEQUENCE_HOMING } from '../../data/fireSequence';
 import { DEFAULT_CUSTOM_SOUNDS } from '../../data/soundPresets';
+import { DEFAULT_ROAM } from '../../data/defaults';
 import {
   DEFAULT_TERRAIN_STAMP,
   STAMP_FRAMES,
@@ -1774,6 +1775,18 @@ export async function readBundleFeatures(args: {
         // Roam has no native role of its own: the round's own sheet flies.
         behaviorArt.roam = { ...DEFAULT_ROAM_ROLE_ART, mode: 'inherit' };
       }
+    }
+    // A generated ground-only animal writes 0 to both flight sprites and no
+    // `roam` table. Re-importing that keeps it grounded: without the flag the
+    // builder would take the takeoff back and emit the 699 sentinel again.
+    if (
+      project.action === 'roam' &&
+      project.missileSprite?.enabled === true &&
+      f.roam === undefined &&
+      (project.roamConfig?.flight_1 ?? 0) === 0 &&
+      (project.roamConfig?.flight_2 ?? 0) === 0
+    ) {
+      project.roamConfig = { ...DEFAULT_ROAM, ...project.roamConfig, grounded: true };
     }
     project.behaviorArt = behaviorArt;
     if (isTable(f.states)) {

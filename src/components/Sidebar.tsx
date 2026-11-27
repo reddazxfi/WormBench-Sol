@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="flex shrink-0 items-center justify-between border-b border-stone-200/80 px-4 py-3.5 dark:border-stone-800">
       <div className="min-w-0">
         <div className="font-heading text-lg font-semibold leading-tight tracking-tight text-stone-900 dark:text-stone-100">
-          WormBench
+          WormBench Sol
         </div>
         <div className="mt-0.5 text-[11px] font-medium text-stone-400 dark:text-stone-500">
           Weapon Studio
@@ -318,7 +318,7 @@ export const MobileBar: React.FC<MobileBarProps> = ({
   <div className="sticky top-0 z-40 border-b border-stone-200/90 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 lg:hidden">
     <div className="flex items-center gap-2 px-4 py-2">
       <span className="font-heading shrink-0 text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-        WormBench
+        WormBench Sol
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{project.name}</div>

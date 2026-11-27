@@ -5,14 +5,14 @@ const CLAIM_HOOK_SET = new Set<string>(CLAIM_HOOK_KEYS);
 
 /**
  * The editor's own reading of a piece of Lua, checked against the rules the
- * engine (and `wfcheck`) enforce, before it is written into a bundle.
+ * engine (and `wbcheck`) enforce, before it is written into a bundle.
  *
  * Nothing here runs the code. Every check is a scan of the masked copy, so a
  * `math.sin` in a comment or a `pairs` inside a string is not a finding, and the
  * only cost is a linear pass. The shared rule ids and, more importantly, their
  * severities are the compiler's (`compiler-cli/src/checks.rs`, and the app's
  * `services/parser.ts` baseline), because a finding that lands in a different
- * console filter than the same finding in `wfcheck` is a new bug of its own:
+ * console filter than the same finding in `wbcheck` is a new bug of its own:
  *
  * - `lockstep-rng`: `math.random`/`randomseed` are **errors** (the sandbox nils
  *   them, so the call raises wherever it runs), `math.cos`/`sin`/`atan` are
@@ -49,7 +49,7 @@ export type LuaRule =
   | 'undefined-global'
   | 'undeclared-require';
 
-/** `wfcheck`'s own three levels. `info` is an advisory, never a blocker. */
+/** `wbcheck`'s own three levels. `info` is an advisory, never a blocker. */
 export type LuaSeverity = 'error' | 'warning' | 'info';
 
 export interface LuaFinding {
@@ -69,7 +69,7 @@ export interface LuaFinding {
   /**
    * The finding is inside a block the editor did not generate (the custom
    * `on_explode` body, which is where an imported bundle's hook lands and where
-   * the author's own snippet goes). The severity is still `wfcheck`'s; this only
+   * the author's own snippet goes). The severity is still `wbcheck`'s; this only
    * says that nothing in the emitted file declares what the block reads, so it
    * fails when the hook runs.
    */

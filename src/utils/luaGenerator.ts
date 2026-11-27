@@ -1563,17 +1563,31 @@ export function roamSheetPaths(
  * installed nor referenced and the uploads stay dormant while it is on.
  */
 export function roamSheetsOwnFlight(project: WeaponProject): boolean {
+  if (roamGrounded(project)) return false;
   if (primaryBuilderOn(project) && project.action === 'roam') return false;
   return !!roamSheetPaths(project);
 }
 
 /**
+ * The author's explicit "stays on the ground" choice. WA lets a roaming animal
+ * take off on Space; a ground-only weapon writes 0 to `sheep.flight_1/2` (the
+ * record's own takeoff gate) and drops `roam` from `sb.flight`. The old
+ * behaviour could not honour that 0: the builder overwrote it with the 699
+ * sentinel on every export, so setting the fields to 0 looked like it did
+ * nothing. The flag is editor-only and never written to the record.
+ */
+export function roamGrounded(project: WeaponProject): boolean {
+  return project.action === 'roam' && project.roamConfig?.grounded === true;
+}
+
+/**
  * The sprite id the generator writes into a builder-owned roaming record's
  * `sheep.flight_1/2`. WA reads a zero there as "this animal cannot fly" and the
- * Space takeoff does nothing, so the fields need a nonzero value that draws
- * nothing: 699 is not a stock sprite and no pack gets that slot. It is also the
- * marker the builder watches for, since WA moves the flown sprite into the
- * render slot at the takeoff.
+ * Space takeoff does nothing, so a flying builder needs a nonzero value that
+ * draws nothing: 699 is not a stock sprite and no pack gets that slot. It is
+ * also the marker the builder watches for, since WA moves the flown sprite into
+ * the render slot at the takeoff. A grounded animal (`roamConfig.grounded`)
+ * writes the real 0 instead and gets no `roam` table, so it never takes off.
  */
 export const ROAM_FLY_SENTINEL = 699;
 
@@ -1881,7 +1895,11 @@ export function wfwsRoleFlags(project: WeaponProject) {
       mode('homing_bit') === 'builder',
     // A roaming animal's flown art can be its own role. `native` (or no row)
     // keeps the primary sheet, which is what every bundle written so far does.
-    roam: builderOn && project.action === 'roam' && mode('roam') === 'builder',
+    roam:
+      builderOn &&
+      project.action === 'roam' &&
+      !roamGrounded(project) &&
+      mode('roam') === 'builder',
     zeroMainHoming:
       builderOn && project.action === 'homing' && (mode('homing') ?? 'inherit') !== 'native',
     zeroBitHoming:
@@ -2707,7 +2725,7 @@ export function generateLuaCode(project: WeaponProject): string {
   // key names, written back over the base record so the module's declared
   // values win and every key it does not declare keeps the `.wep`/donor value.
   // They are emitted as explicit assignments rather than a `pairs` merge: the
-  // order is then fixed in the file, which is what wfcheck's `lockstep-pairs`
+  // order is then fixed in the file, which is what wbcheck's `lockstep-pairs`
   // rule wants, and the result reads like the record it came from.
   const extraAssignments = project.recordExtra ? recordAssignments(project.recordExtra) : [];
 
@@ -4150,7 +4168,14 @@ export function generateLuaCode(project: WeaponProject): string {
     return true;
   };
   const fireTouched = !baseline || !sameGroup(project.fireConfig, baseline.fireConfig);
-  const roamTouched = !baseline || !sameGroup(project.roamConfig, baseline.roamConfig);
+  // `grounded` is editor-only: it decides whether the builder takes the
+  // takeoff, and must not make the record group look edited on its own.
+  const roamTouched =
+    !baseline ||
+    !sameGroup(
+      { ...project.roamConfig, grounded: undefined },
+      { ...baseline.roamConfig, grounded: undefined },
+    );
   const digTouched = !baseline || !sameGroup(project.digConfig, baseline.digConfig);
   // Behaviour states write their sentinel sprite ids into the record so the
   // builder always has a nonzero `m.sprite` to match. One lookup per group.
@@ -5032,7 +5057,7 @@ export function generateLuaCode(project: WeaponProject): string {
     // `sheep_sprites` installs both sheets and writes these two fields itself
     // after the record tables are applied, so numbering them here would only be
     // overwritten (and a 0 would look like it did something).
-    const builderOwnsRoamFlight = builderOn && action === 'roam';
+    const builderOwnsRoamFlight = builderOn && action === 'roam' && !roamGrounded(project);
     const roamSheetsOwnFlyingState = roamSheetsOwnFlight(project);
     // A stock-based project has no baseline and starts at 0/0, so writing the
     // group on "no baseline" alone would delete WA's flying art on an untouched
@@ -5040,6 +5065,7 @@ export function generateLuaCode(project: WeaponProject): string {
     // state writes it.
     const writesSheep =
       builderOwnsRoamFlight ||
+      roamGrounded(project) ||
       !!roamFlightState ||
       sheepTouched ||
       roamFlightOne !== 0 ||
@@ -5054,16 +5080,24 @@ export function generateLuaCode(project: WeaponProject): string {
       // uses non-zero as a capability check). We use unassigned sentinel 699: it
       // passes that check and draws nothing, so the builder's own sheet is the
       // only art once the animal is airborne.
-      const flightOne = builderOwnsRoamFlight
-        ? ROAM_FLY_SENTINEL
-        : roamFlightState?.assigned.roam_flight_1 !== undefined
-          ? roamFlightState.assigned.roam_flight_1
-          : roamFlightOne;
-      const flightTwo = builderOwnsRoamFlight
-        ? ROAM_FLY_SENTINEL
-        : roamFlightState?.assigned.roam_flight_2 !== undefined
-          ? roamFlightState.assigned.roam_flight_2
-          : roamFlightTwo;
+      // Grounded writes the record's own 0, the value WA reads as "no
+      // takeoff". A builder that owns the flight instead gets the unassigned
+      // sentinel, which passes WA's capability check and draws nothing.
+      const grounded = roamGrounded(project);
+      const flightOne = grounded
+        ? 0
+        : builderOwnsRoamFlight
+          ? ROAM_FLY_SENTINEL
+          : roamFlightState?.assigned.roam_flight_1 !== undefined
+            ? roamFlightState.assigned.roam_flight_1
+            : roamFlightOne;
+      const flightTwo = grounded
+        ? 0
+        : builderOwnsRoamFlight
+          ? ROAM_FLY_SENTINEL
+          : roamFlightState?.assigned.roam_flight_2 !== undefined
+            ? roamFlightState.assigned.roam_flight_2
+            : roamFlightTwo;
       lines.push(`        flight_1 = ${flightOne},`);
       lines.push(`        flight_2 = ${flightTwo},`);
       lines.push('      },');
@@ -6336,7 +6370,7 @@ export function generateLuaCode(project: WeaponProject): string {
     // alone cannot identify it). `fly` is the sentinel `sheep.flight_1` carries,
     // which WA moves into the render slot as it takes off, an exact takeoff
     // signal that does not depend on catching the key press.
-    if (project.action === 'roam') {
+    if (project.action === 'roam' && !roamGrounded(project)) {
       const roamArt = project.behaviorArt?.roam;
       if (roamRole && roamArt) {
         // Its own role: the animal is still WA's until Space (`walk` is the

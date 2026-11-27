@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title WormBench Weapon Studio - dev server
+title WormBench Sol Weapon Studio - dev server
 cd /d "%~dp0"
 
 echo ============================================================
-echo  WormBench Weapon Studio
+echo  WormBench Sol Weapon Studio
 echo ============================================================
 echo.
 

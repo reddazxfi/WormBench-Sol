@@ -1,4 +1,4 @@
-# WormBench Weapon Studio
+# WormBench Sol Weapon Studio
 
 > Modern TypeScript & React Weapon Studio and Record Architect for **WormBench**.  
 > Import legacy Project X `.wep` files, configure weapon records, preview PX hold art and 50 Hz missile flight sprites, and export ready-to-play mod packages.
@@ -139,7 +139,7 @@ Drop the extracted folder into `WormBench/Mods/` next to `wf-lib/` and launch Wo
 - **WormBench modding engine:** [Eule](https://github.com/EdLud)
 - **Sprite Builder:** PyroMan
 - **Terrain Stamp idea (Project X):** Zed
-- **WormBench Weapon Studio:** all other features, previews, SDK extensions and ideas by the project author
+- **WormBench Sol Weapon Studio:** all other features, previews, SDK extensions and ideas by the project author
 
 ### Disclaimer
 

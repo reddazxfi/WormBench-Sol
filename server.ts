@@ -27,7 +27,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`WormBench Weapon Studio running on http://0.0.0.0:${PORT}`);
+    console.log(`WormBench Sol Weapon Studio running on http://0.0.0.0:${PORT}`);
   });
 }
 

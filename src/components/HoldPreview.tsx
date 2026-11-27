@@ -21,6 +21,7 @@ import {
   flightTrailSheetPath,
   flightTrailRows,
   ROAM_FLY_SENTINEL,
+  roamGrounded,
   roamWalkPoseId,
 } from '../utils/luaGenerator';
 import { StockSpriteInput } from './StockSpriteInput';
@@ -5909,13 +5910,15 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 {/* Native Sprite Hidden Badge */}
                 <div
                   className="p-3 rounded-xl border border-forge-200 dark:border-forge-900/60 bg-forge-50/50 dark:bg-forge-950/20 flex items-center justify-between gap-2"
-                  title="Always written while the builder is on: hides WA's native round (m.sprite = 0). Cluster bits retain a marker id and are classified as bits."
+                  title="Written while the builder is on: hides WA's native round (m.sprite = 0). A grounded roaming animal also writes 0 to sheep.flight_1/2. Cluster bits retain a marker id and are classified as bits."
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <CheckCircle2 className="w-4 h-4 text-forge-600 dark:text-forge-400 shrink-0" />
                     <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 truncate">
                       {activeFlightRole === 'roam'
-                        ? 'Zeroes sheep.flight_1/2'
+                        ? roamGrounded(project)
+                          ? 'Grounds the animal'
+                          : 'Hides native flight art'
                         : activeFlightRole === 'dig'
                           ? digRoleMode === 'native'
                             ? 'Keeps WA dig sprites'
@@ -5929,7 +5932,9 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   </div>
                   <code className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white dark:bg-stone-900 border border-forge-200 dark:border-forge-800 text-forge-700 dark:text-forge-300 shrink-0">
                     {activeFlightRole === 'roam'
-                      ? 'flight = 0'
+                      ? roamGrounded(project)
+                        ? 'flight = 0'
+                        : 'flight = 699'
                       : activeFlightRole === 'dig'
                         ? digRoleMode === 'native'
                           ? 'native'
@@ -6455,9 +6460,35 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                         </p>
                       </div>
                       {builderOn && (
-                        <p className="text-[11px] rounded-lg border border-amber-300/70 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-amber-800 dark:text-amber-200">
-                          The flight builder owns the takeoff (<code className="font-mono">roam</code>): it waits for Space and zeroes <code className="font-mono">sheep.flight_1/2</code>, so the two native strips below are not installed. Turn the builder off to export them instead.
-                        </p>
+                        <div className="space-y-2">
+                          <p className="text-[11px] rounded-lg border border-amber-300/70 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-amber-800 dark:text-amber-200">
+                            {roamGrounded(project)
+                              ? 'This animal stays on the ground: the export writes 0 to sheep.flight_1/2 and sends no roam table, so Space never takes off. The native strips below are not installed.'
+                              : 'The flight builder owns the takeoff (roam): it waits for Space and writes the 699 sentinel to sheep.flight_1/2, so the two native strips below are not installed. Turn the builder off to export them instead.'}
+                          </p>
+                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 dark:border-stone-700 dark:bg-stone-900">
+                            <input
+                              type="checkbox"
+                              checked={roamGrounded(project)}
+                              onChange={(e) => {
+                                const grounded = e.target.checked;
+                                onChange({
+                                  roamConfig: {
+                                    ...project.roamConfig,
+                                    grounded,
+                                    ...(grounded
+                                      ? { flight_1: 0, flight_2: 0 }
+                                      : { flight_1: ROAM_FLY_SENTINEL, flight_2: ROAM_FLY_SENTINEL }),
+                                  },
+                                });
+                              }}
+                              className="h-3.5 w-3.5 rounded text-forge-600 focus:ring-forge-500"
+                            />
+                            <span className="text-xs font-medium text-stone-800 dark:text-stone-100">
+                              Keep this animal on the ground (no Space takeoff)
+                            </span>
+                          </label>
+                        </div>
                       )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <RoamSheetField

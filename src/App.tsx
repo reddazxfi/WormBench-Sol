@@ -866,7 +866,7 @@ export default function App() {
           <div className="mx-auto w-full max-w-6xl space-y-2 px-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500 dark:text-stone-400">
               <span>
-                WormBench Weapon Studio{' '}
+                WormBench Sol Weapon Studio{' '}
                 <span className="text-stone-400 dark:text-stone-500">
                   (for WormBench by{' '}
                   <a

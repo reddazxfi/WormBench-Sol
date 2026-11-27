@@ -4,7 +4,7 @@
  *
  *   bun run tools/check_lua_rules.ts
  *
- * The rule ids are `wfcheck`'s, so a finding here means the same thing in the
+ * The rule ids are `wbcheck`'s, so a finding here means the same thing in the
  * compiler. Every case is a fragment of the shape an import or a custom body
  * really has, including the two regressions this milestone exists for:
  *
@@ -90,7 +90,7 @@ const has = (code: string, rule: string, opts?: Parameters<typeof checkLua>[1]) 
     'ipairs is not',
     rules('local t = {}\nfor i, v in ipairs(t) do wa.log(i, v) end') === '',
   );
-  // `next(t)` walks the same hash order, but neither `wfcheck` nor the app's
+  // `next(t)` walks the same hash order, but neither `wbcheck` nor the app's
   // baseline reports it, and a finding that only this editor raises would make
   // the same file disagree between the two tools.
   check('next is not reported', rules('local t = {}\nlocal k = next(t)') === '');

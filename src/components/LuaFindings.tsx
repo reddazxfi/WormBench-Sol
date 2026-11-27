@@ -18,7 +18,7 @@ interface LuaFindingsProps {
  * The report `checkLua` returns, as rows. Nothing renders when the code is
  * clean: a green tick on every weapon is noise, a finding is the message.
  *
- * The three bands are `wfcheck`'s, because the same finding has to look the same
+ * The three bands are `wbcheck`'s, because the same finding has to look the same
  * in both tools: `error` is a red banner (the code raises or desyncs), `warning`
  * is amber, and `info` is a neutral advisory (`pairs()`, a nil an `or` already
  * covers) which is why an advisories-only file keeps the quiet border. A row

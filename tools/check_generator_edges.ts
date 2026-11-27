@@ -26,7 +26,7 @@ import {
   flightTrailSheetPath,
 } from '../src/utils/luaGenerator';
 import { DEFAULT_ROLE_ART, DEFAULT_DIG_ROLE_ART } from '../src/data/spriteBuilder';
-import { DEFAULT_CLUSTLET } from '../src/data/defaults';
+import { DEFAULT_CLUSTLET, DEFAULT_ROAM } from '../src/data/defaults';
 import { stockDonor, stockDonorBaseline } from '../src/data/stockDonors';
 import { DEFAULT_BODY } from '../src/data/defaults';
 import { getStockPanelPosition } from '../src/data/stockWeapons';
@@ -2823,6 +2823,59 @@ local afterHook = 42`;
     homingTrailLua.includes(`sheet = "${flightTrailSheetPath(homingTrailProject, 'homing')}"`) &&
       homingTrailLua.includes('sprite = 0, power = 0, speed = 0,'),
     homingTrailLua,
+  );
+}
+
+// ---- a ground-only roaming animal is not forced to fly by the builder -----
+{
+  const pngFile = new File([new Uint8Array([137, 80, 78, 71])], 'roam.png', { type: 'image/png' });
+  const roamProject = makeProject({
+    action: 'roam',
+    roamConfig: {
+      ...DEFAULT_ROAM,
+      flight_1: 0,
+      flight_2: 0,
+      grounded: true,
+    },
+    missileSprite: {
+      enabled: true,
+      mode: 'custom',
+      stockSprite: '',
+      sheet: '',
+      sheetFile: pngFile,
+      anim: 'track',
+      frames: 1,
+      fps: 15,
+      animSpeed: 1,
+      spinRate: 1,
+      scale: 1,
+      mirror: true,
+      z: 5,
+      animate: false,
+      spin: true,
+      hideStock: true,
+    },
+  });
+  const groundedLua = generateLuaCode(roamProject);
+  check(
+    'a grounded roam builder writes sheep.flight_1/2 = 0 and no roam table',
+    groundedLua.includes('        flight_1 = 0,') &&
+      groundedLua.includes('        flight_2 = 0,') &&
+      !groundedLua.includes('699') &&
+      !/^\s+roam = (true|\{ walk)/m.test(groundedLua),
+    groundedLua,
+  );
+
+  const flyingLua = generateLuaCode({
+    ...roamProject,
+    roamConfig: { ...roamProject.roamConfig, grounded: false },
+  });
+  check(
+    'turning the ground flag off gives the builder its 699 takeoff sentinel again',
+    flyingLua.includes('        flight_1 = 699,') &&
+      flyingLua.includes('        flight_2 = 699,') &&
+      /^\s+roam = \{ walk = \d+, fly = 699 \},/m.test(flyingLua),
+    flyingLua,
   );
 }
 

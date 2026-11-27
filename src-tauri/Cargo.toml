@@ -1,10 +1,10 @@
 [package]
-name = "wormbench-weapon-studio"
+name = "wormbench-sol"
 version = "1.0.0"
-description = "WormBench Weapon Studio"
+description = "WormBench Sol Weapon Studio"
 authors = ["LucianoWorms"]
 edition = "2021"
-default-run = "wormbench-weapon-studio"
+default-run = "wormbench-sol"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

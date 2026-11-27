@@ -1448,13 +1448,23 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                       numeric
                       placeholder="0"
                       value={project.roamConfig?.flight_1 ?? 0}
-                      onChange={(v) =>
-                        Number.isFinite(Number(v)) &&
+                      onChange={(v) => {
+                        if (!Number.isFinite(Number(v))) return;
+                        const flight_1 = v === '' ? 0 : Number(v);
+                        const flight_2 = project.roamConfig?.flight_2 ?? 0;
                         onChange({
-                          roamConfig: { ...project.roamConfig, flight_1: v === '' ? 0 : Number(v) },
-                        })
-                      }
-                      desc="Alternates with Flying Sprite 2 every 5 frames while steering. Replaced by custom sheets uploaded on Hold & Sprite Builder."
+                          roamConfig: {
+                            ...project.roamConfig,
+                            flight_1,
+                            ...(flight_1 === 0 && flight_2 === 0
+                              ? { grounded: true }
+                              : flight_1 !== 0
+                                ? { grounded: false }
+                                : {}),
+                          },
+                        });
+                      }}
+                      desc="Alternates with Flying Sprite 2 every 5 frames while steering. Replaced by custom sheets uploaded on Hold & Sprite Builder. Setting both flight sprites to 0 grounds the animal (no Space takeoff)."
                     />
                     <StockSpriteInput
                       id="roam-flight-2"
@@ -1463,15 +1473,34 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                       numeric
                       placeholder="0"
                       value={project.roamConfig?.flight_2 ?? 0}
-                      onChange={(v) =>
-                        Number.isFinite(Number(v)) &&
+                      onChange={(v) => {
+                        if (!Number.isFinite(Number(v))) return;
+                        const flight_2 = v === '' ? 0 : Number(v);
+                        const flight_1 = project.roamConfig?.flight_1 ?? 0;
                         onChange({
-                          roamConfig: { ...project.roamConfig, flight_2: v === '' ? 0 : Number(v) },
-                        })
-                      }
-                      desc="Second flying rotation strip (Super Sheep uses 154/155, Aqua Sheep 156/157)."
+                          roamConfig: {
+                            ...project.roamConfig,
+                            flight_2,
+                            ...(flight_1 === 0 && flight_2 === 0
+                              ? { grounded: true }
+                              : flight_2 !== 0
+                                ? { grounded: false }
+                                : {}),
+                          },
+                        });
+                      }}
+                      desc="Second flying rotation strip (Super Sheep uses 154/155, Aqua Sheep 156/157). Setting both flight sprites to 0 grounds the animal (no Space takeoff)."
                     />
                   </div>
+                  <CheckboxCard
+                    checked={project.roamConfig?.grounded === true}
+                    onChange={(grounded) =>
+                      onChange({ roamConfig: { ...project.roamConfig, grounded } })
+                    }
+                    label="Stays on the ground (no Space takeoff)"
+                    code="roamConfig.grounded"
+                    desc="Writes 0 to sheep.flight_1/2 and drops roam from the flight builder, so WA never takes off. Turn this off to fly with the builder's sentinel art or the two native sheets."
+                  />
                 </div>
 
                 <div className="space-y-2 border-t border-stone-200/80 pt-3 dark:border-stone-800">

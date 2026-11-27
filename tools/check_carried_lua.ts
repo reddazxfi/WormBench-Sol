@@ -44,7 +44,7 @@ import { DEFAULT_CUSTOM_SOUNDS } from '../src/data/soundPresets';
 import { DEFAULT_BODY, DEFAULT_DIG, DEFAULT_FIRE, DEFAULT_ROAM } from '../src/data/defaults';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const MODS = 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = 'D:/Worms Armageddon/WormBench/Mods';
 const BUNDLE = join(ROOT, 'test_pack', 'wftest_pack');
 
 const failures: string[] = [];

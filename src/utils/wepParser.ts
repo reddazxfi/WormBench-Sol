@@ -797,7 +797,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   const projectState: Partial<WeaponProject> = {
     id: cleanId,
     name: weaponName,
-    description: `Project X port of ${weaponName} for WormForge.`,
+    description: `Project X port of ${weaponName} for WormBench.`,
     slot: inferredDonor,
     based_on: inferredDonor,
     fireType,

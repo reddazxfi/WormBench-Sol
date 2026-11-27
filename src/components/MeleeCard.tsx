@@ -782,7 +782,7 @@ export const MeleeCard: React.FC<MeleeCardProps> = ({ project, onChange }) => {
 
           <label
             htmlFor="melee-log"
-            title="Print the swing and the strike to WormForge's log: the hit tick, the scan vector and every worm the box took. It is the only way to tell a swing that never started from one that started and found nothing."
+            title="Print the swing and the strike to WormBench's log: the hit tick, the scan vector and every worm the box took. It is the only way to tell a swing that never started from one that started and found nothing."
             className="flex cursor-pointer items-start gap-2 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-800"
           >
             <input

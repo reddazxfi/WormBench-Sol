@@ -2551,7 +2551,7 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
             <p className="rounded-lg bg-amber-50/70 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
               <b>Spray inspection mode:</b> Native spray records share the raw{' '}
               <code className="font-mono">0x3c–0x64</code> hitscan slab, so imported{' '}
-              <code className="font-mono">.wep</code> flame values decode here for inspection. WormForge
+              <code className="font-mono">.wep</code> flame values decode here for inspection. WormBench
               omits <code className="font-mono">gun</code> on Lua export for spray weapons until
               dedicated spray fields exist.
             </p>

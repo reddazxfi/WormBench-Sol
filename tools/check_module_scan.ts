@@ -604,7 +604,7 @@ wa.weapons.replace{ missile = { sprite = 3 } }`,
 
 // ---------------------------------------------------------------------------
 // The real corpus, when it is mounted.
-const MODS = 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = 'D:/Worms Armageddon/WormBench/Mods';
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);

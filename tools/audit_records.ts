@@ -32,7 +32,7 @@ import { DEFAULT_ROLE_ART } from '../src/data/spriteBuilder';
 import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
 import { DEFAULT_CUSTOM_SOUNDS } from '../src/data/soundPresets';
 
-const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormBench/Mods';
 const DONOR_DIR = 'C:/Users/lucia/AppData/Local/Temp/wf_px/default';
 
 const MODEL_GROUPS = new Set([

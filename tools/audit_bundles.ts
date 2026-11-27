@@ -33,7 +33,7 @@ const LIBRARIES: PackLibraries = {
     spriteBuilderLua: readFileSync('spec/lua_sdk/wfws_sdk/lib/wfws_sprite_builder.lua', 'utf8'),
   },
 };
-const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormBench/Mods';
 
 const walk = (dir: string, out: string[] = []): string[] => {
   for (const name of readdirSync(dir)) {

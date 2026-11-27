@@ -1,7 +1,7 @@
 /**
  * Dev-only test pack generator.
  *
- * Writes one WormForge bundle with one component per test plus a profile that
+ * Writes one WormBench bundle with one component per test plus a profile that
  * places all of them, so an engine behaviour can be checked in one match.
  *
  * Every entry's slot is one of WA's own weapons, checked before anything is
@@ -30,7 +30,7 @@
  *
  * Run: `bun run tools/gen_test_pack.ts`
  * Output: `test_pack/wftest_pack/` (git-ignored), copy that folder into
- * `WormForge/Mods/`, pick the "WF Test Pack" profile, and every weapon is on
+ * `WormBench/Mods/`, pick the "WF Test Pack" profile, and every weapon is on
  * the panel with infinite ammo.
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -560,7 +560,7 @@ function makeOp(partial: {
     name: partial.name,
     description: partial.name,
     version: '0.1.0',
-    author: 'WormForge Test Pack',
+    author: 'WormBench Test Pack',
     slot: partial.slot,
     based_on: partial.slot,
     fireType: partial.fireType ?? 'power',
@@ -2712,9 +2712,9 @@ if (usesFireSeq) dependencies.push('px.fire_seq');
 
 const toml: string[] = [
   `id = ${quote(MOD_ID)}`,
-  `name = "WormForge Test Pack"`,
+  `name = "WormBench Test Pack"`,
   'version = "0.1.0"',
-  'author = "WormForge Weapon Editor"',
+  'author = "WormBench Weapon Editor"',
   'api_version = 4',
   'format_version = 2',
 ];
@@ -2743,7 +2743,7 @@ for (const rel of ['mod.toml', 'lib/wfws_sprite_builder.lua']) {
 // Profile: every test weapon placed, infinite ammo, plus the stock donors and
 // the two always-available utilities.
 const profile: string[] = [
-  `description = "All ${TESTS.length} WormForge behaviour tests in one match."`,
+  `description = "All ${TESTS.length} WormBench behaviour tests in one match."`,
   '',
   '[weapons]',
 ];
@@ -2759,9 +2759,9 @@ writeFileSync(join(BUNDLE, 'profiles', `${PROFILE}.toml`), profile.join('\n'));
 
 // README for the in-game run.
 const readme: string[] = [
-  '# WormForge Test Pack',
+  '# WormBench Test Pack',
   '',
-  `Drop \`wftest_pack/\` into \`WormForge/Mods/\`, pick the **${PROFILE}** profile, and`,
+  `Drop \`wftest_pack/\` into \`WormBench/Mods/\`, pick the **${PROFILE}** profile, and`,
   'every test weapon is on the panel with infinite ammo.',
   '',
   'All art is derived from the FAMAS sheets in `spec/`, not from WA: the main missile sheets are',

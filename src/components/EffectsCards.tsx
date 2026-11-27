@@ -868,7 +868,7 @@ export function ExplosionEffectCard({ project, onChange }: CardProps) {
   );
 }
 
-/** WormForge's custom sample bank caps one PCM WAV at 32 MiB. */
+/** WormBench's custom sample bank caps one PCM WAV at 32 MiB. */
 const MAX_WAV_BYTES = 32 * 1024 * 1024;
 
 interface SoundUploadProps {
@@ -888,7 +888,7 @@ export function SoundUpload({ id, asset, disabled, onPick, onRemove }: SoundUplo
     const file = files?.[0];
     if (!file) return;
     if (!/\.wav$/i.test(file.name)) {
-      setError('Use a .wav file, WormForge loads PCM WAVs only.');
+      setError('Use a .wav file, WormBench loads PCM WAVs only.');
       return;
     }
     if (file.size > MAX_WAV_BYTES) {

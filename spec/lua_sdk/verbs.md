@@ -1,8 +1,8 @@
-# WormForge Lua verbs
+# WormBench Lua verbs
 
 Every `wa` function, handle method, event and data field a pack can use, by area. It replaces the capabilities page.
 
-WormForge 0.9.53 · `api_version = 4` · updated 2026-11-01.
+WormBench 0.9.53 · `api_version = 4` · updated 2026-11-01.
 
 Lua speaks pixels: positions and sizes in pixels, speeds in pixels per frame, with fractions. The engine converts to WA's 16.16 once.
 
@@ -239,7 +239,7 @@ Also: `uses_per_turn`
 
 `extra_pickups = "keep" | "discard"`
 
-An instant utility with Auto-Use: what becomes of units past the turn's uses, banked for later turns or dropped. Units already held and infinite ammo are never dropped. WA's own four default to `discard`, as without Conserve Instant Utilities, which WormForge fixes. Since 0.9.82.
+An instant utility with Auto-Use: what becomes of units past the turn's uses, banked for later turns or dropped. Units already held and infinite ammo are never dropped. WA's own four default to `discard`, as without Conserve Instant Utilities, which WormBench fixes. Since 0.9.82.
 
 Also: `extra_pickups`
 

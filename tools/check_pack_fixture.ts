@@ -42,7 +42,7 @@ const LIBRARIES: PackLibraries = {
 };
 
 const WFCHECK = 'C:/Users/lucia/Documents/GitHub/Worm-Forge-Lua-Editor/compiler-cli/wfcheck.exe';
-const MODS = 'D:/Worms Armageddon/WormForge/Mods';
+const MODS = 'D:/Worms Armageddon/WormBench/Mods';
 const TEST_PACK = 'test_pack/wftest_pack';
 /** Real bundles with art on disk, so the fixture reads a foreign pack too. */
 const REAL_BUNDLES = [

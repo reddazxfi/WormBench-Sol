@@ -400,7 +400,7 @@ const lines = (...rows: string[]) => rows.join(nl);
 
 // ---- the four real bundles, when they are on disk ------------------------
 {
-  const MODS = 'D:/Worms Armageddon/WormForge/Mods';
+  const MODS = 'D:/Worms Armageddon/WormBench/Mods';
   const wanted: [string, string][] = [
     ['conductor', 'conductor/weapons/conductor.lua'],
     ['pulsar', 'pulsar/weapons/pulsar.lua'],

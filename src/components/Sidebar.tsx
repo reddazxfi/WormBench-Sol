@@ -132,11 +132,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   <aside className="fixed inset-y-0 left-0 z-40 hidden w-68 flex-col border-r border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900 lg:flex">
     <div className="border-b border-stone-100 px-5 pb-4 pt-5 dark:border-stone-800">
       <img
-        src={assetUrl('assets/wormforge-logo.png')}
-        alt="WormForge"
+        src={assetUrl('assets/wormbench-logo.png')}
+        alt="WormBench"
         width={327}
-        height={57}
-        className="h-8 w-auto"
+        height={83}
+        className="h-12 w-auto"
       />
       <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400 dark:text-stone-500">
         Weapon Studio
@@ -272,7 +272,7 @@ export const MobileBar: React.FC<MobileBarProps> = ({
 }) => (
   <div className="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 lg:hidden">
     <div className="flex items-center gap-2.5 px-4 py-2">
-      <img src={assetUrl('assets/wormforge-logo.png')} alt="WormForge" width={327} height={57} className="h-5 w-auto shrink-0" />
+      <img src={assetUrl('assets/wormbench-logo.png')} alt="WormBench" width={327} height={83} className="h-7 w-auto shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{project.name}</div>
         <div className="truncate font-mono text-[10px] text-stone-400">{project.id}</div>

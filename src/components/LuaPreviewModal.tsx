@@ -173,7 +173,7 @@ export const LuaPreviewModal: React.FC<LuaPreviewModalProps> = ({
           {activeFile === 'profile_toml' && 'Profile scheme placing the weapon alongside stock weapons for testing.'}
         </span>
         <span className="font-mono text-forge-600 dark:text-forge-400 font-semibold">
-          WormForge bundle
+          WormBench bundle
         </span>
       </div>
     </div>

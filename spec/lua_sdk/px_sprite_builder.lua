@@ -1,4 +1,4 @@
--- px_sprite_builder.lua -- PX's sprite builder, re-implemented for WormForge API 4.
+-- px_sprite_builder.lua -- PX's sprite builder, re-implemented for WormBench API 4.
 --
 -- Two jobs, ported from PX's sources:
 --
@@ -173,7 +173,7 @@ end
 -- with the builder (`worms_anims_script.txt:31-37`) -- and then draws the weapon
 -- and the hand on top, where its `CalculateAngle` puts them (:569-629).
 --
--- WormForge splits the same two halves between the engine and the pack: the
+-- WormBench splits the same two halves between the engine and the pack: the
 -- engine draws WA's worm from the claim's `worm_sprites`, then draws
 -- `spec.hold`'s weapon and hand over it (`crates/engine/src/worm_hold.rs`). The
 -- hold's fields are PX's `CWormAnimParams` verbatim -- `weap_radius`,

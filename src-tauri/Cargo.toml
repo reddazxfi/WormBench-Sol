@@ -1,10 +1,10 @@
 [package]
-name = "wormforge-weapon-studio"
+name = "wormbench-weapon-studio"
 version = "1.0.0"
-description = "WormForge Weapon Studio (API 4.0)"
+description = "WormBench Weapon Studio (API 4.0)"
 authors = ["LucianoWorms"]
 edition = "2021"
-default-run = "wormforge-weapon-studio"
+default-run = "wormbench-weapon-studio"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

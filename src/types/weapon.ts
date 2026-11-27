@@ -596,7 +596,7 @@ export interface CustomSoundAsset {
 /**
  * Custom pack WAVs. `explosion` plays once from the claim's `on_explode`; the
  * `interval` sound plays while the round flies, from `wa.on.missile_frame`.
- * WormForge resolves the paths from this bundle at load (`sounds = {...}`).
+ * WormBench resolves the paths from this bundle at load (`sounds = {...}`).
  */
 export interface CustomSoundsConfig {
   /**

@@ -509,7 +509,7 @@ export async function importBundleWeapon(
       name,
       description:
         weapon.description ?? `${name}, read from ${weapon.bundleName} (${weapon.bundleId}).`,
-      author: weapon.author ?? 'WormForge Author',
+      author: weapon.author ?? 'WormBench Author',
       panel_icon: features.project.panel_icon ?? project.panel_icon ?? donor,
       // A bundle import starts a new weapon, so only the module's own defaults
       // apply; the open/project baseline must not supply crate or retreat

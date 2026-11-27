@@ -19,7 +19,7 @@ const inputClass =
  * The bundle's own identity, which exists once it holds more than one weapon.
  *
  * `mod.toml` is one file per bundle: its `id` names the folder under
- * `WormForge/Mods/`, its `name` is what the mod loader lists, and `replaces` takes
+ * `WormBench/Mods/`, its `name` is what the mod loader lists, and `replaces` takes
  * other bundles over. A bundle of one weapon **is** that weapon
  * (`syncPackToSoleWeapon`), so its id, name, author and version are the ones on
  * the Weapon Loadout card above: this card says so instead of showing four more
@@ -101,7 +101,7 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1 font-mono text-[10px] text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
           <Boxes className="h-3 w-3" aria-hidden="true" />
-          WormForge/Mods/{folder}/
+          WormBench/Mods/{folder}/
         </span>
       </div>
 
@@ -176,7 +176,7 @@ export const PackSettingsCard: React.FC<PackSettingsCardProps> = ({
                 <input
                   className={inputClass}
                   value={pack.id}
-                  title="Unique across every installed bundle, and the namespace its weapons live under; it names the folder under WormForge/Mods/."
+                  title="Unique across every installed bundle, and the namespace its weapons live under; it names the folder under WormBench/Mods/."
                   onChange={(event) => renameBundle(event.target.value)}
                 />
               </label>

@@ -1,4 +1,4 @@
-# AGENTS.md, WormForge Weapon Studio
+# AGENTS.md, WormBench Weapon Studio
 
 This file is the hand-off memory for anyone (human or agent) maintaining this
 repository. It records what the app does, how it is wired, the engine rules the
@@ -13,7 +13,7 @@ edited.
 
 ## 0. Read this first: the engine is turn based and lockstep
 
-Worms Armageddon is a turn-based game, and WormForge runs it as a deterministic
+Worms Armageddon is a turn-based game, and WormBench runs it as a deterministic
 lockstep simulation. Everything below follows from that, so start here:
 
 - **One worm acts at a time.** It has the turn, its player's keyboard is the only
@@ -42,14 +42,14 @@ lockstep simulation. Everything below follows from that, so start here:
 
 ## 1. What this is
 
-A React 19 + TypeScript + Tailwind v4 editor for **WormForge** (Worms
+A React 19 + TypeScript + Tailwind v4 editor for **WormBench** (Worms
 Armageddon modding engine) weapons. It can:
 
 - import a Project X `.wep` binary and decode the native 0x1D0 record;
 - edit identity, donor/slot, defaults, flight physics, missile actions, burst
   payloads, collision masks, Lua callbacks, gun/mine/strike fields;
 - build the worm **hold art** preview and the 50 Hz **flight sprite** preview;
-- export a complete WormForge bundle (`mod.toml`, weapon Lua, profile, sprites,
+- export a complete WormBench bundle (`mod.toml`, weapon Lua, profile, sprites,
   optional `.wep`);
 - run as a web app (GitHub Pages), a local Express + Vite app, or a Tauri v2
   desktop app.
@@ -247,9 +247,9 @@ no Gemini/Antigravity route or `@google/genai` dependency; do not add them back.
 
 ---
 
-## 5. Domain model: WormForge bundles
+## 5. Domain model: WormBench bundles
 
-A bundle is a folder under `WormForge/Mods/`:
+A bundle is a folder under `WormBench/Mods/`:
 
 ```text
 <mod_folder>/
@@ -343,7 +343,7 @@ even though the UI must not display the phrase "API 4.0".
 - `.wep` filenames lie (`teleport.wep` can decode as "Super Tele"). Trust the
   decoded fields, not the name.
 
-Reference implementation: `WormForgeNew/crates/weapons/src/record.rs`,
+Reference implementation: `WormBench-engine/crates/weapons/src/record.rs`,
 `tools/record_fields.py`, `tools/embed_weps.py`.
 
 ---
@@ -394,7 +394,7 @@ import must emit no record tables.
   the groups share slots too, so only the active one is decoded or emitted.
 - Stock values are readable from PX's scheme:
   `python tools/px_scheme_weps.py "<WA+PX>/PXSchemes/default.pxs" OUT --all`
-  (in `WormForgeNew`) writes one `.wep` per slot.
+  (in `WormBench-engine`) writes one `.wep` per slot.
 
 **Dependencies** are added per feature: `wf.sdk` (holds), `wfws.sdk` (the flight
 builder and `sb.hold`), `effects.sdk` (ribbon trail and burst), `px.fire_seq`
@@ -1554,9 +1554,9 @@ rename moves the weapons that lived under the old prefix with it.
   actions; Export is `forge-600`, not red.
 - Light mode is the default. The toggle persists `wf_theme_v2`; `index.html`
   applies it before paint and `App.tsx` keeps `theme-color` in sync.
-- Branding: `public/assets/wormforge-logo.png` (327×57 wordmark) and
-  `wormforge-mark.png` (49×49, also the favicon), cropped from
-  `spec/modloader_banner.png`.
+- Branding: `public/assets/wormbench-logo.png` (654×166, shown at 327×83) and
+  `wormbench-mark.png` (98×98, also the favicon), made from the WormBench
+  logo.
 - **Weapon identity is the Weapon Loadout card**, not a record section: icon,
   name/id/description, author, fire archetype, donor, slot, position and the five
   defaults live in `WeaponSettings.tsx`, rendered above the workbench on the
@@ -1612,7 +1612,7 @@ rename moves the weapons that lived under the old prefix with it.
 - Accessibility conventions already in place: skip link, `aria-current` on nav,
   labelled icon-only buttons, labelled form controls, semantic
   `button`/`select`, `aria-live` toast, `prefers-reduced-motion`. Keep them.
-- Do not display "API 4.0" in UI copy. Say "WormForge format" or "WormForge
+- Do not display "API 4.0" in UI copy. Say "WormBench format" or "WormBench
   bundle".
 
 ---
@@ -1820,7 +1820,7 @@ symptom live in `test_pack/README.md`**: read it instead of guessing what a numb
 is for, and keep it in step when a test changes. The profile places every weapon
 on a distinct stock slot with infinite ammo.
 
-Stock record values (PX's default scheme, from `WormForgeNew`):
+Stock record values (PX's default scheme, from `WormBench-engine`):
 
 ```powershell
 python tools/px_scheme_weps.py "I:/Games/WA 3.6.31.0 + Project X by 0rang3/PXSchemes/default.pxs" OUT --all

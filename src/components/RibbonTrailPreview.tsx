@@ -5,7 +5,7 @@ import { assetUrl } from '../utils/assetUrl';
 import { tintedSheet } from '../utils/sheetTint';
 import frozenWormSrc from '../../spec/wicestnd.png';
 
-const TICK_MS = 20; // 50 Hz WormForge simulation tick
+const TICK_MS = 20; // 50 Hz WormBench simulation tick
 
 const TRAIL_SHEETS = {
   beam: assetUrl('assets/effects/beam.png'),

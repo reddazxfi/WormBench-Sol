@@ -1,7 +1,7 @@
 /**
  * WA's stock sprite table: `Gfx.dir` stem -> Display sprite id.
  *
- * Generated from `WormForgeNew/crates/gfx/src/stock_ids.rs` (the engine's own
+ * Generated from `WormBench-engine/crates/gfx/src/stock_ids.rs` (the engine's own
  * table, 694 entries). The editor needs it because a record sprite field takes
  * a *stock name* or a numeric id, never an arbitrary string: the engine resolves
  * names, and anything it does not recognise is read as a bundle path -- an

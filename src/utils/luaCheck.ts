@@ -112,7 +112,7 @@ const BASE_AMBIENT = [
   // Load-time helpers the engine's sandbox nils out: reading one is not a typo,
   // using one is a separate problem.
   'dofile', 'loadfile', 'load', 'require', 'collectgarbage',
-  // WormForge
+  // WormBench
   'wa',
 ];
 

@@ -2357,7 +2357,7 @@ export function generateLuaCode(project: WeaponProject): string {
   }
 
   // Pack WAVs are declared by path in `sounds`; the engine loads them into
-  // WormForge's own sample bank (WA's record sound fields take native ids).
+  // WormBench's own sample bank (WA's record sound fields take native ids).
   const packSounds: string[] = [];
   if (launchSoundPath) packSounds.push(luaQuote(launchSoundPath));
   // A melee strike's uploaded WAVs are played by the swing, so they are declared
@@ -5128,7 +5128,7 @@ export function generatePackToml(pack: PackProject): string {
     `id = ${luaQuote(pack.id)}`,
     `name = ${luaQuote(pack.name)}`,
     `version = ${luaQuote(pack.version || '0.1.0')}`,
-    `author = ${luaQuote(pack.author || 'WormForge Creator')}`,
+    `author = ${luaQuote(pack.author || 'WormBench Creator')}`,
     'api_version = 4',
     'format_version = 2',
   ];

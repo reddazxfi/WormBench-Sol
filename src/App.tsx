@@ -63,9 +63,9 @@ const INITIAL_PROJECT: WeaponProject = {
   // The default value, not a rule: both id fields edit the whole id.
   id: `${DEFAULT_ID_NAMESPACE}.grenade`,
   name: 'Grenade',
-  description: "WormForge's stock Grenade record, ready to be changed.",
+  description: "WormBench's stock Grenade record, ready to be changed.",
   version: '0.1.0',
-  author: 'WormForge Author',
+  author: 'WormBench Author',
   slot: 'grenade',
   based_on: 'grenade',
   panel_icon: 'grenade',
@@ -534,7 +534,7 @@ export default function App() {
     code: {
       eyebrow: 'Bundle Code',
       title: 'Review the bundle',
-      description: 'Generated Lua, mod.toml and profile, ready to drop into WormForge/Mods.',
+      description: 'Generated Lua, mod.toml and profile, ready to drop into WormBench/Mods.',
     },
   }[activeTab];
 
@@ -685,9 +685,9 @@ export default function App() {
         <footer className="border-t border-stone-200/80 bg-white/60 py-4 dark:border-stone-800 dark:bg-stone-900/40">
           <div className="mx-auto w-full max-w-6xl space-y-2 px-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500 dark:text-stone-400">
-              <span>WormForge Weapon Studio</span>
+              <span>WormBench Weapon Studio</span>
               <span className="font-mono">
-                WormForge/Mods/{sanitizeModFolder(pack.id)}/
+                WormBench/Mods/{sanitizeModFolder(pack.id)}/
                 {pack.weapons.length > 1 ? ` · ${pack.weapons.length} weapons` : ''}
               </span>
             </div>
@@ -705,7 +705,7 @@ export default function App() {
                   displays is Team17&apos;s, borrowed only to preview a mod: the sprite-builder tab
                   icons (Main, Home, Bits, HomeBit, Sheep, Dig), the frozen worm preview, and the
                   terrain preview backdrop. The fallback sprite that fills an untouched export is
-                  hand-drawn for this project instead, not taken from the game. WormForge itself is
+                  hand-drawn for this project instead, not taken from the game. WormBench itself is
                   a separate community project, and this editor is a separate fan tool again.
                 </p>
                 <p>

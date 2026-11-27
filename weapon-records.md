@@ -1,7 +1,7 @@
 # Weapon records
 
 A **record** is WA's built-in description of a weapon: how it fires, how its
-projectiles behave, and which sounds and sprites it uses. WormForge exposes
+projectiles behave, and which sounds and sprites it uses. WormBench exposes
 these settings as named Lua tables. The names describe behaviour established
 through reverse engineering; some native parameters remain unresolved.
 
@@ -55,7 +55,7 @@ contribute. Changing the action can change how WA interprets inherited
 parameters. For a grenade-like weapon, start with `copy_from = "stock.grenade"`
 and change the settings you need.
 
-WormForge rejects fields from the wrong family, and action/payload mismatches
+WormBench rejects fields from the wrong family, and action/payload mismatches
 when those selectors are explicitly supplied in the same declaration.
 
 ## Values and units

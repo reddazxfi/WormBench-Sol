@@ -1648,6 +1648,7 @@ export function flightTrailRows(
     `${indent}trail = {`,
     `${indent}  sheet = ${luaQuote(sheet)},`,
     `${indent}  cell_w = ${Math.round(t.cellW)}, cell_h = ${Math.round(t.cellH)}, frames = ${t.frames},`,
+    ...((t.startFrame ?? 0) > 0 ? [`${indent}  start_frame = ${Math.round(t.startFrame ?? 0)},`] : []),
     `${indent}  play_mode = ${luaQuote(t.playMode)}, fps = ${formatNumber(t.fps)},`,
     `${indent}  power = ${formatNumber(t.power)}, speed = ${formatNumber(t.speed)}, bubbles = ${formatNumber(t.bubblesPerSecond)},`,
     `${indent}  life = ${Math.round(t.lifeFrames)}, life_jitter = ${formatNumber(t.lifeJitter)},`,

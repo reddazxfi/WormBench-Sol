@@ -292,6 +292,63 @@ WORLD["frame"] = 1
 emit(pool, drawn=45.0)
 check("rotate none leaves rotation at zero", pool["prot"][1] == 0.0)
 
+# ------------------------------------------------------- start_frame skip ---
+for mode in ("lifetime", "loop", "pingpong", "random"):
+    reset()
+    pool = create(frames=8, start_frame=1, play_mode=mode, fps=50, life=24)
+    seen_frames = set()
+    for frame in range(1, 20):
+        WORLD["frame"] = frame
+        emit(pool, x=100.0 + frame * 10.0)
+        box = draw(0.0)
+        if box is not None:
+            vals = box["values"]
+            for idx in range(box["count"]):
+                seen_frames.add(int(vals[idx * 7 + 5]))
+    check(
+        f"start_frame=1 ({mode}) never renders frame 0 and uses frames 1..7",
+        0 not in seen_frames and len(seen_frames) > 0 and min(seen_frames) >= 1 and max(seen_frames) <= 7,
+        sorted(seen_frames),
+    )
+
+reset()
+pool = create(frames=8, start_frame=1, play_mode="lifetime", life=24)
+WORLD["frame"] = 1
+emit(pool, x=100.0)
+box = draw(0.0)
+check("start_frame=1 starts immediately at frame 1 on birth", box is not None and box["values"][5] == 1, box and box["values"][5])
+
+# ------------------------------------------------- segment interpolation ---
+reset()
+pool = create(power=50, speed=0, inherit_vel=0, jitter=0, gravity=0, drag=1)
+WORLD["frame"] = 1
+emit(pool, mid=9, x=100.0, y=200.0, vx=20.0, vy=0.0)
+WORLD["frame"] = 2
+emit(pool, mid=9, x=120.0, y=200.0, vx=20.0, vy=0.0)
+check(
+    "multi-particle emission interpolates along missile segment instead of stacking",
+    abs(pool["px"][3] - 110.0) < 1e-6 and abs(pool["px"][4] - 120.0) < 1e-6,
+    (pool["px"][3], pool["px"][4]),
+)
+
+# ---------------------------------------------------- ring buffer cursor ---
+reset()
+pool = create(max_particles=16, power=25, life=100, life_jitter=0, speed=0, inherit_vel=0, jitter=0)
+for frame in range(1, 21):
+    WORLD["frame"] = frame
+    emit(pool, mid=3, x=float(frame * 10), y=200.0, vx=10.0, vy=0.0)
+# First 16 landed at x = 10..160; frames 17..20 overwrote slots 1..4 with 170..200.
+check(
+    "pool overwrite cycles through cursor 1..4 instead of repeating slot 1",
+    pool["n"] == 16
+    and abs(pool["px"][1] - 170.0) < 1e-6
+    and abs(pool["px"][2] - 180.0) < 1e-6
+    and abs(pool["px"][3] - 190.0) < 1e-6
+    and abs(pool["px"][4] - 200.0) < 1e-6
+    and abs(pool["px"][5] - 50.0) < 1e-6,
+    [pool["px"][i] for i in range(1, 6)],
+)
+
 failed = [name for name, ok, _ in CHECKS if not ok]
 if failed:
     print("\n%d check(s) failed: %s" % (len(failed), ", ".join(failed)))

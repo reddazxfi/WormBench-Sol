@@ -32,6 +32,7 @@ import {
 import { scanLua } from '../src/utils/modLib/luaTable';
 import { DEFAULT_ROLE_ART } from '../src/data/spriteBuilder';
 import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
+import { DEFAULT_FLIGHT_TRAIL } from '../src/data/flightTrail';
 import { DEFAULT_FIRE_SEQUENCE } from '../src/data/fireSequence';
 import { DEFAULT_CUSTOM_SOUNDS } from '../src/data/soundPresets';
 import { DEFAULT_BODY, DEFAULT_DIG, DEFAULT_FIRE, DEFAULT_ROAM } from '../src/data/defaults';
@@ -2519,6 +2520,91 @@ quoted = ["a\\"b,c", "d"] # escaped quote with comma
     'true/45/#66ccff/false',
   );
   hasFile('WF 57 trail: bit sheet file recovered', bitTrail ? { sheetFile: bitTrail.sheetFile } : undefined);
+
+  // ---- grounded roam builder round-trip (Bug 3 regression) ----------------
+  const wf28Base = project('WF 28 Roam Builder')!;
+  const groundedExport: WeaponProject = {
+    ...wf28Base,
+    id: 'wfws.grounded_roam',
+    name: 'Grounded Collector',
+    roamConfig: {
+      ...wf28Base.roamConfig,
+      flight_1: 0,
+      flight_2: 0,
+      grounded: true,
+    },
+  };
+  const groundedLua = generateLuaCode(groundedExport);
+  const groundedToml = generateModToml(groundedExport);
+  check(
+    'grounded roam export emits flight_1/2 = 0 and omits 699 and roam table',
+    groundedLua.includes('flight_1 = 0,') &&
+      groundedLua.includes('flight_2 = 0,') &&
+      !groundedLua.includes('699') &&
+      !/^\s+roam = (true|\{ walk)/m.test(groundedLua),
+  );
+  const groundedFiles: ModFile[] = [
+    { path: 'mod.toml', text: groundedToml },
+    { path: 'weapons/grounded_roam.lua', text: groundedLua },
+    {
+      path: 'sprites/grounded_roam/missile.png',
+      text: '',
+      bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    },
+  ];
+  const groundedImport = await importBundleWeapon(
+    readWeapons(readBundles(groundedFiles), groundedFiles)[0],
+    groundedFiles,
+  );
+  const groundedReExport = generateLuaCode(groundedImport.project as WeaponProject);
+  check(
+    'grounded roam re-import keeps grounded=true, flight_1/2=0, and never gains 699',
+    groundedImport.project.action === 'roam' &&
+      groundedImport.project.roamConfig?.grounded === true &&
+      groundedImport.project.roamConfig?.flight_1 === 0 &&
+      groundedImport.project.roamConfig?.flight_2 === 0 &&
+      groundedReExport.includes('flight_1 = 0,') &&
+      groundedReExport.includes('flight_2 = 0,') &&
+      !groundedReExport.includes('699'),
+    JSON.stringify({
+      grounded: groundedImport.project.roamConfig?.grounded,
+      f1: groundedImport.project.roamConfig?.flight_1,
+      f2: groundedImport.project.roamConfig?.flight_2,
+    }),
+  );
+
+  // ---- custom trail startFrame round-trip ---------------------------------
+  const trailStartProject: WeaponProject = {
+    ...wf57trail!,
+    id: 'wfws.trail_start',
+    name: 'Trail Start Frame',
+    missileSprite: {
+      ...wf57trail!.missileSprite,
+      trail: {
+        ...DEFAULT_FLIGHT_TRAIL,
+        ...wf57trail!.missileSprite.trail,
+        enabled: true,
+        frames: 8,
+        startFrame: 1,
+      },
+    },
+  };
+  const trailStartLua = generateLuaCode(trailStartProject);
+  const trailStartToml = generateModToml(trailStartProject);
+  check(
+    'flight trail with startFrame = 1 emits start_frame = 1 (while 0 omits it)',
+    trailStartLua.includes('start_frame = 1,') && !luaOf('WF 57 Custom Brush Trail').includes('start_frame ='),
+  );
+  const trailStartFiles: ModFile[] = [
+    { path: 'mod.toml', text: trailStartToml },
+    { path: 'weapons/trail_start.lua', text: trailStartLua },
+  ];
+  const trailStartImport = await importBundleWeapon(
+    readWeapons(readBundles(trailStartFiles), trailStartFiles)[0],
+    trailStartFiles,
+  );
+  near('flight trail start_frame = 1 round-trips', trailStartImport.project.missileSprite?.trail?.startFrame, 1);
+  near('flight trail default start_frame omits and imports 0', wf57trail?.missileSprite?.trail?.startFrame, 0);
 }
 
 if (failures.length > 0) {

@@ -127,6 +127,7 @@ def quad(*args):
     pts = t["points"]
     p1 = pts[1] if pts is not None else None
     p2 = pts[2] if pts is not None else None
+    p3 = pts[3] if pts is not None else None
     QUADS.append(
         {
             "sprite": t["sprite"],
@@ -137,6 +138,8 @@ def quad(*args):
             "y1": float(p1["y"]) if p1 is not None else 0.0,
             "x2": float(p2["x"]) if p2 is not None else 0.0,
             "y2": float(p2["y"]) if p2 is not None else 0.0,
+            "x3": float(p3["x"]) if p3 is not None else 0.0,
+            "y3": float(p3["y"]) if p3 is not None else 0.0,
         }
     )
 
@@ -222,6 +225,7 @@ sb.hold(
             "weap_radial_rotation": 1.0,
             "hand": "hand.png",
             "hand_radius": 0,
+            "draw_hand": False,
             "keep_firing": True,
             "aim_clamp": lua.table_from({"up": 45, "down": 45}),
             "buffer": lua.table_from(
@@ -237,6 +241,7 @@ sb.hold(
                     "weap_radial_rotation": 1.0,
                     "hand": "hand.png",
                     "hand_radius": 0,
+                    "draw_hand": False,
                 }
             ),
             "fire": lua.table_from(
@@ -253,6 +258,7 @@ sb.hold(
                     "weap_radial_rotation": 1.0,
                     "hand": "hand.png",
                     "hand_radius": 0,
+                    "draw_hand": False,
                 }
             ),
         }
@@ -275,6 +281,7 @@ sb.hold(
             "weap_radial_rotation": 1.0,
             "hand": "hand.png",
             "hand_radius": 0,
+            "draw_hand": False,
             "keep_firing": False,
             "buffer": lua.table_from(
                 {
@@ -288,6 +295,7 @@ sb.hold(
                     "weap_radial_rotation": 1.0,
                     "hand": "hand.png",
                     "hand_radius": 0,
+                    "draw_hand": False,
                 }
             ),
             "fire": lua.table_from(
@@ -304,6 +312,7 @@ sb.hold(
                     "weap_radial_rotation": 1.0,
                     "hand": "hand.png",
                     "hand_radius": 0,
+                    "draw_hand": False,
                 }
             ),
         }
@@ -327,6 +336,7 @@ sb.hold(
             "weap_radial_rotation": 1.0,
             "hand": "hand.png",
             "hand_radius": 0,
+            "draw_hand": False,
             "keep_firing": True,
             "fire": lua.table_from(
                 {
@@ -342,6 +352,7 @@ sb.hold(
                     "weap_radial_rotation": 1.0,
                     "hand": "hand.png",
                     "hand_radius": 0,
+                    "draw_hand": False,
                 }
             ),
         }
@@ -365,6 +376,7 @@ sb.hold(
             "weap_radial_rotation": 1.0,
             "hand": "hand.png",
             "hand_radius": 0,
+            "draw_hand": False,
             "keep_firing": True,
         }
     ),
@@ -400,6 +412,51 @@ clamp_hold = sb.hold(
             "hand_radius": 9,
             "hand_scale": 1.0,
             "aim_clamp": lua.table_from({"up": 40, "down": 40}),
+        }
+    ),
+)
+
+# 7) Zero hand radius with hand_offset + hand_scale + inherited fire hand_scale (no aim_clamp).
+zero_hand_hold = sb.hold(
+    build_ctx("w.zerohand"),
+    lua.table_from(
+        {
+            "weapon": "w.zerohand",
+            "sheet": "hold_zh.png",
+            "silent_sheet": "silent.png",
+            "cell_w": 60,
+            "cell_h": 60,
+            "frames": 1,
+            "weap_radius": 0,
+            "weap_rotation": 1.0,
+            "weap_radial_rotation": 1.0,
+            "hand": "hand.png",
+            "hand_type": 2,
+            "hand_radius": 0,
+            "hand_rotation": 1.0,
+            "hand_radial_rotation": 1.0,
+            "hand_size": 60,
+            "hand_scale": 1.2,
+            "hand_offset": lua.table_from({"x": 0, "y": -11}),
+            "fire": lua.table_from(
+                {
+                    "sheet": "fire_zh.png",
+                    "cell_w": 60,
+                    "cell_h": 60,
+                    "frames": 1,
+                    "ticks": 6,
+                    "hide_main": True,
+                    "weap_radius": 0,
+                    "weap_rotation": 1.0,
+                    "weap_radial_rotation": 1.0,
+                    "hand": "hand.png",
+                    "hand_radius": 0,
+                    "hand_rotation": 1.0,
+                    "hand_radial_rotation": 1.0,
+                    "hand_size": 60,
+                    "hand_offset": lua.table_from({"x": 0, "y": -11}),
+                }
+            ),
         }
     ),
 )
@@ -595,6 +652,37 @@ check(
     abs(float(clamp_hold["hand_radius"]) - 0.01) < 1e-6
     and abs(float(clamp_hold["hand_scale"]) - 0.001) < 1e-9,
     f"radius={clamp_hold['hand_radius']}, scale={clamp_hold['hand_scale']}",
+)
+
+# 13 & 14. Zero hand_radius still draws Lua hand with hand_offset, parks Rust hand, and fire inherits hand_scale.
+w_zh = register_worm(make_worm_data(5, "w.zerohand", aim=0.5, state="standing"))
+w_zh["state"] = "ready"
+step(21)
+zh_hands = [q for q in QUADS if q["sprite"] == "hand.png"]
+# aim = 0.5 -> rot = pi/2, h_ang = rot + pi * 1.0 = 1.5*pi -> cos=0, sin=-1.
+# hox=0, hoy=-11*1.2=-13.2 -> hx = 1000 + (-13.2)*1 = 986.8? Check formula:
+# hx = w.x + 0 - hoy * sin(1.5*pi) = 1000 - (-13.2)*(-1) = 986.8, hy = 1000 + hoy * cos(1.5*pi) = 1000.0
+zh_cx = (zh_hands[0]["x1"] + zh_hands[0]["x3"]) * 0.5 if zh_hands else 0.0
+zh_cy = (zh_hands[0]["y1"] + zh_hands[0]["y3"]) * 0.5 if zh_hands else 0.0
+check(
+    "13: hand_radius=0 + hand_offset parks Rust hand and draws offset Lua hand",
+    abs(float(zero_hand_hold["hand_radius"]) - 0.01) < 1e-6
+    and abs(float(zero_hand_hold["hand_scale"]) - 0.001) < 1e-9
+    and len(zh_hands) == 1
+    and abs(zh_cx - 986.8) < 1e-3
+    and abs(zh_cy - 1000.0) < 1e-3,
+    f"radius={zero_hand_hold['hand_radius']}, scale={zero_hand_hold['hand_scale']}, hands={len(zh_hands)}, center=({zh_cx:.2f},{zh_cy:.2f})",
+)
+
+w_zh["state"] = "firing"
+sb.hold_trigger(w_zh, "fire", 6)
+step(1)
+zh_fire_hands = [q for q in QUADS if q["sprite"] == "hand.png"]
+zh_fire_w = math.hypot(zh_fire_hands[0]["x2"] - zh_fire_hands[0]["x1"], zh_fire_hands[0]["y2"] - zh_fire_hands[0]["y1"]) if zh_fire_hands else 0.0
+check(
+    "14: fire role omitting hand_scale inherits spec.hand_scale and draws at hand_radius=0",
+    len(zh_fire_hands) == 1 and abs(zh_fire_w - 72.0) < 1e-4,
+    f"fire_hands={len(zh_fire_hands)}, width={zh_fire_w:.2f}",
 )
 
 print()

@@ -556,6 +556,17 @@ export async function importBundleWeapon(
     notes.push(`wa.on handlers: ${parts.join('; ')}`);
   }
 
+  const sheepTable = isTable(recordForMap?.sheep) ? (recordForMap.sheep as LuaTable) : undefined;
+  const explicitZeroSheep =
+    sheepTable !== undefined && sheepTable.flight_1 === 0 && sheepTable.flight_2 === 0;
+  const builderWithoutRoam =
+    features.project.missileSprite?.enabled === true && !features.flightHasRoam;
+  const isGroundedRoam =
+    mapped.action === 'roam' &&
+    (mapped.roamConfig.flight_1 ?? 0) === 0 &&
+    (mapped.roamConfig.flight_2 ?? 0) === 0 &&
+    (builderWithoutRoam || explicitZeroSheep);
+
   const nextProject: Partial<WeaponProject> = {
     ...project,
     ...features.project,
@@ -590,7 +601,7 @@ export async function importBundleWeapon(
       body: mapped.body,
       action: mapped.action,
       burst: mapped.burst,
-      roamConfig: mapped.roamConfig,
+      roamConfig: isGroundedRoam ? { ...mapped.roamConfig, grounded: true } : mapped.roamConfig,
       digConfig: mapped.digConfig,
       fireConfig: mapped.fireConfig,
       recordOverrides: mapped.recordOverrides,

@@ -1280,7 +1280,7 @@ local function hold_draw_aim(entry, w, ws, pose, firing_hold, alpha_mul, blend, 
   hold_quad(entry.sheet, cx, cy, ang,
     entry.cell_w * size * 0.5, entry.cell_h * size * 0.5, facing, frame, w, alpha, blend)
 
-  if not weapon_only and entry.hand and entry.draw_hand ~= false and (entry.hand_radius or 0) ~= 0 then
+  if not weapon_only and entry.hand and entry.draw_hand ~= false then
     local hx = w.x + facing * wa.math.sin(rot_h) * entry.hand_radius
     local hy = w.y - wa.math.cos(rot_h) * entry.hand_radius
     local h_ang = (static and static.hand * pi or (rot + pi * entry.hand_rotation)) * facing
@@ -1347,7 +1347,7 @@ local function hold_draw_role(entry, role, phase, w)
   hold_quad(role.sheet, cx, cy, ang,
     cell_w * size * 0.5, cell_h * size * 0.5, facing, frame, w, 1)
 
-  if role.hand and role.draw_hand ~= false and (role.hand_radius or 0) ~= 0 then
+  if role.hand and role.draw_hand ~= false then
     local hx = w.x + facing * wa.math.sin(rot_h) * role.hand_radius
     local hy = w.y - wa.math.cos(rot_h) * role.hand_radius
     local h_ang = (rot + pi * role.hand_rotation) * facing
@@ -1785,6 +1785,11 @@ function M.hold(ctx, spec)
     wa.log("wfws_sprite_builder.hold: the quad layer needs `silent_sheet` to mute the engine draw")
     return rust
   end
+  -- `hold_mute` only swaps the weapon sheet to `silent_sheet`; Rust's engine
+  -- still draws its own `config.hand`. Park and shrink it whenever Lua's aim
+  -- layer owns the hand pose so there is never an un-offset double hand.
+  rust.hand_radius = 0.01
+  rust.hand_scale = 0.001
 
   local cell = spec.cell_size or HOLD_HAND_CELL
   local off = type(spec.offset) == "table" and spec.offset or {}
@@ -1809,7 +1814,7 @@ function M.hold(ctx, spec)
       hand_radius = role_spec.hand_radius or 1.0,
       hand_rotation = role_spec.hand_rotation or 1.0,
       hand_radial_rotation = role_spec.hand_radial_rotation or 1.0,
-      hand_scale = role_spec.hand_scale or 1.0,
+      hand_scale = role_spec.hand_scale or spec.hand_scale or 1.0,
       hand_size = role_spec.hand_size or HOLD_HAND_CELL,
       draw_hand = role_spec.draw_hand,
       ox = (type(role_spec.offset) == "table" and role_spec.offset.x) or 0,

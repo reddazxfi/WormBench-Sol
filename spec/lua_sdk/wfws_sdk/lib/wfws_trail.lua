@@ -114,20 +114,21 @@ local function step_all(now)
 end
 
 local function frame_for(pool, i, t)
-  local frames = pool.frames
-  if frames <= 1 then return 0 end
+  local first = pool.start_frame or 0
+  local usable = pool.frames - first
+  if usable <= 1 then return first end
   local mode = pool.play_mode
   if mode == "loop" then
-    return math.floor((pool.page[i] / 50) * pool.fps) % frames
+    return first + (math.floor((pool.page[i] / 50) * pool.fps) % usable)
   elseif mode == "pingpong" then
-    local span = 2 * frames - 2
+    local span = 2 * usable - 2
     local k = math.floor(t * span) % span
-    if k < frames then return k end
-    return span - k
+    if k < usable then return first + k end
+    return first + (span - k)
   elseif mode == "random" then
-    return pool.pframe0[i]
+    return first + pool.pframe0[i]
   end
-  return math.min(frames - 1, math.floor(t * frames))
+  return first + math.min(usable - 1, math.floor(t * usable))
 end
 
 local function draw_all()
@@ -196,8 +197,14 @@ local function ensure_hooks()
 end
 
 local function spawn(pool, id, x, y, vx, vy, drawn_deg, facing)
-  local i = pool.n + 1
-  if i > pool.cap then i = 1 end
+  local i
+  if pool.n < pool.cap then
+    pool.n = pool.n + 1
+    i = pool.n
+  else
+    pool.cursor = (pool.cursor % pool.cap) + 1
+    i = pool.cursor
+  end
   local r = rand()
   local r2 = rand()
   local r3 = rand()
@@ -253,8 +260,8 @@ local function spawn(pool, id, x, y, vx, vy, drawn_deg, facing)
   pool.plife[i] = life
   pool.prot[i] = rot
   pool.pspin[i] = spin
-  pool.pframe0[i] = pool.frames > 1 and wa.random(0, pool.frames - 1) or 0
-  if i > pool.n then pool.n = i end
+  local usable = math.max(1, pool.frames - (pool.start_frame or 0))
+  pool.pframe0[i] = usable > 1 and wa.random(0, usable - 1) or 0
 end
 
 --- Build one role's pool. Must run inside install(), where wa.draw.brush knows
@@ -263,12 +270,16 @@ function M.create(spec)
   if type(spec) ~= "table" or type(spec.sheet) ~= "string" then return nil end
   ensure_hooks()
   local cap = math.floor(clamp(num(spec.max_particles, 160), 16, 512) + 0.5)
+  local frames = math.floor(clamp(num(spec.frames, 1), 1, 64) + 0.5)
+  local start_frame = math.floor(clamp(num(spec.start_frame, 0), 0, math.max(0, frames - 1)) + 0.5)
   local pool = {
     cap = cap,
     n = 0,
+    cursor = 0,
     cell_w = clamp(num(spec.cell_w, 16), 1, 512),
     cell_h = clamp(num(spec.cell_h, 16), 1, 512),
-    frames = math.floor(clamp(num(spec.frames, 1), 1, 64) + 0.5),
+    frames = frames,
+    start_frame = start_frame,
     play_mode = spec.play_mode or "lifetime",
     fps = clamp(num(spec.fps, 15), 1, 60),
     power = clamp(num(spec.power, 25), 0, 100),
@@ -301,6 +312,8 @@ function M.create(spec)
     blend = spec.blend == "add" and "add" or "alpha",
     depth = depth_value(spec.depth),
     acc = {},
+    last_x = {},
+    last_y = {},
     buf = {},
     -- Flat SoA arrays. The constructor below fills them; a nil array here
     -- would make the first spawn (and every draw) fail at run time.
@@ -344,12 +357,25 @@ end
 function M.emit(pool, id, x, y, vx, vy, drawn_deg, facing, now)
   if not pool or type(pool.acc) ~= "table" then return end
   step_all(now or frame_now())
+  local px, py = pool.last_x[id], pool.last_y[id]
+  pool.last_x[id] = x
+  pool.last_y[id] = y
   local rate = pool.power / 25.0
   if rate <= 0 then return end
   local acc = (pool.acc[id] or 0) + rate
   local count = math.floor(acc)
   pool.acc[id] = acc - count
   if count <= 0 then return end
+  if count > 1 and px ~= nil and py ~= nil then
+    local dx, dy = x - px, y - py
+    if dx * dx + dy * dy <= 16384 then
+      for k = 1, count do
+        local frac = k / count
+        spawn(pool, id, px + dx * frac, py + dy * frac, vx, vy, drawn_deg, facing)
+      end
+      return
+    end
+  end
   for k = 1, count do
     spawn(pool, id, x, y, vx, vy, drawn_deg, facing)
   end
@@ -358,13 +384,18 @@ end
 --- Drop a missile's fractional accumulator. The particles it already made
 --- stay alive and keep fading.
 function M.forget(pool, id)
-  if pool and pool.acc then pool.acc[id] = nil end
+  if not pool then return end
+  if pool.acc then pool.acc[id] = nil end
+  if pool.last_x then pool.last_x[id] = nil end
+  if pool.last_y then pool.last_y[id] = nil end
 end
 
 function M.forget_all(id)
   for p = 1, POOL_COUNT do
     local pool = POOLS[p]
     if pool.acc then pool.acc[id] = nil end
+    if pool.last_x then pool.last_x[id] = nil end
+    if pool.last_y then pool.last_y[id] = nil end
   end
 end
 

@@ -64,6 +64,48 @@ const SelectField: React.FC<{
 );
 
 /**
+ * Count leading transparent frames on a vertical sprite strip so multi-frame
+ * WA/PX trail strips whose frame 0 is blank start immediately behind the round.
+ */
+async function detectLeadingBlankFrames(previewUrl: string, frames: number): Promise<number> {
+  if (frames <= 1 || typeof document === 'undefined') return 0;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('load failed'));
+      el.src = previewUrl;
+    });
+    const w = img.naturalWidth;
+    const cellH = Math.floor(img.naturalHeight / frames);
+    if (w <= 0 || cellH <= 0) return 0;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = cellH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 0;
+    let leading = 0;
+    for (let f = 0; f < frames; f += 1) {
+      ctx.clearRect(0, 0, w, cellH);
+      ctx.drawImage(img, 0, f * cellH, w, cellH, 0, 0, w, cellH);
+      const data = ctx.getImageData(0, 0, w, cellH).data;
+      let visible = false;
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 8) {
+          visible = true;
+          break;
+        }
+      }
+      if (visible) break;
+      leading += 1;
+    }
+    return leading >= frames ? 0 : leading;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * One brush trail, edited away from the flight workbench. The modal writes
  * every knob through `onChange`, so the parent owns the role and the preview
  * stays live while the panel is open.
@@ -98,12 +140,14 @@ export const FlightTrailModal: React.FC<FlightTrailModalProps> = ({
     const frames = Math.max(1, Math.round(framesHint ?? t.frames));
     try {
       const px = await imagePixelSize(preview);
+      const startFrame = frames > 1 ? await detectLeadingBlankFrames(preview, frames) : 0;
       if (t.sheetPreview?.startsWith('blob:')) URL.revokeObjectURL(t.sheetPreview);
       onChange({
         enabled: true,
         sheetFile: file,
         sheetPreview: preview,
         frames,
+        startFrame,
         cellW: px.width,
         cellH: Math.max(1, Math.round(px.height / frames)),
       });
@@ -115,15 +159,19 @@ export const FlightTrailModal: React.FC<FlightTrailModalProps> = ({
   const applyFrames = async (raw: number) => {
     const frames = Math.max(1, Math.min(64, Math.round(raw) || 1));
     let cellH = t.cellH;
+    let startFrame = 0;
     if (t.sheetPreview) {
       try {
         const px = await imagePixelSize(t.sheetPreview);
         cellH = Math.max(1, Math.round(px.height / frames));
+        if (frames > 1) {
+          startFrame = await detectLeadingBlankFrames(t.sheetPreview, frames);
+        }
       } catch {
         cellH = Math.max(1, Math.round(t.cellH));
       }
     }
-    onChange({ frames, cellH });
+    onChange({ frames, startFrame, cellH });
   };
 
   const clearSheet = () => {
@@ -323,6 +371,26 @@ export const FlightTrailModal: React.FC<FlightTrailModalProps> = ({
               </label>
             </div>
             <SheetFrameWarning preview={t.sheetPreview} frames={t.frames} className="mt-2" />
+            {t.frames > 1 && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50/70 px-2.5 py-1.5 dark:border-stone-700 dark:bg-stone-950/40">
+                <label className="flex items-center gap-2 text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                  <span>Start Frame</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={Math.max(0, t.frames - 1)}
+                    value={t.startFrame ?? 0}
+                    onChange={(event) => onChange({ startFrame: Number(event.target.value) })}
+                    className="h-7 w-16 rounded-md border border-stone-300 bg-white px-2 font-mono text-xs text-stone-800 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
+                  />
+                </label>
+                <span className="text-[10px] text-stone-500 dark:text-stone-400">
+                  {(t.startFrame ?? 0) > 0
+                    ? `Skipping ${t.startFrame} leading blank frame(s) so puffs appear immediately behind the round.`
+                    : 'Set to 1 if frame 0 is blank (common on WA/PX trail strips).'}
+                </span>
+              </div>
+            )}
             {t.frames === 1 && (
               <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50/70 px-2.5 py-1.5 text-[10px] leading-snug text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
                 A single frame still animates: fade-out, scale-out, tint gradient and spin all move it.
@@ -468,7 +536,7 @@ export const FlightTrailModal: React.FC<FlightTrailModalProps> = ({
                 <RangeField label="Nozzle Offset Y" value={t.offsetY} min={-128} max={128} step={1} suffix=" px" onChange={(offsetY) => onChange({ offsetY })} />
               </div>
               <p className="rounded-lg border border-stone-200 bg-stone-50/70 px-2.5 py-1.5 text-[10px] leading-snug text-stone-500 dark:border-stone-700 dark:bg-stone-950/40 dark:text-stone-400">
-                Offset is in sheet pixels, rotated with the missile heading. A negative Y pushes the
+                Offset is in sheet pixels, rotated with the missile heading. A positive Y pushes the
                 exhaust toward the tail on art that points up.
               </p>
             </div>

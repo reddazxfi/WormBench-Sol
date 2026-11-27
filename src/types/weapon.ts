@@ -1121,6 +1121,8 @@ export interface FlightTrailConfig {
   cellW: number;
   cellH: number;
   frames: number;
+  /** Leading frames to skip (e.g. blank frame 0 on WA/PX trail strips; 0 = start at frame 0). */
+  startFrame?: number;
   playMode: FlightTrailPlayMode;
   fps: number;
   // Original WA trail knobs (familiar defaults matching missile.trail.*)

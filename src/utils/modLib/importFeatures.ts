@@ -133,6 +133,8 @@ export interface BundleFeatures {
    * bundle has to be able to say so (round trip, markers, the panel).
    */
   carriedHooks: { key: string; text: string; line: number }[];
+  /** True when `sb.flight` explicitly passed a `roam` table (not grounded). */
+  flightHasRoam?: boolean;
 }
 
 const num = (value: LuaValue | undefined): number | undefined =>
@@ -532,6 +534,7 @@ async function readFlightTrail(
     cellW,
     cellH,
     frames,
+    startFrame: num(value.start_frame) ?? 0,
     playMode: pick(value.play_mode, TRAIL_PLAY, 'lifetime'),
     fps: num(value.fps) ?? numFrom(decl?.fps) ?? 15,
     power: num(value.power) ?? 25,
@@ -1021,6 +1024,7 @@ export async function readBundleFeatures(args: {
   const bundleDir = weapon.bundleDir;
   const notes: string[] = [];
   const project: Partial<WeaponProject> = {};
+  let flightHasRoam = false;
   const soundBase = args.soundBase ?? DEFAULT_CUSTOM_SOUNDS;
   const fireBase = args.fireBase ?? DEFAULT_FIRE_SEQUENCE;
   const explosionBase = args.explosionBase ?? DEFAULT_EXPLOSION_EFFECT;
@@ -1759,6 +1763,7 @@ export async function readBundleFeatures(args: {
     // A roaming animal's own flight art rides in the same `roam` table as the
     // takeoff ids: a `sheet` there is the role, its absence the primary sheet.
     if (f.roam === true || isTable(f.roam)) {
+      flightHasRoam = true;
       const roam = isTable(f.roam) ? f.roam : undefined;
       if (roam && str(roam.sheet)) {
         behaviorArt.roam = await readRoleArt(
@@ -1775,18 +1780,6 @@ export async function readBundleFeatures(args: {
         // Roam has no native role of its own: the round's own sheet flies.
         behaviorArt.roam = { ...DEFAULT_ROAM_ROLE_ART, mode: 'inherit' };
       }
-    }
-    // A generated ground-only animal writes 0 to both flight sprites and no
-    // `roam` table. Re-importing that keeps it grounded: without the flag the
-    // builder would take the takeoff back and emit the 699 sentinel again.
-    if (
-      project.action === 'roam' &&
-      project.missileSprite?.enabled === true &&
-      f.roam === undefined &&
-      (project.roamConfig?.flight_1 ?? 0) === 0 &&
-      (project.roamConfig?.flight_2 ?? 0) === 0
-    ) {
-      project.roamConfig = { ...DEFAULT_ROAM, ...project.roamConfig, grounded: true };
     }
     project.behaviorArt = behaviorArt;
     if (isTable(f.states)) {
@@ -3453,7 +3446,7 @@ export async function readBundleFeatures(args: {
     project.electricTazeMines = true;
   }
 
-  return { project, notes, carriedHooks };
+  return { project, notes, carriedHooks, ...(flightHasRoam ? { flightHasRoam: true } : {}) };
 }
 
 /**

@@ -1653,8 +1653,10 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       trailPool.life[i] = life;
       trailPool.rot[i] = prot;
       trailPool.spin[i] = spin;
+      const startFrame = Math.max(0, Math.min(trail.frames - 1, Math.round(trail.startFrame ?? 0)));
+      const usableFrames = Math.max(1, trail.frames - startFrame);
       trailPool.frame0[i] =
-        trail.frames > 1 ? Math.floor(trailRng() * trail.frames) : 0;
+        usableFrames > 1 ? Math.floor(trailRng() * usableFrames) : 0;
     };
 
     const stepTrail = (x: number, y: number, headingDeg: number, facing: number) => {
@@ -1719,6 +1721,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       const cellW = Math.max(1, Math.min(trail.cellW, srcW));
       const cellH = Math.max(1, Math.min(trail.cellH, Math.floor(srcH / trail.frames) || 1));
       const frames = Math.max(1, Math.min(trail.frames, Math.floor(srcH / cellH) || 1));
+      const startFrame = Math.max(0, Math.min(frames - 1, Math.round(trail.startFrame ?? 0)));
+      const usableFrames = Math.max(1, frames - startFrame);
       const c0 = hexToRgb(trail.color);
       const c1 = trail.colorEnd ? hexToRgb(trail.colorEnd) : c0;
       ctx.save();
@@ -1740,18 +1744,18 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               c0.g + (c1.g - c0.g) * q,
               c0.b + (c1.b - c0.b) * q
             );
-        let frameIndex = 0;
-        if (frames > 1) {
+        let frameIndex = startFrame;
+        if (usableFrames > 1) {
           if (trail.playMode === 'loop') {
-            frameIndex = Math.floor((age / 50) * trail.fps) % frames;
+            frameIndex = startFrame + (Math.floor((age / 50) * trail.fps) % usableFrames);
           } else if (trail.playMode === 'pingpong') {
-            const span = 2 * frames - 2;
+            const span = 2 * usableFrames - 2;
             const k = Math.floor(t * span) % span;
-            frameIndex = k < frames ? k : span - k;
+            frameIndex = startFrame + (k < usableFrames ? k : span - k);
           } else if (trail.playMode === 'random') {
-            frameIndex = Math.min(frames - 1, trailPool.frame0[i]);
+            frameIndex = Math.min(frames - 1, startFrame + (trailPool.frame0[i] % usableFrames));
           } else {
-            frameIndex = Math.min(frames - 1, Math.floor(t * frames));
+            frameIndex = startFrame + Math.min(usableFrames - 1, Math.floor(t * usableFrames));
           }
         }
         const sprite = color === '#ffffff' ? source : tintSprite(source, srcW, srcH, color);

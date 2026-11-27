@@ -17,6 +17,7 @@ export const DEFAULT_FLIGHT_TRAIL: FlightTrailConfig = {
   cellW: 16,
   cellH: 16,
   frames: 1,
+  startFrame: 0,
   playMode: 'lifetime',
   fps: 15,
   power: 25,
@@ -60,6 +61,7 @@ export function mergeFlightTrailConfig(
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
   const frames = Math.round(clamp(n(raw?.frames, d.frames), 1, 64));
+  const startFrame = Math.round(clamp(n(raw?.startFrame, d.startFrame ?? 0), 0, Math.max(0, frames - 1)));
   return {
     ...d,
     ...raw,
@@ -68,6 +70,7 @@ export function mergeFlightTrailConfig(
     cellW: Math.round(clamp(n(raw?.cellW, d.cellW), 1, 512)),
     cellH: Math.round(clamp(n(raw?.cellH, d.cellH), 1, 512)),
     frames,
+    startFrame,
     playMode: raw?.playMode ?? d.playMode,
     fps: clamp(n(raw?.fps, d.fps), 1, 60),
     power: clamp(n(raw?.power, d.power), 0, 100),

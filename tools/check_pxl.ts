@@ -687,10 +687,17 @@ if (!existsSync(LIBS_DIR)) {
   const cwepsRazorImport = cwepsRazor
     ? importPxlWeapon(cwepsRazor, cwepsLib, [cwepsLib, cwepsGfxLib])
     : undefined;
+  const cwepsRazorProject = cwepsRazorImport?.project;
   check(
-    'Razor Storm (Armageddon Special subtype 24) import is blocked',
-    cwepsRazorImport?.success === false && /armageddon/i.test(cwepsRazorImport.error ?? ''),
-    cwepsRazorImport?.error,
+    'Razor Storm (Armageddon Special subtype 24) imports the meteor body',
+    cwepsRazorImport?.success === true &&
+      cwepsRazorProject?.fireType === 'special' &&
+      cwepsRazorProject?.specialSubtype === 24 &&
+      Object.keys(cwepsRazorProject?.recordOverrides ?? {}).some((key) =>
+        key.startsWith('armageddon.meteor.'),
+      ),
+    cwepsRazorImport?.error ??
+      `${cwepsRazorProject?.fireType}/${cwepsRazorProject?.specialSubtype} ${Object.keys(cwepsRazorProject?.recordOverrides ?? {}).length} overrides`,
   );
   const cwepsMissingHold = cwepsReal.filter((w) => {
     const hasSb = w.holdSlots.some((s) => /^sb/i.test(s));

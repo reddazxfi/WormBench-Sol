@@ -8,7 +8,11 @@ import {
   RoamActionConfig,
   DigActionConfig,
 } from '../types/weapon';
-import { COLLISION_FLAGS } from '../data/recordSchema';
+import {
+  ARMAGEDDON_METEOR_PREFIX,
+  ARMAGEDDON_SUBTYPE,
+  COLLISION_FLAGS,
+} from '../data/recordSchema';
 import { decodeRecordId } from '../data/stockSprites';
 import { DEFAULT_ID_NAMESPACE, slugId } from './weaponId';
 
@@ -208,20 +212,10 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   const isStrike = fireTypeRaw === 3;
   const isSpecial = fireTypeRaw === 4;
   const isMissile = !isGun && !isArrow && !isSpray && !isMine && !isStrike && !isSpecial;
+  // The Armageddon is a special (type 4, subtype 24) whose body is a meteor,
+  // four bytes earlier than a missile's (`record.rs` METEOR_SHIFT).
+  const isArmageddon = isSpecial && subtype === ARMAGEDDON_SUBTYPE;
 
-  if (isSpecial && subtype === 24) {
-    return {
-      success: false,
-      name: weaponName,
-      fireType: 'special',
-      inferredDonor: 'armageddon',
-      rawOffsets,
-      projectState: {},
-      summary: [],
-      error:
-        'Armageddon weapon mode (Special subtype 24) isn\'t supported in WormBench yet and causes crashes; import is blocked.',
-    };
-  }
 
   let damage = 0;
   let pushPct = 100;
@@ -378,11 +372,16 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   let roamFlightHits = 0;
 
   // A strike carries the same munition body 0x14 bytes further into the
-  // record (`record.rs` STRIKE_SHIFT). Shift the word table so the decoder
-  // below reads named offsets identically for missiles and strikes; the
-  // cluster-bit body shifts with it.
-  const bodyRaw = isStrike ? shiftOffsets(rawOffsets, -0x14) : rawOffsets;
-  if (isMissile || isStrike) {
+  // record (`record.rs` STRIKE_SHIFT), the Armageddon's meteor body 4 bytes
+  // earlier (`record.rs` METEOR_SHIFT). Shift the word table so the decoder
+  // below reads named offsets identically for missiles, strikes and meteors;
+  // the cluster-bit body shifts with the strike.
+  const bodyRaw = isStrike
+    ? shiftOffsets(rawOffsets, -0x14)
+    : isArmageddon
+      ? shiftOffsets(rawOffsets, 4)
+      : rawOffsets;
+  if (isMissile || isStrike || isArmageddon) {
     // Missile body offsets (`record.rs` BODY).
     damage = bodyRaw[0x54] ?? 0;
     pushPct = bodyRaw[0x50] ?? 100;
@@ -644,8 +643,12 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     summary.push('Identified Air Strike cursor weapon (Air Strike donor)');
   } else if (isSpecial) {
     fireType = 'special';
-    inferredDonor = 'fire_punch';
-    summary.push(`Identified Special weapon (subtype ${subtype}, Fire Punch panel donor)`);
+    inferredDonor = isArmageddon ? 'armageddon' : 'fire_punch';
+    summary.push(
+      isArmageddon
+        ? 'Identified Armageddon (special subtype 24, Armageddon donor)'
+        : `Identified Special weapon (subtype ${subtype}, Fire Punch panel donor)`,
+    );
   } else if (missileAction === 1) {
     if (homingKindRaw === 2) {
       inferredDonor = 'magic_bullet';
@@ -711,7 +714,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     summary.push('Identified Direct Ballistic Rocket (Bazooka donor)');
   }
 
-  if (isMissile || isStrike) {
+  if (isMissile || isStrike || isArmageddon) {
     summary.push(`Explosion power: ${damage}, push ${pushPct}%`);
     summary.push(`Gravity: ${gravityPct}%, Wind: ${windPct}%`);
     if (bouncePct > 0) summary.push(`Bounciness Boost: ${bouncePct}`);
@@ -738,7 +741,7 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   else if (homingKindRaw === 2) homingKind = 'dodge';
 
   let action: MissileAction = 'none';
-  if (isMissile || isStrike) {
+  if (isMissile || isStrike || isArmageddon) {
     action =
       missileAction === 1
         ? 'homing'
@@ -790,51 +793,66 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     }
   }
 
-  if (isMissile || isStrike) {
+  if (isMissile || isStrike || isArmageddon) {
+    // A meteor keeps its body in `armageddon.meteor`, a missile in `missile`.
+    const bodyOverridePrefix = isArmageddon ? ARMAGEDDON_METEOR_PREFIX : 'missile.';
     // Keep every decoded body value in the model. The generator compares
     // against `wepBaseline` and only writes the ones the user changes, so
     // decoding them here makes the editor faithful without rewriting the
     // imported `.wep`.
-    recordOverrides['missile.explosion.push_pct'] = pushPct;
-    recordOverrides['missile.explosion.bias'] = explosionBias;
-    recordOverrides['missile.explosion.variation'] = explosionVariation;
-    recordOverrides['missile.speed_pct'] = speedPct;
-    recordOverrides['missile.random_motion'] = randomMotion;
-    recordOverrides['missile.collision_shape'] = collisionShape;
-    recordOverrides['missile.alarm_worms'] = alarmWorms;
-    recordOverrides['missile.ends_on_contact'] = maskFromBits(endsOnContact);
-    recordOverrides['missile.impact_particles'] = impactParticles;
-    recordOverrides['missile.sprite'] = missileSprite;
-    recordOverrides['missile.animation'] = missileAnimation;
-    recordOverrides['missile.flight_sound'] = flightSound;
-    recordOverrides['missile.launch_sound'] = launchSound;
-    recordOverrides['missile.explosion_sound.enabled'] = explosionSoundEnabled;
-    recordOverrides['missile.explosion_sound.sound'] = explosionSound;
-    recordOverrides['missile.explosion_sound.before'] = explosionSoundBefore;
-    recordOverrides['missile.explode_on_space'] = explodeOnSpace;
+    recordOverrides[`${bodyOverridePrefix}explosion.push_pct`] = pushPct;
+    recordOverrides[`${bodyOverridePrefix}explosion.bias`] = explosionBias;
+    recordOverrides[`${bodyOverridePrefix}explosion.variation`] = explosionVariation;
+    recordOverrides[`${bodyOverridePrefix}speed_pct`] = speedPct;
+    recordOverrides[`${bodyOverridePrefix}random_motion`] = randomMotion;
+    recordOverrides[`${bodyOverridePrefix}collision_shape`] = collisionShape;
+    recordOverrides[`${bodyOverridePrefix}alarm_worms`] = alarmWorms;
+    recordOverrides[`${bodyOverridePrefix}ends_on_contact`] = maskFromBits(endsOnContact);
+    recordOverrides[`${bodyOverridePrefix}impact_particles`] = impactParticles;
+    recordOverrides[`${bodyOverridePrefix}sprite`] = missileSprite;
+    recordOverrides[`${bodyOverridePrefix}animation`] = missileAnimation;
+    recordOverrides[`${bodyOverridePrefix}flight_sound`] = flightSound;
+    if (!isArmageddon) recordOverrides[`${bodyOverridePrefix}launch_sound`] = launchSound;
+    recordOverrides[`${bodyOverridePrefix}explosion_sound.enabled`] = explosionSoundEnabled;
+    recordOverrides[`${bodyOverridePrefix}explosion_sound.sound`] = explosionSound;
+    recordOverrides[`${bodyOverridePrefix}explosion_sound.before`] = explosionSoundBefore;
+    recordOverrides[`${bodyOverridePrefix}explode_on_space`] = explodeOnSpace;
     if (trailSprite || trailPower || trailSpeed || trailBubbles) {
-      recordOverrides['missile.trail.enabled'] = true;
-      recordOverrides['missile.trail.sprite'] = trailSprite;
-      recordOverrides['missile.trail.power'] = trailPower;
-      recordOverrides['missile.trail.speed'] = trailSpeed;
-      recordOverrides['missile.trail.bubbles_per_second'] = trailBubbles;
+      recordOverrides[`${bodyOverridePrefix}trail.enabled`] = true;
+      recordOverrides[`${bodyOverridePrefix}trail.sprite`] = trailSprite;
+      recordOverrides[`${bodyOverridePrefix}trail.power`] = trailPower;
+      recordOverrides[`${bodyOverridePrefix}trail.speed`] = trailSpeed;
+      recordOverrides[`${bodyOverridePrefix}trail.bubbles_per_second`] = trailBubbles;
     }
-    recordOverrides['missile.bounce.hits'] = maskFromBits(bounceHits);
-    recordOverrides['missile.bounce.terrain_keep_speed_pct'] = bounceKeep;
-    recordOverrides['missile.bounce.sound'] = bounceSound;
-    recordOverrides['missile.bounce.contact_sides'] = bounceContactSides;
-    recordOverrides['missile.bounce.extra_reverse_chance_pct'] = bounceExtraReverse;
-    recordOverrides['missile.bounce.explosion.bias'] = bounceExplosionBias;
-    recordOverrides['missile.bounce.explosion.push_pct'] = bounceExplosionPush;
-    recordOverrides['missile.bounce.explosion.power'] = bounceExplosionPower;
-    recordOverrides['missile.bounce.explosion.variation'] = bounceExplosionVariation;
-    recordOverrides['missile.bounce.max_bounces'] = maxBounces;
-    recordOverrides['missile.homing.sprite'] = homingSprite;
-    recordOverrides['missile.homing.animation'] = homingAnimation;
-    recordOverrides['missile.homing.trail.sprite'] = homingTrailSprite;
-    recordOverrides['missile.homing.trail.power'] = homingTrailPower;
-    recordOverrides['missile.homing.trail.speed'] = homingTrailSpeed;
-    recordOverrides['missile.homing.trail.bubbles_per_second'] = homingTrailBubbles;
+    recordOverrides[`${bodyOverridePrefix}bounce.hits`] = maskFromBits(bounceHits);
+    recordOverrides[`${bodyOverridePrefix}bounce.terrain_keep_speed_pct`] = bounceKeep;
+    recordOverrides[`${bodyOverridePrefix}bounce.sound`] = bounceSound;
+    recordOverrides[`${bodyOverridePrefix}bounce.contact_sides`] = bounceContactSides;
+    recordOverrides[`${bodyOverridePrefix}bounce.extra_reverse_chance_pct`] = bounceExtraReverse;
+    recordOverrides[`${bodyOverridePrefix}bounce.explosion.bias`] = bounceExplosionBias;
+    recordOverrides[`${bodyOverridePrefix}bounce.explosion.push_pct`] = bounceExplosionPush;
+    recordOverrides[`${bodyOverridePrefix}bounce.explosion.power`] = bounceExplosionPower;
+    recordOverrides[`${bodyOverridePrefix}bounce.explosion.variation`] = bounceExplosionVariation;
+    recordOverrides[`${bodyOverridePrefix}bounce.max_bounces`] = maxBounces;
+    recordOverrides[`${bodyOverridePrefix}homing.sprite`] = homingSprite;
+    recordOverrides[`${bodyOverridePrefix}homing.animation`] = homingAnimation;
+    recordOverrides[`${bodyOverridePrefix}homing.trail.sprite`] = homingTrailSprite;
+    recordOverrides[`${bodyOverridePrefix}homing.trail.power`] = homingTrailPower;
+    recordOverrides[`${bodyOverridePrefix}homing.trail.speed`] = homingTrailSpeed;
+    recordOverrides[`${bodyOverridePrefix}homing.trail.bubbles_per_second`] = homingTrailBubbles;
+    if (isArmageddon) {
+      // The meteor panel edits these as record fields (the missile panel keeps
+      // them in typed body state), so a decoded meteor carries them here.
+      // The meteor panel keeps blast power on the record (the missile panel
+      // uses the typed damage for it).
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}explosion.power`] = damage;
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}fuse`] = fuseMs;
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}countdown`] = countdownMs;
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}bounce.bounciness`] = bouncePct;
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}homing.kind`] = homingKindRaw;
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}homing.arm`] = homingArm;
+      recordOverrides[`${ARMAGEDDON_METEOR_PREFIX}homing.time`] = homingTime;
+    }
   }
   if (isMine) {
     recordOverrides['mine.detects'] = maskFromBits(mineMask);
@@ -899,14 +917,20 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
       afterUse: retreat > 0 ? 'retreat' : 'end',
     },
     body: {
-      sprite: isMine ? 'mine' : isGun ? 'uzi' : isMissile && fuseMs > 0 ? 'dynamite' : 'missile',
+      sprite: isMine
+        ? 'mine'
+        : isGun
+          ? 'uzi'
+          : isMissile && fuseMs > 0
+            ? 'dynamite'
+            : 'missile',
       damage,
       gravity_pct: gravityPct,
       wind_pct: windPct,
       bounce_pct: bouncePct,
-      fuse: isMissile || isStrike ? fuseMs > 0 : false,
-      fuse_time_ms: isMissile || isStrike ? fuseMs : 0,
-      countdown_ms: isMissile || isStrike ? countdownMs : 0,
+      fuse: isMissile || isStrike || isArmageddon ? fuseMs > 0 : false,
+      fuse_time_ms: isMissile || isStrike || isArmageddon ? fuseMs : 0,
+      countdown_ms: isMissile || isStrike || isArmageddon ? countdownMs : 0,
       homing: homingKind,
       // Only the active action's bytes are decoded, so a non-homing base gets
       // the editor's sensible homing defaults when the user switches action.

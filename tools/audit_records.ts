@@ -16,7 +16,7 @@
  *    shape (a sheep roams and does not gas, a petrol bomb spreads fire, the
  *    utilities toggle an effect) checked against the donor records.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { readBundles, readWeapons, flattenRecord, type ModFile } from '../src/utils/modLib/scan';
 import type { LuaTable } from '../src/utils/modLib/luaTable';
@@ -24,6 +24,7 @@ import { parseWepBinary } from '../src/utils/wepParser';
 import { STOCK_WEAPONS } from '../src/data/stockWeapons';
 import { resolveStockSprite } from '../src/data/stockSprites';
 import { importBundleWeapon } from '../src/utils/modLib/importWeapon';
+import { readPxSchemeRecord } from './pxScheme';
 import { generateLuaCode } from '../src/utils/luaGenerator';
 import { scanLua } from '../src/utils/modLib/luaTable';
 import { stockDonor } from '../src/data/stockDonors';
@@ -33,7 +34,17 @@ import { DEFAULT_EXPLOSION_EFFECT } from '../src/data/explosionPresets';
 import { DEFAULT_CUSTOM_SOUNDS } from '../src/data/soundPresets';
 
 const MODS = process.argv[2] ?? 'D:/Worms Armageddon/WormBench/Mods';
+// The donors are decoded from PX's scheme, which ships in the repo, so this
+// audit needs no unpacked folder. The temp path is the older unpacked copy
+// (`python tools/px_scheme_weps.py` in the engine) for a machine without it.
 const DONOR_DIR = 'C:/Users/lucia/AppData/Local/Temp/wf_px/default';
+const DONOR_FIXTURE = 'spec/PX/default.pxs';
+let donorFixture: Uint8Array | undefined;
+try {
+  donorFixture = new Uint8Array(readFileSync(DONOR_FIXTURE));
+} catch {
+  donorFixture = undefined;
+}
 
 const MODEL_GROUPS = new Set([
   'missile',
@@ -43,6 +54,8 @@ const MODEL_GROUPS = new Set([
   'flame_thrower',
   'mine',
   'strike',
+  // A subtype-24 special: the meteor body lives at `missile - 4`.
+  'armageddon',
   // `sheep.flight_1/2` is modelled as `roamConfig.flight_1/2`.
   'sheep',
 ]);
@@ -218,13 +231,24 @@ const EXPECT: Expectation[] = [
   { slot: 'drill', want: { 'drill.duration_ms': '>0' }, why: 'the drill runs for a duration' },
   { slot: 'jet_pack', want: { 'jet_pack.fuel': '>=0' }, why: 'the jet pack has a fuel setting' },
   { slot: 'parachute', want: { 'parachute.wind_pct': '>=0' }, why: 'the parachute has a wind response' },
+  {
+    slot: 'armageddon',
+    want: {
+      'armageddon.meteor.explosion.power': '>0',
+      'armageddon.meteor.ends_on_contact.land': true,
+      'armageddon.meteor.bounce.bounciness': 1,
+    },
+    why: 'the meteor body sits four bytes before a missile body',
+  },
 ];
 
 const donorProblems: string[] = [];
 const readDonor = (slot: string): Record<string, unknown> | undefined => {
+  const fixture = donorFixture ? readPxSchemeRecord(donorFixture, slot) : undefined;
   const path = join(DONOR_DIR, `${slot}.wep`);
   try {
-    const bytes = readFileSync(path);
+    const bytes = fixture ?? (existsSync(path) ? new Uint8Array(readFileSync(path)) : undefined);
+    if (!bytes) return undefined;
     const decoded = parseWepBinary(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
       `${slot}.wep`,

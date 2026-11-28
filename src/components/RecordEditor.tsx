@@ -4,10 +4,18 @@ import {
   CollisionMask,
   ClustletConfig,
   HomingKind,
+  MissileAction,
   RoamActionConfig,
   DigActionConfig,
 } from '../types/weapon';
-import { COLLISION_FLAGS, MISSILE_ANIM_HINT, MISSILE_ANIM_TYPES } from '../data/recordSchema';
+import {
+  ARMAGEDDON_METEOR_PREFIX,
+  ARMAGEDDON_SUBTYPE,
+  COLLISION_FLAGS,
+  isArmageddonDonor,
+  MISSILE_ANIM_HINT,
+  MISSILE_ANIM_TYPES,
+} from '../data/recordSchema';
 import { StockSpriteInput } from './StockSpriteInput';
 import { TRAIL_SPRITES } from '../data/stockSprites';
 import {
@@ -107,6 +115,7 @@ const SPECIAL_SUBTYPES: { value: number; label: string }[] = [
   { value: 12, label: '12, Parachute' },
   { value: 19, label: '19, Turn Utility' },
   { value: 23, label: '23, Jet Pack' },
+  { value: 24, label: '24, Armageddon' },
   { value: 0, label: '0, Other / Inherited' },
 ];
 
@@ -368,7 +377,8 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
     project.fireType,
     project.teleport,
     body.fuse,
-    fireSequenceMissileActive(project)
+    fireSequenceMissileActive(project),
+    project.specialSubtype
   );
 
   // Normalize any legacy or transitional tab id cleanly so panels never blank out.
@@ -426,6 +436,51 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
 
   const toggleMaskTarget = (path: string, key: CollisionTargetKey, current: CollisionMask) => {
     updateOverride(path, toggleMaskValue(current, key));
+  };
+
+  // ---- Armageddon (special subtype 24) -----------------------------------
+  const MP = ARMAGEDDON_METEOR_PREFIX;
+  const isArmageddonWeapon =
+    project.fireType === 'special' && project.specialSubtype === ARMAGEDDON_SUBTYPE;
+  // The base template is the record the export claims, so it decides the
+  // subtype; the Inventory Slot only places the weapon and does not.
+  const armageddonSlot = isArmageddonDonor(project.based_on);
+  const meteorAction: MissileAction = project.action ?? 'none';
+  const meteorTrailOn = Boolean(field(`${MP}trail.enabled`, false));
+
+  // Switching the meteor action writes the destination group in full: the
+  // actions share the donor's record slab, so an unwritten slot would be read
+  // back as another action's value.
+  const setMeteorAction = (next: MissileAction) => {
+    if (next === meteorAction) return;
+    const recordOverrides = { ...project.recordOverrides };
+    const fill = (rel: string, value: unknown) => {
+      recordOverrides[`${MP}${next}.${rel}`] = value;
+    };
+    if (next === 'bounce') {
+      fill('hits', {});
+      fill('bounciness', 0);
+      fill('max_bounces', 0);
+      fill('terrain_keep_speed_pct', 75);
+      fill('sound', 0);
+      fill('contact_sides', 0);
+      fill('extra_reverse_chance_pct', 0);
+      fill('explosion.bias', 0);
+      fill('explosion.push_pct', 100);
+      fill('explosion.power', 0);
+      fill('explosion.variation', 0);
+    } else if (next === 'homing') {
+      fill('sprite', 0);
+      fill('animation', 0);
+      fill('trail.sprite', 0);
+      fill('trail.power', 0);
+      fill('trail.speed', 0);
+      fill('trail.bubbles_per_second', 0);
+      fill('kind', 0);
+      fill('arm', 0);
+      fill('time', 5000);
+    }
+    onChange({ action: next, recordOverrides });
   };
 
   const inputClass =
@@ -2675,6 +2730,244 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
         </div>
       )}
 
+      {/* PANEL 6a2: Armageddon meteor (special subtype 24) */}
+      {normalizedTab === 'armageddon' && (
+        <div className="p-4 sm:p-5 space-y-5">
+          <SectionHeader
+            title="Armageddon Meteor"
+            code={`${MP}meteor`}
+            icon={<Flame className="h-4 w-4 text-forge-500" aria-hidden="true" />}
+            desc="Special subtype 24 keeps the falling meteor in its own record group, four bytes before a missile body. WA reads it only for this subtype."
+          />
+          <p className="rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+            The stock meteor falls, bounces off the ground, then explodes. Fire subtype 24 is what makes WA read this body, so keep it set on the Special Tool tab.
+          </p>
+
+          <SubSectionTitle
+            title="Meteor Art &amp; Outline"
+            desc="Stock art the engine draws for the falling meteor and its collision outline clearance."
+            code={`${MP}sprite`}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <StockSpriteInput
+              id="meteor-sprite"
+              label="Meteor Sprite"
+              code={`${MP}sprite`}
+              value={field(`${MP}sprite`, '')}
+              onChange={(v) => updateOverride(`${MP}sprite`, v)}
+              desc="Stock sprite the engine draws for the meteor."
+            />
+            {animField(`${MP}animation`, 'Meteor Animation Mode', 0)}
+            {numField(`${MP}collision_shape`, 'Collision Outline Preset', 0, 'Native numeric collision outline clearance preset.', { min: 0, max: 8 })}
+          </div>
+
+          <SubSectionTitle title="Flight" desc="Launch speed, gravity and the fuse that ends the fall." />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {numField(`${MP}speed_pct`, 'Initial Speed (%)', 100, 'Multiplier for the meteor launch velocity (100 = normal).', { min: 0, max: 500, unit: '%' })}
+            {numField(`${MP}gravity_pct`, 'Gravity (%)', 100, 'Downward acceleration multiplier (100 = normal WA gravity).', { min: 0, max: 500, unit: '%' })}
+            {numField(`${MP}wind_pct`, 'Wind Sensitivity (%)', 100, 'Horizontal wind response (100 = full bazooka drift).', { min: 0, max: 500, unit: '%' })}
+            {numField(`${MP}random_motion`, 'Random Motion', 0, 'Native random wobble added to the flight path.', { min: 0, max: 100 })}
+            {numField(`${MP}fuse`, 'Fuse Timer (ms)', 0, 'Native explosion countdown in milliseconds (0 disables the timer).', { min: 0, max: 60000, step: 50, unit: 'ms' })}
+            {numField(`${MP}countdown`, 'Visible Countdown Timer', 0, 'Countdown displayed above the meteor (0 hides it).', { min: 0, max: 60000, step: 50, unit: 'ms' })}
+            {numField(`${MP}flight_sound`, 'Flight Sound', 0, 'Native sound id played while the meteor falls (0 = silent).', { min: 0, max: 200 })}
+            {numField(`${MP}explosion_sound.sound`, 'Explosion Sound', 0, 'Native sound id played at detonation (0 = silent).', { min: 0, max: 200 })}
+            {numField(`${MP}explosion_sound.before`, 'Explosion Sound Delay (ms)', 0, 'Delay between the blast and its sound.', { min: 0, max: 5000, step: 10, unit: 'ms' })}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <CheckboxCard
+              checked={Boolean(field(`${MP}alarm_worms`, false))}
+              onChange={(v) => updateOverride(`${MP}alarm_worms`, v)}
+              label="Alarm Worms Nearby"
+              code={`${MP}alarm_worms`}
+              desc="Nearby worms gasp shortly before the meteor detonates."
+            />
+            <CheckboxCard
+              checked={Boolean(field(`${MP}impact_particles`, false))}
+              onChange={(v) => updateOverride(`${MP}impact_particles`, v)}
+              label="Holy Impact Particles"
+              code={`${MP}impact_particles`}
+              desc="Brief particle trail after impact (Holy Hand Grenade style)."
+            />
+            <CheckboxCard
+              checked={Boolean(field(`${MP}explode_on_space`, false))}
+              onChange={(v) => updateOverride(`${MP}explode_on_space`, v)}
+              label="Detonate on Space"
+              code={`${MP}explode_on_space`}
+              desc="Lets the player press Space mid-flight to detonate."
+            />
+            <CheckboxCard
+              checked={Boolean(field(`${MP}explosion_sound.enabled`, false))}
+              onChange={(v) => updateOverride(`${MP}explosion_sound.enabled`, v)}
+              label="Play Explosion Sound"
+              code={`${MP}explosion_sound.enabled`}
+              desc="Whether WA plays a native sound when the meteor explodes."
+            />
+          </div>
+
+          <SubSectionTitle
+            title="Detonate On Contact With"
+            desc="Which entities end the flight and detonate the meteor."
+            code={`${MP}ends_on_contact`}
+          />
+          {maskGrid(
+            `${MP}ends_on_contact`,
+            (field(`${MP}ends_on_contact`, undefined) || {
+              land: true,
+              worms: true,
+              mines: true,
+              crates: true,
+              water: true,
+            }) as CollisionMask
+          )}
+
+          <SubSectionTitle
+            title="Explosion"
+            desc="Blast power, knockback and the blast sound."
+            code={`${MP}explosion.power`}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {numField(`${MP}explosion.power`, 'Explosion Power (Radius & Damage)', 0, 'Combined blast damage and terrain cut radius (WA power value).', { min: 0, max: 200 })}
+            {numField(`${MP}explosion.push_pct`, 'Knockback Push (%)', 100, 'Knockback percentage applied to worms and objects (100 = normal).', { min: 0, max: 500, unit: '%' })}
+            {numField(`${MP}explosion.bias`, 'Blast Bias', 0, 'Vertical blast elevation bias.', { min: -100, max: 100 })}
+            {numField(`${MP}explosion.variation`, 'Explosion Variation', 0, 'Random spread added to the blast power.', { min: 0, max: 100 })}
+          </div>
+
+          <SubSectionTitle
+            title="Meteor Trail"
+            desc="Stock particle trail behind the falling meteor."
+            code={`${MP}trail.sprite`}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <CheckboxCard
+              checked={meteorTrailOn}
+              onChange={(v) => updateOverride(`${MP}trail.enabled`, v)}
+              label="Enable Visual Trail"
+              code={`${MP}trail.enabled`}
+              desc="Writes the trail block when on; leaves the donor trail alone when off."
+            />
+            <StockSpriteInput
+              id="meteor-trail-sprite"
+              label="Trail Particle Sprite"
+              code={`${MP}trail.sprite`}
+              value={field(`${MP}trail.sprite`, '')}
+              onChange={(v) => updateOverride(`${MP}trail.sprite`, v)}
+              options={TRAIL_SPRITES}
+              disabled={!meteorTrailOn}
+              desc="Stock trail sprite; 0 disables the trail."
+            />
+            {numField(`${MP}trail.power`, 'Trail Density', 0, 'Emission density of trail particles.', { min: 0, max: 100, step: 5 })}
+            {numField(`${MP}trail.speed`, 'Trail Speed', 0, 'Initial ejection speed of trail particles.', { min: 0, max: 1000, step: 10 })}
+            {numField(`${MP}trail.bubbles_per_second`, 'Water Bubbles / sec', 0, 'Bubble rate when travelling underwater (0.25 steps).', { min: 0, max: 20, step: 0.25 })}
+          </div>
+
+          <SubSectionTitle
+            title="Flight Action"
+            desc="Meteor behaviour in flight. The stock Armageddon bounces."
+            code={`${MP}action`}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div>
+              <TooltipLabel
+                label="Meteor Action"
+                code={`${MP}action`}
+                desc="None flies straight, Bounce rebounds off terrain, Homing steers at the target."
+                htmlFor="meteor-action"
+              />
+              <select
+                id="meteor-action"
+                value={meteorAction}
+                onChange={(e) => setMeteorAction(e.target.value as MissileAction)}
+                className={selectClass}
+              >
+                <option value="none">None (0)</option>
+                <option value="bounce">Bounce (2)</option>
+                <option value="homing">Homing (1)</option>
+                {meteorAction === 'roam' && <option value="roam">Roam (3, kept from the record)</option>}
+                {meteorAction === 'dig' && <option value="dig">Dig (4, kept from the record)</option>}
+              </select>
+            </div>
+          </div>
+
+          {meteorAction === 'bounce' && (
+            <div className="space-y-3 border-t border-stone-200/80 pt-3 dark:border-stone-800">
+              <SubSectionTitle
+                title="Bounce"
+                desc="How the meteor rebounds, and the small blast a bounce can spawn."
+                code={`${MP}bounce.hits`}
+              />
+              {maskGrid(`${MP}bounce.hits`, (field(`${MP}bounce.hits`, undefined) || {}) as CollisionMask)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {numField(`${MP}bounce.bounciness`, 'Bounciness Boost', 0, 'Extra bounce relative to the Grenade (0 = Grenade).', { min: 0, max: 10, step: 0.1 })}
+                {numField(`${MP}bounce.max_bounces`, 'Max Bounces', 0, 'Terrain contacts before detonation (0 keeps the fuse timer).', { min: 0, max: 50 })}
+                {numField(`${MP}bounce.terrain_keep_speed_pct`, 'Speed Retained on Bounce (%)', 75, 'Percentage of velocity preserved after hitting terrain.', { min: 0, max: 100, unit: '%' })}
+                {numField(`${MP}bounce.sound`, 'Bounce Sound', 0, 'Native sound id played on every bounce (0 = silent).', { min: 0, max: 200 })}
+                {numField(`${MP}bounce.contact_sides`, 'Bounce Contact Sides', 0, 'Bitmask of the sides that count as a terrain contact (8 = all sides).', { min: 0, max: 15 })}
+                {numField(`${MP}bounce.extra_reverse_chance_pct`, 'Extra Reverse Chance (%)', 0, 'Chance that a bounce also reverses direction.', { min: 0, max: 100, unit: '%' })}
+                {numField(`${MP}bounce.explosion.power`, 'Bounce Explosion Power', 0, 'Power of the blast a bounce spawns (0 = no blast).', { min: 0, max: 200 })}
+                {numField(`${MP}bounce.explosion.push_pct`, 'Bounce Knockback Push (%)', 0, 'Knockback percentage of the bounce blast.', { min: 0, max: 500, unit: '%' })}
+                {numField(`${MP}bounce.explosion.bias`, 'Bounce Blast Bias', 0, 'Vertical bias of the bounce blast.', { min: -100, max: 100 })}
+                {numField(`${MP}bounce.explosion.variation`, 'Bounce Explosion Variation', 0, 'Random spread of the bounce blast power.', { min: 0, max: 100 })}
+              </div>
+            </div>
+          )}
+
+          {meteorAction === 'homing' && (
+            <div className="space-y-3 border-t border-stone-200/80 pt-3 dark:border-stone-800">
+              <SubSectionTitle
+                title="Homing"
+                desc="Steering, arming and the art WA draws while the meteor homes in."
+                code={`${MP}homing.kind`}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                <div>
+                  <TooltipLabel
+                    label="Homing Kind"
+                    code={`${MP}homing.kind`}
+                    desc="How the meteor steers once armed."
+                    htmlFor="meteor-homing-kind"
+                  />
+                  <select
+                    id="meteor-homing-kind"
+                    value={String(Number(field(`${MP}homing.kind`, 0)))}
+                    onChange={(e) => updateOverride(`${MP}homing.kind`, Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    <option value="0">Off (0)</option>
+                    <option value="1">Lock-on (1)</option>
+                    <option value="2">Dodge (2)</option>
+                  </select>
+                </div>
+                {numField(`${MP}homing.arm`, 'Arming Delay (ms)', 0, 'Free flight drift before homing propulsion activates.', { min: 0, max: 60000, step: 50, unit: 'ms' })}
+                {numField(`${MP}homing.time`, 'Homing Duration (ms)', 5000, 'How long active target steering continues.', { min: 0, max: 60000, step: 50, unit: 'ms' })}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                <StockSpriteInput
+                  id="meteor-homing-sprite"
+                  label="Homing Sprite"
+                  code={`${MP}homing.sprite`}
+                  value={field(`${MP}homing.sprite`, '')}
+                  onChange={(v) => updateOverride(`${MP}homing.sprite`, v)}
+                  desc="Stock sprite shown while homing."
+                />
+                {animField(`${MP}homing.animation`, 'Homing Animation Mode', 0)}
+                <StockSpriteInput
+                  id="meteor-homing-trail-sprite"
+                  label="Homing Trail Sprite"
+                  code={`${MP}homing.trail.sprite`}
+                  value={field(`${MP}homing.trail.sprite`, '')}
+                  onChange={(v) => updateOverride(`${MP}homing.trail.sprite`, v)}
+                  options={TRAIL_SPRITES}
+                  desc="Stock trail sprite emitted while homing (0 or blank disables it)."
+                />
+                {numField(`${MP}homing.trail.power`, 'Homing Trail Density', 0, 'Particle density while homing.', { min: 0, max: 100, step: 5 })}
+                {numField(`${MP}homing.trail.speed`, 'Homing Trail Speed', 0, 'Particle ejection speed while homing.', { min: 0, max: 1000, step: 10 })}
+                {numField(`${MP}homing.trail.bubbles_per_second`, 'Homing Bubbles / sec', 0, 'Underwater bubble rate while homing (0.25 steps).', { min: 0, max: 20, step: 0.25 })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* PANEL 6b: Firearm Specs */}
       {normalizedTab === 'gun' && (
         <div className="p-4 sm:p-5 space-y-5">
@@ -2848,14 +3141,29 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
                     id="special-subtype"
                     value={String(project.specialSubtype ?? 1)}
                     onChange={(e) => onChange({ specialSubtype: Number(e.target.value) })}
+                    disabled={armageddonSlot}
                     className={selectClass}
                   >
-                    {SPECIAL_SUBTYPES.map((entry) => (
+                    {SPECIAL_SUBTYPES.filter(
+                      (entry) =>
+                        entry.value !== ARMAGEDDON_SUBTYPE ||
+                        armageddonSlot ||
+                        project.specialSubtype === ARMAGEDDON_SUBTYPE
+                    ).map((entry) => (
                       <option key={entry.value} value={entry.value}>
                         {entry.label}
                       </option>
                     ))}
                   </select>
+                  {armageddonSlot ? (
+                    <p className="mt-1 text-[10px] leading-snug text-stone-500 dark:text-stone-400">
+                      Subtype 24 is fixed by the Armageddon base template, which is what makes WA read the meteor body. Pick another Base Template to change the special tool.
+                    </p>
+                  ) : project.specialSubtype !== ARMAGEDDON_SUBTYPE ? (
+                    <p className="mt-1 text-[10px] leading-snug text-stone-500 dark:text-stone-400">
+                      Subtype 24 is the Armageddon meteor body. Pick the Armageddon base template on the Setup tab to switch to it.
+                    </p>
+                  ) : null}
                 </div>
 
                 {project.specialSubtype === 1 && (

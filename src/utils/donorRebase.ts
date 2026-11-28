@@ -1,5 +1,6 @@
 import type { WepBaseline, WeaponProject } from '../types/weapon';
 import { stockDonor, stockDonorBaseline } from '../data/stockDonors';
+import { ARMAGEDDON_SUBTYPE } from '../data/recordSchema';
 
 /**
  * Re-basing a `copy_from` weapon onto another stock donor.
@@ -86,14 +87,22 @@ export function rebaseToDonor(project: WeaponProject, donorSlot: string): Weapon
     rebaseGroup(next.body.clustlet, project.body.clustlet, old?.body?.clustlet, false) ??
     next.body.clustlet;
 
+  // The Armageddon donor is the formal route: picking it sets special subtype 24
+  // (the engine reads the meteor body only for 24) and switches the fire family
+  // to special, so the meteor panel and the subtype never disagree.
+  const armageddon = donorId === 'armageddon';
+
   return {
     ...project,
     based_on: donorSlot,
     donorBaseline: next,
+    fireType: armageddon ? 'special' : project.fireType,
     body: { ...body, clustlet },
     action: rebaseValue(next.action, project.action, old?.action),
     burst: rebaseValue(next.burst, project.burst, old?.burst),
-    specialSubtype: rebaseValue(next.specialSubtype, project.specialSubtype, old?.specialSubtype),
+    specialSubtype: armageddon
+      ? ARMAGEDDON_SUBTYPE
+      : rebaseValue(next.specialSubtype, project.specialSubtype, old?.specialSubtype),
     recordOverrides:
       rebaseGroup(next.recordOverrides, project.recordOverrides, old?.recordOverrides, true) ?? {},
     roamConfig: rebaseGroup(next.roamConfig, project.roamConfig, old?.roamConfig, false) ?? next.roamConfig,

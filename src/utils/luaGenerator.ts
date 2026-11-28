@@ -40,7 +40,13 @@ import {
 } from '../data/fireSequence';
 import { STAMP_FRAMES, stampFrameForAngle, supportsTerrainStamp } from '../data/terrainStamp';
 import { clampPoisonPower, poisonCall } from '../data/poison';
-import { COLLISION_FLAGS } from '../data/recordSchema';
+import {
+  ARMAGEDDON_METEOR_PATHS,
+  ARMAGEDDON_METEOR_PREFIX,
+  ARMAGEDDON_SUBTYPE,
+  COLLISION_FLAGS,
+  isArmageddonDonor,
+} from '../data/recordSchema';
 import { meleeStrikes } from '../data/melee';
 import {
   airstrikeActive,
@@ -5763,6 +5769,115 @@ export function generateLuaCode(project: WeaponProject): string {
   const isMissileFamily =
     !usesFireSeqNative &&
     (project.fireType === 'power' || (project.fireType === 'drop' && !!project.body.fuse));
+  // The Armageddon's meteor body (`armageddon.meteor` in `record.rs`) is the
+  // only nested native group: build the table from the flat override paths,
+  // keep only values that differ from the donor, and write it once.
+  const meteorGroupLines = (): string[] => {
+    type Node = { value?: unknown; children?: Map<string, Node> };
+    const values = new Map<string, unknown>();
+    // A missile donor carries missile bytes 4 words after the meteor body, so a
+    // subtype-24 claim on a non-Armageddon donor must write the whole meteor or
+    // the engine reads the donor's missile words as meteor fields. The stock
+    // Armageddon body is the fallback in that case.
+    const armageddonDonor = isArmageddonDonor(project.based_on);
+    if (!armageddonDonor) {
+      const fallbackBody = stockDonorBaseline('armageddon')?.recordOverrides;
+      if (fallbackBody) {
+        for (const path of ARMAGEDDON_METEOR_PATHS) {
+          const value = fallbackBody[path];
+          if (value !== undefined) values.set(path, value);
+        }
+      }
+    }
+    for (const path of ARMAGEDDON_METEOR_PATHS) {
+      const value = override(path);
+      if (value !== undefined) values.set(path, value);
+    }
+    // The action lives in `project.action` (the missile panels own it the same
+    // way). When it changes, the destination group shares the donor's slab and
+    // must be written in full, or the donor's bytes come back as another
+    // feature's value.
+    const METEOR_ACTION_DEFAULTS: Record<string, Record<string, unknown>> = {
+      bounce: {
+        hits: {},
+        bounciness: 0,
+        max_bounces: 0,
+        terrain_keep_speed_pct: 75,
+        sound: 0,
+        contact_sides: 0,
+        extra_reverse_chance_pct: 0,
+        'explosion.bias': 0,
+        'explosion.push_pct': 100,
+        'explosion.power': 0,
+        'explosion.variation': 0,
+      },
+      homing: {
+        sprite: 0,
+        animation: 0,
+        'trail.sprite': 0,
+        'trail.power': 0,
+        'trail.speed': 0,
+        'trail.bubbles_per_second': 0,
+        kind: 0,
+        arm: 0,
+        time: 5000,
+      },
+    };
+    const actionChanged = !baseline || action !== baseline.action;
+    if (actionChanged) {
+      const defaults = METEOR_ACTION_DEFAULTS[action];
+      if (defaults) {
+        for (const [rel, value] of Object.entries(defaults)) {
+          const path = `${ARMAGEDDON_METEOR_PREFIX}${action}.${rel}`;
+          if (!values.has(path)) values.set(path, value);
+        }
+      }
+      values.set(
+        `${ARMAGEDDON_METEOR_PREFIX}action`,
+        action === 'homing' ? 1 : action === 'bounce' ? 2 : action === 'roam' ? 3 : action === 'dig' ? 4 : 0,
+      );
+    }
+    const root = new Map<string, Node>();
+    for (const [path, value] of values) {
+      const rel = path.slice(ARMAGEDDON_METEOR_PREFIX.length).split('.');
+      let level = root;
+      for (let i = 0; i < rel.length - 1; i++) {
+        const key = rel[i];
+        let node = level.get(key);
+        if (!node) {
+          node = { children: new Map() };
+          level.set(key, node);
+        }
+        level = node.children!;
+      }
+      level.set(rel[rel.length - 1], { value });
+    }
+    const render = (level: Map<string, Node>, indent: number): string[] => {
+      const rows: string[] = [];
+      for (const [key, node] of level) {
+        if (node.children) {
+          rows.push(`${' '.repeat(indent)}${key} = {`);
+          rows.push(...render(node.children, indent + 2));
+          rows.push(`${' '.repeat(indent)}},`);
+          continue;
+        }
+        const value = node.value;
+        let literal: string;
+        if (typeof value === 'string') literal = luaQuote(value);
+        else if (typeof value === 'boolean') literal = value ? 'true' : 'false';
+        else if (typeof value === 'number' && Number.isFinite(value))
+          literal = formatNumber(value);
+        else {
+          const maskTable = luaMaskTable(value as Record<string, unknown>);
+          if (maskTable === null) continue;
+          literal = maskTable;
+        }
+        rows.push(`${' '.repeat(indent)}${key} = ${literal},`);
+      }
+      return rows;
+    };
+    return render(root, 10);
+  };
   const firesRows: string[] = [];
   const beamSilentSubtype = usesBeam && override('fires.subtype') === undefined;
   const effectiveFiresSubtype = beamSilentSubtype ? 8 : firesSubtype;
@@ -5827,6 +5942,18 @@ export function generateLuaCode(project: WeaponProject): string {
     lines.push(`      ${group} = {`);
     lines.push(...rows);
     lines.push('      },');
+  }
+
+  // Armageddon (special subtype 24) carries the meteor body, never `missile`.
+  if (project.fireType === 'special' && gateSubtype === ARMAGEDDON_SUBTYPE) {
+    const meteorRows = meteorGroupLines();
+    if (meteorRows.length > 0) {
+      lines.push('      armageddon = {');
+      lines.push('        meteor = {');
+      lines.push(...meteorRows);
+      lines.push('        },');
+      lines.push('      },');
+    }
   }
 
   // Hold Art & Direct Worm Pose Sprites (can be enabled individually or combined)

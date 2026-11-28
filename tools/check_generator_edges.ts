@@ -2939,6 +2939,80 @@ local afterHook = 42`;
   check('a gun weapon ignores flame_thrower overrides', !gunLua.includes('flame_thrower ='), gunLua);
 }
 
+// ---- Armageddon: its own nested meteor group, never the missile's ----------
+{
+  const base = stockDonor('armageddon') as Partial<WeaponProject>;
+  const meteor = makeProject({
+    based_on: 'stock.armageddon',
+    fireType: 'special',
+    specialSubtype: 24,
+    donorBaseline: stockDonorBaseline('armageddon'),
+    body: { ...DEFAULT_BODY, ...(base.body ?? {}) },
+    action: 'bounce',
+    recordOverrides: { ...(base.recordOverrides ?? {}) },
+  });
+  const plain = generateLuaCode(meteor);
+  check(
+    'an untouched Armageddon writes no meteor group at all',
+    !plain.includes('armageddon =') && !/^\s+missile = \{/m.test(plain),
+    plain,
+  );
+  check(
+    'and inherits special subtype 24 from its donor',
+    !/subtype = 24/.test(plain),
+    plain,
+  );
+
+  const edited = generateLuaCode({
+    ...meteor,
+    recordOverrides: {
+      ...meteor.recordOverrides,
+      'armageddon.meteor.explosion.power': 120,
+      'armageddon.meteor.trail.power': 80,
+    },
+  });
+  check(
+    'a changed meteor field nests under armageddon.meteor',
+    edited.includes('      armageddon = {') &&
+      edited.includes('        meteor = {') &&
+      edited.includes('          explosion = {') &&
+      edited.includes('            power = 120,') &&
+      edited.includes('          trail = {') &&
+      edited.includes('            power = 80,'),
+    edited,
+  );
+  check('an Armageddon never writes a missile slab', !/^\s+missile = \{/m.test(edited), edited);
+
+  const homing = generateLuaCode({ ...meteor, action: 'homing' });
+  check(
+    'switching the meteor action writes the action and the full homing group',
+    homing.includes('          action = 1,') &&
+      homing.includes('          homing = {') &&
+      homing.includes('            time = 5000,'),
+    homing,
+  );
+
+  const otherDonor = generateLuaCode({
+    ...meteor,
+    based_on: 'stock.grenade',
+    donorBaseline: stockDonorBaseline('grenade'),
+    recordOverrides: {},
+  });
+  check(
+    'subtype 24 on a missile donor writes the whole meteor body',
+    otherDonor.includes('      armageddon = {') &&
+      otherDonor.includes('          sprite = "66",') &&
+      otherDonor.includes('subtype = 24'),
+    otherDonor,
+  );
+
+  const punch = generateLuaCode({
+    ...makeProject({ fireType: 'special', specialSubtype: 1 }),
+    recordOverrides: { 'armageddon.meteor.explosion.power': 100 },
+  });
+  check('a non-Armageddon special ignores meteor overrides', !punch.includes('armageddon ='), punch);
+}
+
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);
   process.exit(1);

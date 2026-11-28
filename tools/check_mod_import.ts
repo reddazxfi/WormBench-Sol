@@ -72,7 +72,7 @@ check(
   bundles.some((bundle) => bundle.id === 'wfws.sdk'),
   bundles.map((bundle) => bundle.id).join(', '),
 );
-check('test pack has 78 weapons', weapons.length === 78, String(weapons.length));
+check('test pack has 79 weapons', weapons.length === 79, String(weapons.length));
 
 const byName = new Map(weapons.map((weapon) => [weapon.name, weapon]));
 const projects = new Map<string, WeaponProject>();
@@ -172,6 +172,31 @@ for (const weapon of weapons) {
   check(
     'WF 77: re-export keeps the group and never a gun table',
     generateLuaCode(p).includes('flame_thrower = {') && !/^\s+gun = \{/m.test(generateLuaCode(p)),
+  );
+}
+
+// ---- Armageddon: the meteor body (special subtype 24) --------------------
+{
+  const p = project('WF 78 Armageddon')!;
+  near('WF 78: fire type is special', p.fireType, 'special');
+  near('WF 78: subtype 24 imported', p.specialSubtype, 24);
+  near('WF 78: meteor action imported', p.action, 'bounce');
+  near('WF 78: meteor power imported', p.recordOverrides['armageddon.meteor.explosion.power'], 120);
+  near('WF 78: meteor trail power imported', p.recordOverrides['armageddon.meteor.trail.power'], 80);
+  near('WF 78: meteor sprite imported', p.recordOverrides['armageddon.meteor.sprite'], '66');
+  near('WF 78: meteor fuse imported', p.recordOverrides['armageddon.meteor.fuse'], 9000);
+  check(
+    'WF 78: no missile field survives on an Armageddon',
+    !Object.keys(p.recordOverrides).some((key) => key.startsWith('missile.')),
+    Object.keys(p.recordOverrides).join(', '),
+  );
+  const lua = generateLuaCode(p);
+  check(
+    'WF 78: re-export keeps the nested meteor group and no missile table',
+    lua.includes('armageddon = {') &&
+      lua.includes('        meteor = {') &&
+      !/^\s+missile = \{/m.test(lua),
+    lua,
   );
 }
 

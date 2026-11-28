@@ -63,6 +63,13 @@ export const MISSILE_ANIM_TYPES: { value: number; label: string }[] = [
 
 export const MISSILE_ANIM_HINT =
   'Controls how WA selects frames from the sprite sheet during flight (spinning, facing flight direction, or tracking horizontal speed). Frame count comes from the sprite art itself.';
+export const ARMAGEDDON_RECORD_GROUPS: { id: string; label: string }[] = [
+  { id: 'armageddon.meteor', label: 'Armageddon Meteor' },
+  { id: 'armageddon.meteor.explosion', label: 'Meteor Explosion' },
+  { id: 'armageddon.meteor.bounce', label: 'Meteor Bounce' },
+  { id: 'armageddon.meteor.homing', label: 'Meteor Homing' },
+  { id: 'armageddon.meteor.trail', label: 'Meteor Trail' },
+];
 export const RECORD_GROUPS: { id: string; label: string; icon?: string }[] = [
   { id: 'fires', label: 'Firing & Launch' },
   { id: 'handling', label: 'Handling & Shots' },
@@ -85,9 +92,118 @@ export const RECORD_GROUPS: { id: string; label: string; icon?: string }[] = [
   { id: 'mine', label: 'Mine Proximity' },
   { id: 'strike', label: 'Air Strike Plane' },
   { id: 'special', label: 'Specials & Utilities' },
+  ...ARMAGEDDON_RECORD_GROUPS,
 ];
 
+/**
+ * Armageddon is WA's special subtype 24. Its meteor body sits four bytes
+ * earlier than a missile's (`record.rs` METEOR_SHIFT), and the engine reads it
+ * from the `armageddon.meteor` group, never from `missile`.
+ *
+ * Every field below names the same engine field a missile body has, with the
+ * `armageddon.meteor.` prefix. `trail.enabled` is the editor's own switch: the
+ * engine has no such key and it is never written.
+ */
+export const ARMAGEDDON_SUBTYPE = 24;
+export const ARMAGEDDON_METEOR_PREFIX = 'armageddon.meteor.';
+
+
+const METEOR_ANIM_OPTIONS: Record<string, number> = Object.fromEntries(
+  MISSILE_ANIM_TYPES.map((type) => [type.label, type.value]),
+);
+
+const meteorField = (
+  path: string,
+  label: string,
+  group: string,
+  description: string,
+  kind: RecordFieldKind,
+  action?: number,
+): RecordFieldDef => ({
+  path: `${ARMAGEDDON_METEOR_PREFIX}${path}`,
+  label,
+  group: group ? `armageddon.meteor.${group}` : 'armageddon.meteor',
+  description,
+  kind,
+  families: ['special'],
+  special_subtype: ARMAGEDDON_SUBTYPE,
+  ...(action !== undefined ? { action } : {}),
+});
+
+export const ARMAGEDDON_METEOR_FIELDS: RecordFieldDef[] = [
+  meteorField('collision_shape', 'Collision Outline Preset', '', 'Native numeric collision outline clearance preset.', { type: 'int' }),
+  meteorField('alarm_worms', 'Alarm Worms Nearby', '', 'Nearby worms gasp shortly before the meteor detonates.', { type: 'bool' }),
+  meteorField('ends_on_contact', 'Detonate On Contact With', '', 'Which entities end the meteor flight and detonate it.', { type: 'mask', maskFlags: COLLISION_FLAGS }),
+  meteorField('impact_particles', 'Holy Impact Particles', '', 'Brief particle trail after impact (Holy Hand Grenade style).', { type: 'bool' }),
+  meteorField('sprite', 'Meteor Sprite', '', 'Stock sprite the engine draws for the falling meteor.', { type: 'sprite' }),
+  meteorField('animation', 'Meteor Animation Mode', '', 'How WA selects frames from the meteor sheet during flight.', { type: 'enum', enumOptions: METEOR_ANIM_OPTIONS }),
+  meteorField('speed_pct', 'Initial Speed (%)', '', 'Multiplier for the meteor launch velocity (100 = normal).', { type: 'int' }),
+  meteorField('gravity_pct', 'Gravity (%)', '', 'Downward acceleration multiplier (100 = normal WA gravity).', { type: 'int' }),
+  meteorField('wind_pct', 'Wind Sensitivity (%)', '', 'Horizontal wind response (100 = full bazooka drift).', { type: 'int' }),
+  meteorField('random_motion', 'Random Motion', '', 'Native random wobble added to the flight path.', { type: 'int' }),
+  meteorField('fuse', 'Fuse Timer (ms)', '', 'Native explosion countdown in milliseconds.', { type: 'int' }),
+  meteorField('countdown', 'Visible Countdown Timer', '', 'Countdown displayed above the meteor in milliseconds.', { type: 'int' }),
+  meteorField('explode_on_space', 'Detonate on Space', '', 'Allows the player to press Space mid-flight to detonate.', { type: 'bool' }),
+  meteorField('flight_sound', 'Flight Sound', '', 'Native sound id played while the meteor falls (0 = silent).', { type: 'int' }),
+
+  meteorField('explosion.power', 'Explosion Power (Radius & Damage)', 'explosion', 'Combined blast damage and terrain cut radius (WA power value).', { type: 'int' }),
+  meteorField('explosion.push_pct', 'Knockback Push (%)', 'explosion', 'Knockback percentage applied to worms and objects (100 = normal).', { type: 'int' }),
+  meteorField('explosion.bias', 'Blast Bias', 'explosion', 'Vertical blast elevation bias.', { type: 'int' }),
+  meteorField('explosion.variation', 'Explosion Variation', 'explosion', 'Random spread added to the blast power.', { type: 'int' }),
+  meteorField('explosion_sound.enabled', 'Play Explosion Sound', 'explosion', 'Whether WA plays a native sound when the meteor explodes.', { type: 'bool' }),
+  meteorField('explosion_sound.sound', 'Explosion Sound', 'explosion', 'Native sound id played at detonation.', { type: 'int' }),
+  meteorField('explosion_sound.before', 'Explosion Sound Delay (ms)', 'explosion', 'Delay between the blast and its sound.', { type: 'int' }),
+
+  meteorField('trail.enabled', 'Enable Visual Trail', 'trail', 'Editor switch: writes the trail block when on, leaves the donor trail alone when off.', { type: 'bool' }),
+  meteorField('trail.sprite', 'Trail Sprite', 'trail', 'Stock trail sprite emitted behind the meteor (0 or blank disables it).', { type: 'sprite' }),
+  meteorField('trail.power', 'Trail Density', 'trail', 'Particle density of the stock trail.', { type: 'int' }),
+  meteorField('trail.speed', 'Trail Speed', 'trail', 'Particle ejection speed of the stock trail.', { type: 'int' }),
+  meteorField('trail.bubbles_per_second', 'Water Bubbles / sec', 'trail', 'Underwater bubble rate (0.25 steps).', { type: 'scale', scaleFactor: 4 }),
+
+  meteorField('action', 'Meteor Action', '', 'Flight behaviour: none, homing or bounce. The stock Armageddon bounces.', { type: 'enum', enumOptions: { 'None (0)': 0, 'Homing (1)': 1, 'Bounce (2)': 2, 'Roam (3)': 3, 'Dig (4)': 4 } }),
+
+  meteorField('bounce.hits', 'Bounce Collision Targets', 'bounce', 'Entities that cause a bounce instead of detonation.', { type: 'mask', maskFlags: COLLISION_FLAGS }, 2),
+  meteorField('bounce.bounciness', 'Bounciness Boost', 'bounce', 'Extra bounce relative to the Grenade (0 = Grenade).', { type: 'int' }, 2),
+  meteorField('bounce.max_bounces', 'Max Bounces', 'bounce', 'Terrain contacts before detonation (0 keeps the fuse timer).', { type: 'int' }, 2),
+  meteorField('bounce.terrain_keep_speed_pct', 'Speed Retained on Bounce (%)', 'bounce', 'Percentage of velocity preserved after hitting terrain.', { type: 'int' }, 2),
+  meteorField('bounce.sound', 'Bounce Sound', 'bounce', 'Native sound id played on every bounce (0 = silent).', { type: 'int' }, 2),
+  meteorField('bounce.contact_sides', 'Bounce Contact Sides', 'bounce', 'Bitmask of the sides that count as a terrain contact.', { type: 'int' }, 2),
+  meteorField('bounce.extra_reverse_chance_pct', 'Extra Reverse Chance (%)', 'bounce', 'Chance that a bounce also reverses direction.', { type: 'int' }, 2),
+  meteorField('bounce.explosion.bias', 'Bounce Blast Bias', 'bounce', 'Vertical bias of the small blast a bounce can spawn.', { type: 'int' }, 2),
+  meteorField('bounce.explosion.push_pct', 'Bounce Knockback Push (%)', 'bounce', 'Knockback percentage of the bounce blast.', { type: 'int' }, 2),
+  meteorField('bounce.explosion.power', 'Bounce Explosion Power', 'bounce', 'Power of the blast a bounce spawns (0 = no blast).', { type: 'int' }, 2),
+  meteorField('bounce.explosion.variation', 'Bounce Explosion Variation', 'bounce', 'Random spread of the bounce blast power.', { type: 'int' }, 2),
+
+  meteorField('homing.sprite', 'Homing Sprite', 'homing', 'Stock sprite drawn while the meteor homes in.', { type: 'sprite' }, 1),
+  meteorField('homing.animation', 'Homing Animation Mode', 'homing', 'How WA selects frames while homing.', { type: 'enum', enumOptions: METEOR_ANIM_OPTIONS }, 1),
+  meteorField('homing.trail.sprite', 'Homing Trail Sprite', 'homing', 'Stock trail sprite emitted while homing.', { type: 'sprite' }, 1),
+  meteorField('homing.trail.power', 'Homing Trail Density', 'homing', 'Particle density while homing.', { type: 'int' }, 1),
+  meteorField('homing.trail.speed', 'Homing Trail Speed', 'homing', 'Particle ejection speed while homing.', { type: 'int' }, 1),
+  meteorField('homing.trail.bubbles_per_second', 'Homing Bubbles / sec', 'homing', 'Underwater bubble rate while homing (0.25 steps).', { type: 'scale', scaleFactor: 4 }, 1),
+  meteorField('homing.kind', 'Homing Kind', 'homing', 'Homing steering behavior.', { type: 'enum', enumOptions: { 'Off (0)': 0, 'Lock-on (1)': 1, 'Dodge (2)': 2 } }, 1),
+  meteorField('homing.arm', 'Arming Delay (ms)', 'homing', 'Free flight drift before homing propulsion activates.', { type: 'int' }, 1),
+  meteorField('homing.time', 'Homing Duration (ms)', 'homing', 'How long active target steering continues.', { type: 'int' }, 1),
+];
+
+/** Whether a project runs the Armageddon meteor body (special subtype 24). */
+export function isArmageddonWeapon(
+  fireType: string | undefined,
+  specialSubtype: number | undefined,
+): boolean {
+  return fireType === 'special' && specialSubtype === ARMAGEDDON_SUBTYPE;
+}
+
+/** Whether a donor slot or slot id names the stock Armageddon. */
+export function isArmageddonDonor(slot: string | undefined): boolean {
+  return (slot ?? '').replace(/^stock\./, '') === 'armageddon';
+}
+
+export const ARMAGEDDON_METEOR_PATHS: string[] = ARMAGEDDON_METEOR_FIELDS
+  .filter((field) => field.path !== `${ARMAGEDDON_METEOR_PREFIX}trail.enabled`)
+  .map((field) => field.path);
+
 export const RECORD_FIELDS: RecordFieldDef[] = [
+  ...ARMAGEDDON_METEOR_FIELDS,
   // Firing
   {
     path: 'fires.creates_projectile',

@@ -3659,6 +3659,28 @@ const TESTS: TestCase[] = [
     watch:
       'No flames at all (the record wrote gun fields, which the engine refuses on a spray), flames that never spread (generations), or a fire that drains instantly (decay mode).',
   },
+  {
+    project: makeOp({
+      id: 'wftest.78_armageddon',
+      name: 'WF 78 Armageddon',
+      slot: 'armageddon',
+      fireType: 'special',
+      specialSubtype: 24,
+      action: 'bounce',
+      body: { sprite: 'missile', damage: 75, fuse: true, fuse_time_ms: 9000, wind_pct: 0, bounce_pct: 1 },
+      overrides: {
+        ...(stockDonor('armageddon')?.recordOverrides ?? {}),
+        'armageddon.meteor.explosion.power': 120,
+        'armageddon.meteor.trail.power': 80,
+      },
+    }),
+    intent:
+      'The Armageddon is special subtype 24 and keeps its meteor in `armageddon.meteor`, a nested group four bytes before a missile body. A subtype-24 weapon with a missile slab is the crash this test guards against.',
+    expect:
+      'A meteor falls, bounces off the ground and explodes for 120 power with its stock trail. The Special Tool tab shows subtype 24 and the Armageddon tab holds the meteor fields.',
+    watch:
+      'No meteor art (the group was written as `missile`), a fall with no explosion (the meteor body missing), or subtype 24 hidden from the Special Tool tab.',
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -265,7 +265,8 @@ export default function App() {
       project.fireType,
       project.teleport,
       project.body.fuse,
-      fireSeqMissile
+      fireSeqMissile,
+      project.specialSubtype
     );
     if (!allowed.some((tab) => tab.id === activeSubTab)) {
       setActiveSubTab(allowed[0]?.id ?? 'missile');
@@ -279,6 +280,7 @@ export default function App() {
     project.teleport,
     project.body.fuse,
     fireSeqMissile,
+    project.specialSubtype,
     activeSubTab,
   ]);
 

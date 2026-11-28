@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FireType } from '../types/weapon';
+import { ARMAGEDDON_SUBTYPE } from './recordSchema';
 
 export type RecordTabId =
   | 'missile'
@@ -23,6 +24,7 @@ export type RecordTabId =
   | 'callbacks'
   | 'gun'
   | 'flame'
+  | 'armageddon'
   | 'beam'
   | 'beam_prebuffer'
   | 'beam_explosion'
@@ -95,7 +97,8 @@ export function visibleRecordTabs(
   fireType?: FireType,
   teleport?: boolean,
   bodyFuse?: boolean,
-  fireSeqMissile?: boolean
+  fireSeqMissile?: boolean,
+  specialSubtype?: number
 ): RecordTabDef[] {
   if (fireType === 'hitscan') {
     if (fireSeqMissile) {
@@ -180,6 +183,16 @@ export function visibleRecordTabs(
 
   if (fireType === 'special') {
     return [
+      ...(specialSubtype === ARMAGEDDON_SUBTYPE
+        ? [
+            {
+              id: 'armageddon' as const,
+              label: 'Armageddon',
+              hint: 'Meteor body, blast, bounce and trail',
+              icon: Flame,
+            },
+          ]
+        : []),
       { id: 'gun_mine', label: 'Special Tool', hint: 'Tool subtype & native behaviour', icon: Wrench },
       { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
     ];

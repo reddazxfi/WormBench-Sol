@@ -117,6 +117,8 @@ function unmodelledDefaultKeys(table: LuaTable | undefined): string[] {
  */
 function fireTypeOf(record: LuaTable | undefined): WeaponProject['fireType'] | undefined {
   if (!record) return undefined;
+  // The Armageddon is family `special` with subtype 24 and its own meteor group.
+  if (record.armageddon) return 'special';
   if (record.gun) return 'hitscan';
   if (record.mine) return 'drop';
   if (record.missile) return 'power';

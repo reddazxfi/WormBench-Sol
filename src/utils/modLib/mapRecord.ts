@@ -25,6 +25,11 @@ import type {
 } from '../../types/weapon';
 import type { LuaTable, LuaValue } from './luaTable';
 import { stockSpriteId } from '../../data/stockSprites';
+import {
+  ARMAGEDDON_METEOR_FIELDS,
+  ARMAGEDDON_METEOR_PREFIX,
+  ARMAGEDDON_SUBTYPE,
+} from '../../data/recordSchema';
 
 const isTable = (value: LuaValue | undefined): value is LuaTable =>
   !!value && typeof value === 'object';
@@ -501,6 +506,66 @@ export function mapRecord(
     const fire = m.take('fire');
     if (isTable(fire)) fireConfig = readFire(fire, fireConfig);
     keep(['missile'], m.remaining);
+  }
+
+  // ---- armageddon (special subtype 24 meteor body) ------------------------
+  // The engine reads the meteor from `armageddon.meteor` (a nested group, not
+  // a flat slab), so every leaf is walked by path and stored flat in the
+  // overrides, where the panel and the generator read it.
+  const armageddon = tape.take('armageddon');
+  if (isTable(armageddon)) {
+    const a = new Tape(armageddon);
+    const meteor = a.take('meteor');
+    if (isTable(meteor)) {
+      for (const field of ARMAGEDDON_METEOR_FIELDS) {
+        const rel = field.path.slice(ARMAGEDDON_METEOR_PREFIX.length);
+        let node: LuaValue | undefined = meteor;
+        for (const segment of rel.split('.')) {
+          if (!isTable(node)) {
+            node = undefined;
+            break;
+          }
+          node = node[segment];
+        }
+        if (node === undefined) continue;
+        switch (field.kind.type) {
+          case 'mask': {
+            const value = mask(node);
+            if (value !== undefined) overrides[field.path] = value;
+            break;
+          }
+          case 'bool': {
+            const value = bool(node);
+            if (value !== undefined) overrides[field.path] = value;
+            break;
+          }
+          case 'sprite': {
+            const value = text(node);
+            if (value !== undefined) overrides[field.path] = value === '0' ? 0 : value;
+            break;
+          }
+          default: {
+            const value = int(node);
+            if (value !== undefined) overrides[field.path] = value;
+            break;
+          }
+        }
+      }
+      if (isTable(meteor.trail)) overrides[`${ARMAGEDDON_METEOR_PREFIX}trail.enabled`] = true;
+      // `action` is the project's typed action, like the missile panels.
+      const meteorAction = meteor.action;
+      const actionNames: MissileAction[] = ['none', 'homing', 'bounce', 'roam', 'dig'];
+      if (typeof meteorAction === 'string') {
+        if (actionNames.includes(meteorAction as MissileAction)) {
+          action = meteorAction as MissileAction;
+        }
+      } else if (typeof meteorAction === 'number' && Number.isFinite(meteorAction)) {
+        const named = actionNames[meteorAction];
+        if (named) action = named;
+      }
+    }
+    keep(['armageddon'], a.remaining);
+    specialSubtype = ARMAGEDDON_SUBTYPE;
   }
 
   // ---- clusters -----------------------------------------------------------

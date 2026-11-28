@@ -141,7 +141,7 @@ Drop the extracted folder into `WormBench/Mods/` next to `wf-lib/` and launch Wo
 ### Credits
 
 - **WormBench modding engine:** [Eule](https://github.com/EdLud)
-- **Sprite Builder:** PyroMan
+- **Original Project XSprite Builder:** PyroMan - Thoroughly extended by me
 - **Terrain Stamp idea (Project X):** Zed
 - **WormBench Sol Weapon Studio:** all other features, previews, SDK extensions and ideas by the project author
 

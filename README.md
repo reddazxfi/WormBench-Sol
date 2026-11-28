@@ -1,13 +1,13 @@
+# WormBench Sol Weapon Studio
 <p>
-  <img src="spec/icon/WormForge-SolIcon.png" alt="WormBench Sol Weapon Studio" width="72" height="72" />
+  <img src="spec/icon/WormForge-SolIcon.png" alt="WormBench Sol Weapon Studio" width="300" height="300" />
+  
+  > Modern TypeScript & React Weapon Studio and Record Architect for **WormBench**.
+  > Import legacy Project X `.wep` files, configure weapon records, preview PX hold art and 50 Hz missile flight sprites, and export ready-to-play mod packages.
+  > Maintenance and hand-off notes live in [AGENTS.md](AGENTS.md).
+
 </p>
 
-# WormBench Sol Weapon Studio
-
-> Modern TypeScript & React Weapon Studio and Record Architect for **WormBench**.  
-> Import legacy Project X `.wep` files, configure weapon records, preview PX hold art and 50 Hz missile flight sprites, and export ready-to-play mod packages.
-
-Maintenance and hand-off notes live in [AGENTS.md](AGENTS.md).
 
 ## Features
 
@@ -141,7 +141,7 @@ Drop the extracted folder into `WormBench/Mods/` next to `wf-lib/` and launch Wo
 ### Credits
 
 - **WormBench modding engine:** [Eule](https://github.com/EdLud)
-- **Sprite Builder:** PyroMan
+- **Original Project XSprite Builder:** PyroMan - Thoroughly extended by me
 - **Terrain Stamp idea (Project X):** Zed
 - **WormBench Sol Weapon Studio:** all other features, previews, SDK extensions and ideas by the project author
 

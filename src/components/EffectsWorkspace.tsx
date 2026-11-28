@@ -124,7 +124,7 @@ export const EffectsWorkspace: React.FC<Props> = ({ project, onChange }) => {
           </div>
           <p className="mx-auto max-w-lg text-xs text-stone-500 dark:text-stone-400">
             Native WA air strike bombs spawn directly from the flyover aircraft rather than a worm
-            slot. Enable <strong className="font-semibold text-stone-700 dark:text-stone-200">Airstrike Takeover</strong> with a{' '}
+            slot. Enable <strong className="font-semibold text-stone-700 dark:text-stone-200">Lua Airstrike Takeover</strong> with a{' '}
             <strong className="font-semibold text-stone-700 dark:text-stone-200">Missile</strong> payload on the Weapon Record page to attach ribbon
             trails, explosion bursts, emitters, terrain stamps, and custom detonation WAVs.
           </p>

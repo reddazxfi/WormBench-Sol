@@ -192,7 +192,7 @@ export const FireSequenceCard: React.FC<Props> = ({ project, onChange }) => {
         <p className="rounded-xl bg-stone-50 px-3.5 py-2.5 text-xs text-stone-500 dark:bg-stone-950/40 dark:text-stone-400">
           {project.fireType === 'melee' || project.melee?.enabled
             ? 'Melee strikes own on_fire for their swing. Disable melee or switch weapon type to use sequential firing.'
-            : 'Air strikes drop bombs from the aircraft rather than firing from a worm slot. Use the Airstrike Takeover tab to control strike release cadence.'}
+            : 'Air strikes drop bombs from the aircraft rather than firing from a worm slot. Use the Lua Airstrike Takeover tab to control strike release cadence.'}
         </p>
       ) : customOnFire ? (
         <p className="rounded-xl border border-amber-300 bg-amber-50/70 px-3.5 py-2.5 text-xs text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200">

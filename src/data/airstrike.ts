@@ -492,9 +492,9 @@ export const AIRSTRIKE_PRESETS: AirstrikePreset[] = [
     },
   },
   {
-    id: 'cursor_crate',
-    label: 'On-Click Crate / Mine Drop',
-    summary: 'Spawns payload right at the clicked cursor position',
+    id: 'cursor_mine',
+    label: 'On-Click Mine Drop',
+    summary: 'Spawns a mine right at the clicked cursor position',
     apply: (cur) => {
       const base = cloneAirstrikeConfig(DEFAULT_AIRSTRIKE);
       return {
@@ -518,7 +518,7 @@ export const AIRSTRIKE_PRESETS: AirstrikePreset[] = [
         },
         payload: {
           ...base.payload,
-          kind: 'crate',
+          kind: 'mine',
           inheritVx: 0,
           vx: 0,
           vy: 0,

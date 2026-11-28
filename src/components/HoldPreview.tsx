@@ -373,19 +373,19 @@ const HoldDial: React.FC<{
   step: number;
   unit?: string;
   title?: string;
-}> = ({ id, label, value, onChange, min, max, step, unit, title }) => (
+  /** Stack the label above the value box. Used where the dial shares a narrow
+   *  row, so a long label is never truncated to make room for the box. */
+  stacked?: boolean;
+}> = ({ id, label, value, onChange, min, max, step, unit, title, stacked }) => (
   <div className="space-y-1" title={title}>
-    <div className="flex items-center justify-between gap-2">
-      <label
-        htmlFor={id}
-        className="min-w-0 truncate text-xs font-semibold text-stone-700 dark:text-stone-300"
-      >
-        {label}
-      </label>
-      {/* 92px, not 74: the unit cell takes ~30px and the input's own padding
-          24px, and an `input` clips its text to the content box, so a two-digit
-          value ("15", "-8") painted nothing at all in a narrower box. */}
-      <div className="w-[92px] shrink-0">
+    {stacked ? (
+      <>
+        <label
+          htmlFor={id}
+          className="block truncate text-xs font-semibold text-stone-700 dark:text-stone-300"
+        >
+          {label}
+        </label>
         <UnitNumberInput
           id={`${id}-value`}
           aria-label={`${label} exact value`}
@@ -397,10 +397,37 @@ const HoldDial: React.FC<{
             if (event.target.value.trim() === '' || Number.isNaN(raw)) return;
             onChange(Math.min(max, Math.max(min, raw)));
           }}
-          className="py-0.5 !px-2 text-[11px]"
+          className="w-full py-0.5 !px-2 text-[11px]"
         />
+      </>
+    ) : (
+      <div className="flex items-center justify-between gap-2">
+        <label
+          htmlFor={id}
+          className="min-w-0 truncate text-xs font-semibold text-stone-700 dark:text-stone-300"
+        >
+          {label}
+        </label>
+        {/* 92px, not 74: the unit cell takes ~30px and the input's own padding
+            24px, and an `input` clips its text to the content box, so a two-digit
+            value ("15", "-8") painted nothing at all in a narrower box. */}
+        <div className="w-[92px] shrink-0">
+          <UnitNumberInput
+            id={`${id}-value`}
+            aria-label={`${label} exact value`}
+            value={value}
+            step={step}
+            unit={unit}
+            onChange={(event) => {
+              const raw = Number(event.target.value);
+              if (event.target.value.trim() === '' || Number.isNaN(raw)) return;
+              onChange(Math.min(max, Math.max(min, raw)));
+            }}
+            className="py-0.5 !px-2 text-[11px]"
+          />
+        </div>
       </div>
-    </div>
+    )}
     <input
       id={id}
       type="range"
@@ -3771,6 +3798,39 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 <span>Flip ({facingRight ? 'Right' : 'Left'})</span>
               </button>
             </div>
+
+            {/* The two radial dials sit under the preview: they turn the art
+                and the hand around the worm, so the change shows right above
+                them, and on desktop this column had nothing below the canvas.
+                Half length each, side by side. */}
+            {aimTab === 'aim' && (
+              <div className="grid w-full max-w-[600px] grid-cols-1 gap-3 sm:grid-cols-2">
+                <HoldDial
+                  id="hold-weap-radial"
+                  label="Radial Offset"
+                  stacked
+                  value={hold.weapRadialRotation ?? 1}
+                  onChange={(value) => updateHold({ weapRadialRotation: value })}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  unit="π"
+                  title="Where around the worm the art hangs, in turns of PI: the engine places it at rot + PI*weap_radial_rotation. 1 is the usual shoulder position, 0 the opposite side, so a port that ships 0 with a negative Weapon Radius keeps the art on the same side. Written as weap_radial_rotation."
+                />
+                <HoldDial
+                  id="hold-hand-radial"
+                  label="Hand Radial"
+                  stacked
+                  value={hold.handRadialRotation ?? 1}
+                  onChange={(value) => updateHold({ handRadialRotation: value })}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  unit="π"
+                  title="The hand's own radial position: rot - PI*hand_radial_rotation. 1 is the engine's default, 0 puts the hand on the other side. Written as hand_radial_rotation."
+                />
+              </div>
+            )}
           </div>
 
           {/* RIGHT COLUMN: this role's art and placement (order-2 on mobile,
@@ -4142,28 +4202,30 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
             {/* 3. Its placement: radius, rotation, scale. */}
             {aimTab === 'firing' ? (
               <>
-                <HoldDial
-                  id="hold-fire-radius"
-                  label="Firing Radius"
-                  value={hold.fireWeapRadius ?? hold.weapRadius ?? 6}
-                  onChange={(value) => updateHold({ fireWeapRadius: value })}
-                  min={-35}
-                  max={35}
-                  step={1}
-                  unit="px"
-                  title="Distance of the firing sheet from the worm's centre on WA's firing frames, along the aiming radial."
-                />
-                <HoldDial
-                  id="hold-fire-rotation"
-                  label="Firing Rotation"
-                  value={hold.fireWeapRotation ?? hold.weapRotation ?? 0}
-                  onChange={(value) => updateHold({ fireWeapRotation: value })}
-                  min={-180}
-                  max={180}
-                  step={5}
-                  unit="°"
-                  title="Rotation of the firing sheet about its own centre, measured like the aiming rotation."
-                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <HoldDial
+                    id="hold-fire-radius"
+                    label="Firing Radius"
+                    value={hold.fireWeapRadius ?? hold.weapRadius ?? 6}
+                    onChange={(value) => updateHold({ fireWeapRadius: value })}
+                    min={-35}
+                    max={35}
+                    step={1}
+                    unit="px"
+                    title="Distance of the firing sheet from the worm's centre on WA's firing frames, along the aiming radial."
+                  />
+                  <HoldDial
+                    id="hold-fire-rotation"
+                    label="Firing Rotation"
+                    value={hold.fireWeapRotation ?? hold.weapRotation ?? 0}
+                    onChange={(value) => updateHold({ fireWeapRotation: value })}
+                    min={-180}
+                    max={180}
+                    step={5}
+                    unit="°"
+                    title="Rotation of the firing sheet about its own centre, measured like the aiming rotation."
+                  />
+                </div>
                 <HoldDial
                   id="hold-fire-scale"
                   label="Firing Scale"
@@ -4178,28 +4240,30 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               </>
             ) : aimTab === 'buffer' ? (
               <>
-                <HoldDial
-                  id="hold-buffer-radius"
-                  label="Buffer Radius"
-                  value={hold.bufferWeapRadius ?? hold.weapRadius ?? 6}
-                  onChange={(value) => updateHold({ bufferWeapRadius: value })}
-                  min={-35}
-                  max={35}
-                  step={1}
-                  unit="px"
-                  title="Distance of the buffering sheet from the worm's centre during charge/wind-up."
-                />
-                <HoldDial
-                  id="hold-buffer-rotation"
-                  label="Buffer Rotation"
-                  value={hold.bufferWeapRotation ?? hold.weapRotation ?? 0}
-                  onChange={(value) => updateHold({ bufferWeapRotation: value })}
-                  min={-180}
-                  max={180}
-                  step={5}
-                  unit="°"
-                  title="Rotation of the buffering sheet about its own centre."
-                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <HoldDial
+                    id="hold-buffer-radius"
+                    label="Buffer Radius"
+                    value={hold.bufferWeapRadius ?? hold.weapRadius ?? 6}
+                    onChange={(value) => updateHold({ bufferWeapRadius: value })}
+                    min={-35}
+                    max={35}
+                    step={1}
+                    unit="px"
+                    title="Distance of the buffering sheet from the worm's centre during charge/wind-up."
+                  />
+                  <HoldDial
+                    id="hold-buffer-rotation"
+                    label="Buffer Rotation"
+                    value={hold.bufferWeapRotation ?? hold.weapRotation ?? 0}
+                    onChange={(value) => updateHold({ bufferWeapRotation: value })}
+                    min={-180}
+                    max={180}
+                    step={5}
+                    unit="°"
+                    title="Rotation of the buffering sheet about its own centre."
+                  />
+                </div>
                 <HoldDial
                   id="hold-buffer-scale"
                   label="Buffer Scale"
@@ -4214,50 +4278,33 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
               </>
             ) : (
               <>
-                <HoldDial
-                  id="hold-weap-radius"
-                  label="Weapon Radius"
-                  value={hold.weapRadius ?? 6}
-                  onChange={(value) => updateHold({ weapRadius: value })}
-                  min={-35}
-                  max={35}
-                  step={1}
-                  unit="px"
-                  title="Distance of the held art from the worm's centre, along the aim radial (rot_w). This is the number the engine's HoldSpec measures."
-                />
-                <HoldDial
-                  id="hold-weap-rotation"
-                  label="Weapon Rotation"
-                  value={hold.weapRotation ?? 0}
-                  onChange={(value) => updateHold({ weapRotation: value })}
-                  min={-180}
-                  max={180}
-                  step={5}
-                  unit="°"
-                  title="Rotation of the held art about its own centre, on top of the aim angle. Art drawn pointing up is level at 0."
-                />
-                <HoldDial
-                  id="hold-weap-radial"
-                  label="Radial Offset"
-                  value={hold.weapRadialRotation ?? 1}
-                  onChange={(value) => updateHold({ weapRadialRotation: value })}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  unit="π"
-                  title="Where around the worm the art hangs, in turns of PI: the engine places it at rot + PI*weap_radial_rotation. 1 is the usual shoulder position, 0 the opposite side, so a port that ships 0 with a negative Weapon Radius keeps the art on the same side. Written as weap_radial_rotation."
-                />
-                <HoldDial
-                  id="hold-hand-radial"
-                  label="Hand Radial"
-                  value={hold.handRadialRotation ?? 1}
-                  onChange={(value) => updateHold({ handRadialRotation: value })}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  unit="π"
-                  title="The hand's own radial position: rot - PI*hand_radial_rotation. 1 is the engine's default, 0 puts the hand on the other side. Written as hand_radial_rotation."
-                />
+                {/* Radius and rotation are one placement, so they share a row
+                    at half length. The two radial dials moved under the
+                    preview, where the desktop column has room. */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <HoldDial
+                    id="hold-weap-radius"
+                    label="Weapon Radius"
+                    value={hold.weapRadius ?? 6}
+                    onChange={(value) => updateHold({ weapRadius: value })}
+                    min={-35}
+                    max={35}
+                    step={1}
+                    unit="px"
+                    title="Distance of the held art from the worm's centre, along the aim radial (rot_w). This is the number the engine's HoldSpec measures."
+                  />
+                  <HoldDial
+                    id="hold-weap-rotation"
+                    label="Weapon Rotation"
+                    value={hold.weapRotation ?? 0}
+                    onChange={(value) => updateHold({ weapRotation: value })}
+                    min={-180}
+                    max={180}
+                    step={5}
+                    unit="°"
+                    title="Rotation of the held art about its own centre, on top of the aim angle. Art drawn pointing up is level at 0."
+                  />
+                </div>
                 <HoldDial
                   id="hold-scale"
                   label="Scale Multiplier"
@@ -4360,40 +4407,15 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   </>
                 )}
               </div>
-              <p className="text-[10px] leading-snug text-stone-500 dark:text-stone-400">
+              <p className="text-[10px] font-semibold leading-snug">
                 {aimTab === 'firing' ? (
-                  <>
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      WFWS fire role
-                    </span>
-                    : the firing sheet is a quad, so its offset needs no extra layer. Positive Y is
-                    toward the grip, and the hand keeps its own placement.
-                  </>
+                  <span className="text-amber-600 dark:text-amber-400">WFWS fire role</span>
                 ) : aimTab === 'buffer' ? (
-                  <>
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      WFWS buffer role
-                    </span>
-                    : played automatically during Beam charge buffers and Timed Sequencer opening
-                    wind-ups via <code className="font-mono">sb.hold_trigger</code>.
-                  </>
+                  <span className="text-amber-600 dark:text-amber-400">WFWS buffer role</span>
                 ) : aimLayerOn ? (
-                  <>
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      WFWS quad layer
-                    </span>
-                    : the aim poses are drawn from the sheet, the engine&apos;s silent sheet keeps it
-                    from drawing a second copy. Walking, put-away and the firing pose stay the
-                    engine&apos;s.
-                  </>
+                  <span className="text-amber-600 dark:text-amber-400">WFWS quad layer</span>
                 ) : (
-                  <>
-                    <span className="font-semibold text-forge-600 dark:text-forge-400">
-                      Rust native
-                    </span>
-                    : the engine draws the held art itself, no extra atlas slot. An offset, a hand
-                    offset or a Space swing turns the quad layer on.
-                  </>
+                  <span className="text-forge-600 dark:text-forge-400">Rust Native</span>
                 )}
               </p>
             </div>
@@ -5491,7 +5513,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 <span>
                   Native WA air strikes spawn munitions from their own record copy and don't run{' '}
                   <code className="font-mono">sb.flight</code>. Enable{' '}
-                  <strong>Airstrike Takeover</strong> with a <strong>Missile</strong> payload to use
+                  <strong>Lua Airstrike Takeover</strong> with a <strong>Missile</strong> payload to use
                   the flight sprite builder, or use the Record / Pack Art strike body sprite.
                 </span>
               </div>

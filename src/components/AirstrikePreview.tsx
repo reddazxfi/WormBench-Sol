@@ -520,17 +520,6 @@ export const AirstrikePreview: React.FC<AirstrikePreviewProps> = ({
       }
     }
 
-    // Minimal corner caption
-    ctx.fillStyle = 'rgba(226,232,240,0.72)';
-    ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    ctx.fillText(
-      sim.hasPlane
-        ? `click canvas to move target · ${sim.dir > 0 ? 'L→R' : 'R→L'}`
-        : `click canvas to move target · ${config.entry.spawnAt === 'cursor' ? 'spawns at cursor' : 'spawns from sky'}`,
-      10,
-      CANVAS_H - 9,
-    );
-
     ctx.restore();
   }, [activeFrame, sim, config, planeImage]);
 
@@ -595,15 +584,25 @@ export const AirstrikePreview: React.FC<AirstrikePreviewProps> = ({
         </div>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const norm = Math.max(0.18, Math.min(0.82, (e.clientX - rect.left) / rect.width));
-          setTargetNormX(norm);
-        }}
-        className="block h-[210px] w-full cursor-crosshair sm:h-[228px]"
-      />
+      {/* The caption is DOM text, not painted into the canvas: the canvas is
+          stretched to the card width while its buffer stays 640 px wide, so
+          canvas text came out stretched with it. */}
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const norm = Math.max(0.18, Math.min(0.82, (e.clientX - rect.left) / rect.width));
+            setTargetNormX(norm);
+          }}
+          className="block h-[210px] w-full cursor-crosshair sm:h-[228px]"
+        />
+        <span className="pointer-events-none absolute bottom-2 left-2.5 font-mono text-[10px] font-semibold text-stone-300/70">
+          {sim.hasPlane
+            ? `click canvas to move target · ${sim.dir > 0 ? 'L→R' : 'R→L'}`
+            : `click canvas to move target · ${config.entry.spawnAt === 'cursor' ? 'spawns at cursor' : 'spawns from sky'}`}
+        </span>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-stone-800 bg-stone-900/90 px-3 py-2 text-[10px] text-stone-400">
         <div className="flex min-w-[160px] flex-1 items-center gap-2">

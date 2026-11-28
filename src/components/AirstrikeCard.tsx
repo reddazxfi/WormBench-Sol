@@ -310,7 +310,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
         <div>
           <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-stone-900 dark:text-stone-100">
             <Plane className="h-4 w-4 text-forge-600 dark:text-forge-400" aria-hidden="true" />
-            Airstrike Takeover
+            Lua Airstrike Takeover
           </h3>
           <p className="mt-1 max-w-2xl text-xs text-stone-500 dark:text-stone-400">
             Hands cursor clicks to <span className="font-mono">wf-lib/wfws_airstrike</span> so you
@@ -331,7 +331,7 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
             onChange={(e) => update({ enabled: e.target.checked })}
             className="h-4 w-4 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
           />
-          Enable Airstrike Takeover
+          Enable Lua Airstrike Takeover
         </label>
       </div>
 
@@ -1127,7 +1127,9 @@ export const AirstrikeCard: React.FC<AirstrikeCardProps> = ({ project, onChange 
                 >
                   <option value="missile">Missile / Bomb (full record + effects)</option>
                   <option value="mine">Proximity Mine (wa.mines.spawn)</option>
-                  <option value="crate">Crate Drop (wa.crates.spawn)</option>
+                  <option value="crate" disabled>
+                    Crate Drop (unavailable)
+                  </option>
                   <option value="fire">Napalm / Fire (wa.fire.spawn)</option>
                   <option value="bullet">Hitscan Bullet (wa.weapons.fire_bullet)</option>
                   <option value="actor">Custom Actor (wa.actors.spawn)</option>

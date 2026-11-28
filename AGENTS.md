@@ -86,7 +86,8 @@ bun run tauri:build    # desktop installer
 - **Record workbench (`visibleRecordTabs`)**: Owned by `RecordEditor` tab bar:
   - Projectiles / air strikes: `missile`, `action`, `burst`, `sprite`, `callbacks` (Explodes Into holds Ejection, Bit Targets, Bit Action; `bitActionOf()` resolves bit action).
   - Beams (`fireType === 'beam'`): `beam` (Beam & Cone), `beam_prebuffer` (Pre-Buffer Beam), `beam_explosion` (Impact Explosion), `callbacks` (Lua Script).
-  - Melee (`fireType === 'melee'`): `melee`, `callbacks`. Mines, tools, sprays, teleports: their own setup page + `callbacks`.
+  - Melee (`fireType === 'melee'`): `melee`, `callbacks`.
+  - Sprays (`fireType === 'spray'`): `flame` (the `flame_thrower` record) + `callbacks`. Mines, tools, teleports: their own setup page + `callbacks`.
 - **Effects & Libraries (`EffectsWorkspace.tsx`)**: Hosts Ribbon Trail (`RibbonTrailPreview`), Explosion Burst (`ExplosionPreview`, enabled for missiles/mines/airstrike missiles/sequenced missiles/beams), Effect Emitter (`EmitterCard` + `EmitterPreview`), Custom WAVs, Firing Sequence (`FireSequenceCard`), and Terrain Stamp (`TerrainStampCard`). New library integrations go here, not in record tabs.
 - **UI & Style**:
   - Tailwind v4 + `stone` neutrals; light mode default (`localStorage['wf_theme_v2']`); `index.css` holds `@theme` tokens (`forge` primary/blast, `amber` actions/alerts, `sky` art/setup, `rose`/`red` destructive/warnings only; never reintroduce `emerald-*` or `green-*` utility classes).

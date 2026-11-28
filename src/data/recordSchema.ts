@@ -81,6 +81,7 @@ export const RECORD_GROUPS: { id: string; label: string; icon?: string }[] = [
   { id: 'clusters.bit.homing', label: 'Bit Homing' },
   { id: 'clusters.bit.trail', label: 'Bit Trail' },
   { id: 'gun', label: 'Gun (Hitscan)' },
+  { id: 'flame_thrower', label: 'Flame Thrower (Spray)' },
   { id: 'mine', label: 'Mine Proximity' },
   { id: 'strike', label: 'Air Strike Plane' },
   { id: 'special', label: 'Specials & Utilities' },
@@ -590,6 +591,52 @@ export const RECORD_FIELDS: RecordFieldDef[] = [
     description: 'Angular spread cone centered on the worm aim line.',
     kind: { type: 'int' },
     families: ['gun'],
+  },
+
+  // Flame Thrower (spray family). WA gives it its own slab at +0x3C..+0x4C:
+  // the flame count shares +0x3C with the guns, the rest is the fire each
+  // flame builds (record.rs flame_thrower).
+  {
+    path: 'flame_thrower.flames',
+    label: 'Flames per Use',
+    group: 'flame_thrower',
+    description: 'Flames released by one trigger pull. The power dial runs from 1 flame to 112.',
+    kind: { type: 'int' },
+    families: ['spray'],
+  },
+  {
+    path: 'flame_thrower.spread_generations',
+    label: 'Spreading Generations',
+    group: 'flame_thrower',
+    description:
+      'Successive generations each flame sheds. 0 keeps only the first flames, as the stock Flame Thrower does.',
+    kind: { type: 'int' },
+    families: ['spray'],
+  },
+  {
+    path: 'flame_thrower.spread_delay_ms',
+    label: 'Spread Delay',
+    group: 'flame_thrower',
+    description:
+      'Delay before a flame sheds the next generation. Native fire checks this in 20 ms steps.',
+    kind: { type: 'int' },
+    families: ['spray'],
+  },
+  {
+    path: 'flame_thrower.burn_time_ms',
+    label: 'Burn Time',
+    group: 'flame_thrower',
+    description: 'How long each flame stays alight.',
+    kind: { type: 'int' },
+    families: ['spray'],
+  },
+  {
+    path: 'flame_thrower.decay_mode',
+    label: 'Fire Decay Mode',
+    group: 'flame_thrower',
+    description: 'Instant drains while burning; at_turn_start holds until the next turn start.',
+    kind: { type: 'enum', enumOptions: { 'Instant (0)': 0, 'At Turn Start (1)': 1 } },
+    families: ['spray'],
   },
 
   // Mine

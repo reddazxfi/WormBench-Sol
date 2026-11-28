@@ -40,6 +40,7 @@ const MODEL_GROUPS = new Set([
   'clusters',
   'handling',
   'gun',
+  'flame_thrower',
   'mine',
   'strike',
   // `sheep.flight_1/2` is modelled as `roamConfig.flight_1/2`.
@@ -77,6 +78,7 @@ const NATIVE_GROUPS = new Set([
   'jet_pack',
   'parachute',
   'utility',
+  'flame_thrower',
 ]);
 const WORM_SHORTCUTS = ['worms_normal', 'worms_acting', 'worms_jumping', 'worms_roping'];
 

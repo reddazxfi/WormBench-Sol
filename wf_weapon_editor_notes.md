@@ -1,5 +1,38 @@
 # WormBench Weapon Studio, Engineering Notes (API 5 / WormBench 1.0 RC3)
 
+### The Flame Thrower gets its own record group
+
+Sprays are WA's own family (fire type 1, method 1) and the engine's `flame_thrower`
+group was missing here: a spray that declared `flame_thrower = { ... }` lost those
+fields on import, and the panel only re-showed hitscan bytes it did not own. The
+slab is `+0x3C..+0x4C`, read straight out of the extracted `flame_thrower.wep`:
+
+- `+0x3C` `flames` (56), the one value sprays share with the guns;
+- `+0x40` `spread_generations` (0), `+0x44` `spread_delay_ms` (400),
+  `+0x48` `burn_time_ms` (2000), `+0x4C` `decay_mode` (0 = instant).
+
+What changed:
+
+- `wepParser.ts` decodes the slab when `fireType === 'spray'` and writes
+  `flame_thrower.*` overrides. A spray no longer reads the gun damage byte at
+  `+0x5C`: fire damage comes from the fire payload, not the record.
+- `stockDonors.json`: the `flame_thrower` donor carries the five real fields
+  instead of `gun.*` aliases whose bytes merely lined up.
+- `recordSchema.ts` gains the group and five `families: ['spray']` fields;
+  `decay_mode` stays numeric end to end, as the engine accepts a number for an
+  enum.
+- `luaGenerator.ts` emits the group for sprays only; `mapRecord.ts` reads it
+  back; `scan.ts` treats `flame_thrower` as a record group, so a claim carrying
+  only this table is still recognised as a record (that gap is what test weapon
+  77 caught).
+- `recordTabs.tsx` gives sprays a `flame` tab and `RecordEditor.tsx` a Flame
+  Thrower panel, replacing the old "Flame Inspector" view of the gun slab.
+- `tools/audit_records.ts` knows the group on both sides, and
+  `spec/PX/default.pxs` (WA 3.6.31.0 + PX) is kept as the donor fixture source.
+- Tests: `check_generator_edges.ts` pins "an untouched spray writes nothing",
+  "an edited spray writes only its own group" and "a gun ignores `flame_thrower`
+  overrides"; test weapon 77 (`WF 77 Flame Jet`) round-trips through the pack,
+  wbcheck and `check_mod_import.ts`.
 ### The in-game beam painter now matches `BeamPreview`
 
 The beam read wrong in game next to its own preview: a hard white core with a

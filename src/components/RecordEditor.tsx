@@ -2634,31 +2634,57 @@ export const RecordEditor: React.FC<RecordEditorProps> = ({
         </div>
       )}
 
-      {/* PANEL 6: Firearm Specs / Flame Inspector */}
+      {/* PANEL 6a: Flame Thrower (spray family) */}
+      {normalizedTab === 'flame' && (
+        <div className="p-4 sm:p-5 space-y-5">
+          <SectionHeader
+            title="Flame Thrower"
+            code="flame_thrower"
+            icon={<Flame className="h-4 w-4 text-forge-500" aria-hidden="true" />}
+            desc="Spray settings: how many flames one use releases, how each flame spreads and burns, and how the fire decays."
+          />
+          <p className="rounded-lg bg-amber-50/70 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+            A spray is WA's own family (fire type 1, method 1). It shares only the flame count
+            with the guns; the rest is the fire each flame builds, so gun fields do not apply.
+            The stock Flame Thrower releases 56 flames that do not spread, 400 ms apart when
+            they do, burning 2000 ms with instant decay.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {numField('flame_thrower.flames', 'Flames per Use', 56, 'Flames released by one trigger pull. The power dial runs from 1 flame to 112.', { min: 1, max: 112 })}
+            {numField('flame_thrower.spread_generations', 'Spreading Generations', 0, 'Successive generations each flame sheds. 0 keeps only the first flames, as the stock Flame Thrower does.', { min: 0, max: 16 })}
+            {numField('flame_thrower.spread_delay_ms', 'Spread Delay', 400, 'Delay before a flame sheds the next generation. Native fire checks this in 20 ms steps.', { min: 0, max: 5000, step: 20, unit: 'ms' })}
+            {numField('flame_thrower.burn_time_ms', 'Burn Time', 2000, 'How long each flame stays alight.', { min: 0, max: 20000, step: 100, unit: 'ms' })}
+            <div>
+              <TooltipLabel
+                label="Fire Decay Mode"
+                code="flame_thrower.decay_mode"
+                desc="Instant drains while burning; at_turn_start holds until the next turn start."
+                htmlFor="flame-decay"
+              />
+              <select
+                id="flame-decay"
+                value={String(field('flame_thrower.decay_mode', 0))}
+                onChange={(e) => updateOverride('flame_thrower.decay_mode', Number(e.target.value))}
+                className={selectClass}
+              >
+                <option value="0">Instant (0)</option>
+                <option value="1">At Turn Start (1)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PANEL 6b: Firearm Specs */}
       {normalizedTab === 'gun' && (
         <div className="p-4 sm:p-5 space-y-5">
           <SectionHeader
-            title={project.fireType === 'spray' ? 'Flame / Spray Inspector' : 'Firearm Specs'}
+            title="Firearm Specs"
             code="gun"
-            icon={
-              project.fireType === 'spray' ? (
-                <Flame className="h-4 w-4 text-forge-500" aria-hidden="true" />
-              ) : (
-                <Crosshair className="h-4 w-4 text-forge-500" aria-hidden="true" />
-              )
-            }
+            icon={<Crosshair className="h-4 w-4 text-forge-500" aria-hidden="true" />}
             desc="Instant-hit raycast firearm settings: damage, shots fired, spread cones, multi-pellet bursts, and hit targets."
           />
 
-          {project.fireType === 'spray' && (
-            <p className="rounded-lg bg-amber-50/70 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-              <b>Spray inspection mode:</b> Native spray records share the raw{' '}
-              <code className="font-mono">0x3c–0x64</code> hitscan slab, so imported{' '}
-              <code className="font-mono">.wep</code> flame values decode here for inspection. WormBench
-              omits <code className="font-mono">gun</code> on Lua export for spray weapons until
-              dedicated spray fields exist.
-            </p>
-          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div>

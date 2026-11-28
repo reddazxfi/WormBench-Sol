@@ -370,6 +370,7 @@ const RECORD_GROUPS = [
   'jet_pack',
   'parachute',
   'utility',
+  'flame_thrower',
   'armageddon',
 ];
 

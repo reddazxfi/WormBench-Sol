@@ -5744,8 +5744,9 @@ export function generateLuaCode(project: WeaponProject): string {
   // Native family parameters that are not part of `missile`/`clusters`: the
   // firing header's launch power, and the per-family or per-special-subtype
   // groups (`arrow`, `fire_punch`, `drill`, `jet_pack`, `parachute`,
-  // `baseball_bat`, `utility`). Each is a flat table of scalars, so one loop
-  // covers them; a value equal to the baseline is left to the engine.
+  // `baseball_bat`, `utility`, and the Flame Thrower's own `flame_thrower`
+  // slab). Each is a flat table of scalars, so one loop covers them; a value
+  // equal to the baseline is left to the engine.
   const nativeGroupRows = (group: string, fields: string[]): string[] => {
     const rows: string[] = [];
     for (const field of fields) {
@@ -5782,6 +5783,11 @@ export function generateLuaCode(project: WeaponProject): string {
   }
   const gateSubtype = firesSubtype ?? project.specialSubtype;
   const NATIVE_GROUPS: { group: string; fields: string[]; allow: boolean }[] = [
+    {
+      group: 'flame_thrower',
+      fields: ['flames', 'spread_generations', 'spread_delay_ms', 'burn_time_ms', 'decay_mode'],
+      allow: project.fireType === 'spray',
+    },
     { group: 'arrow', fields: ['damage'], allow: project.fireType === 'arrow' },
     {
       group: 'baseball_bat',

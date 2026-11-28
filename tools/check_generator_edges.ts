@@ -2879,6 +2879,66 @@ local afterHook = 42`;
   );
 }
 
+// ---- Flame Thrower: its own record group, never the gun's ------------------
+{
+  const base = stockDonor('flame_thrower') as Partial<WeaponProject>;
+  const spray = makeProject({
+    based_on: 'stock.flame_thrower',
+    fireType: 'spray',
+    donorBaseline: stockDonorBaseline('flame_thrower'),
+    body: { ...DEFAULT_BODY, ...(base.body ?? {}) },
+    recordOverrides: { ...(base.recordOverrides ?? {}) },
+  });
+  const plainLua = generateLuaCode(spray);
+  check(
+    'an untouched Flame Thrower writes no native group at all',
+    !plainLua.includes('flame_thrower =') && !/^\s+gun = \{/m.test(plainLua),
+    plainLua,
+  );
+
+  const edited = generateLuaCode({
+    ...spray,
+    recordOverrides: {
+      ...spray.recordOverrides,
+      'flame_thrower.spread_generations': 2,
+      'flame_thrower.spread_delay_ms': 200,
+      'flame_thrower.burn_time_ms': 4000,
+      'flame_thrower.decay_mode': 1,
+    },
+  });
+  check(
+    'a Flame Thrower writes its own group with the changed fire fields',
+    edited.includes('      flame_thrower = {') &&
+      edited.includes('        spread_generations = 2,') &&
+      edited.includes('        spread_delay_ms = 200,') &&
+      edited.includes('        burn_time_ms = 4000,') &&
+      edited.includes('        decay_mode = 1,'),
+    edited,
+  );
+  check(
+    'and never gun fields, which the engine refuses on a spray',
+    !/^\s+gun = \{/m.test(edited),
+    edited,
+  );
+
+  const flood = generateLuaCode({
+    ...spray,
+    recordOverrides: { ...spray.recordOverrides, 'flame_thrower.flames': 112 },
+  });
+  check(
+    'a changed flame count is written and the untouched fields are left to the engine',
+    flood.includes('        flames = 112,') && !flood.includes('spread_delay_ms ='),
+    flood,
+  );
+
+  const gunLua = generateLuaCode(
+    makeProject({
+      recordOverrides: { ...makeProject().recordOverrides, 'flame_thrower.flames': 5 },
+    }),
+  );
+  check('a gun weapon ignores flame_thrower overrides', !gunLua.includes('flame_thrower ='), gunLua);
+}
+
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);
   process.exit(1);

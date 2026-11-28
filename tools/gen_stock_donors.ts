@@ -7,6 +7,10 @@
  *
  *   python tools/px_scheme_weps.py "<WA+PX>/PXSchemes/default.pxs" OUT --all
  *
+ * A copy of the scheme ships in the repo as `spec/PX/default.pxs` (WA
+ * 3.6.31.0 + Project X, 44388 bytes), so the fixture data is there without a
+ * WA install. The extraction script itself lives in the engine checkout.
+ *
  * Run: `bun run tools/gen_stock_donors.ts [folder]`
  * Default folder: `C:/Users/lucia/AppData/Local/Temp/wf_px/default`
  */

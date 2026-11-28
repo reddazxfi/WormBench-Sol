@@ -3636,6 +3636,29 @@ const TESTS: TestCase[] = [
     watch:
       'No crates (payload kind not emitted), crates falling without chutes (`drop = "chute"` lost), empty crates (the `crate.contents` table dropped), all three at the same spot (offsets ignored), or a zero-vx click ignoring the worm\'s facing (`zero_vx_uses_facing` lost).',
   },
+  {
+    project: makeOp({
+      id: 'wftest.77_flame_jet',
+      name: 'WF 77 Flame Jet',
+      slot: 'flame_thrower',
+      fireType: 'spray',
+      // The donor's own sprite and subtype, so the claim writes no identity keys.
+      body: { sprite: 'missile' },
+      overrides: {
+        'flame_thrower.flames': 84,
+        'flame_thrower.spread_generations': 2,
+        'flame_thrower.spread_delay_ms': 60,
+        'flame_thrower.burn_time_ms': 3000,
+        'flame_thrower.decay_mode': 1,
+      },
+    }),
+    intent:
+      'The Flame Thrower is its own family (fire type 1, method 1): a spray record with `flame_thrower` fields, and gun fields are refused on it.',
+    expect:
+      'A broad jet of 84 flames, each shedding two generations 60 ms apart, burning for three seconds and decaying at the start of the next turn.',
+    watch:
+      'No flames at all (the record wrote gun fields, which the engine refuses on a spray), flames that never spread (generations), or a fire that drains instantly (decay mode).',
+  },
 ];
 
 // ---------------------------------------------------------------------------

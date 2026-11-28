@@ -72,7 +72,7 @@ check(
   bundles.some((bundle) => bundle.id === 'wfws.sdk'),
   bundles.map((bundle) => bundle.id).join(', '),
 );
-check('test pack has 77 weapons', weapons.length === 77, String(weapons.length));
+check('test pack has 78 weapons', weapons.length === 78, String(weapons.length));
 
 const byName = new Map(weapons.map((weapon) => [weapon.name, weapon]));
 const projects = new Map<string, WeaponProject>();
@@ -153,6 +153,26 @@ for (const weapon of weapons) {
       ),
     );
   }
+}
+
+// ---- Flame Thrower: its own record group (WF 77) -------------------------
+{
+  const p = project('WF 77 Flame Jet')!;
+  near('WF 77: fire type is a spray', p.fireType, 'spray');
+  near('WF 77: flames imported', p.recordOverrides['flame_thrower.flames'], 84);
+  near('WF 77: spreading generations imported', p.recordOverrides['flame_thrower.spread_generations'], 2);
+  near('WF 77: spread delay imported', p.recordOverrides['flame_thrower.spread_delay_ms'], 60);
+  near('WF 77: burn time imported', p.recordOverrides['flame_thrower.burn_time_ms'], 3000);
+  near('WF 77: decay mode imported', p.recordOverrides['flame_thrower.decay_mode'], 1);
+  check(
+    'WF 77: no gun field survives on a spray',
+    !Object.keys(p.recordOverrides).some((key) => key.startsWith('gun.')),
+    Object.keys(p.recordOverrides).join(', '),
+  );
+  check(
+    'WF 77: re-export keeps the group and never a gun table',
+    generateLuaCode(p).includes('flame_thrower = {') && !/^\s+gun = \{/m.test(generateLuaCode(p)),
+  );
 }
 
 // ---- held art + sequential fire (WF 31) ----------------------------------

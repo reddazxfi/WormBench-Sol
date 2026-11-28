@@ -305,6 +305,14 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   let gunExplosionPush = 100;
   let gunExplosionVariation = 0;
   let gunImpactEffect = 0;
+  // The Flame Thrower (spray) slab. WA shares only +0x3C with the guns: a spray
+  // is its own family (record.rs flame_thrower), and the gun field names are
+  // refused on it.
+  let sprayFlames = 0;
+  let spraySpreadGenerations = 0;
+  let spraySpreadDelayMs = 0;
+  let sprayBurnTimeMs = 0;
+  let sprayDecayMode = 0;
   let strikeCount = 0;
   let strikePlane = 0;
   let strikeSpacing = 0;
@@ -564,7 +572,20 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     mineExplosionPush = rawOffsets[0x50] ?? 100;
     pushPct = mineExplosionPush;
     damage = rawOffsets[0x54] ?? 0;
-  } else if (isGun || isSpray) {
+  } else if (isSpray) {
+    // FireWeapon::PlacedExplosive (0x51EC80) builds each flame from
+    // +0x40..+0x4C: the count is +0x3C (StartFiring copies it to the worm's
+    // shots for methods 1 and 2 alike), then the spreading generations, the
+    // delay between them, the burn time and the decay mode. The gun's reads at
+    // +0x40 and +0x44 test method 2 first, so none of these are gun settings,
+    // and a spray has no damage byte: fire damage comes from the fire payload,
+    // not the record.
+    sprayFlames = rawOffsets[0x3c] ?? 0;
+    spraySpreadGenerations = rawOffsets[0x40] ?? 0;
+    spraySpreadDelayMs = rawOffsets[0x44] ?? 0;
+    sprayBurnTimeMs = rawOffsets[0x48] ?? 0;
+    sprayDecayMode = rawOffsets[0x4c] ?? 0;
+  } else if (isGun) {
     gunBullets = rawOffsets[0x3c] ?? 0;
     gunShotInterval = rawOffsets[0x40] ?? 0;
     gunSpread = rawOffsets[0x44] ?? 0;
@@ -703,7 +724,9 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
   } else if (isGun) {
     summary.push(`Gun: ${gunBullets || 1} bullet(s), ${gunSpread}° spread, ${damage} damage`);
   } else if (isSpray) {
-    summary.push(`Spray / Flame (gun slab): ${gunBullets || 1} shot(s), ${gunSpread}° spread, ${damage} damage`);
+    summary.push(
+      `Flame Thrower: ${sprayFlames || 1} flame(s), ${spraySpreadGenerations} spreading generation(s) every ${spraySpreadDelayMs}ms, burns ${sprayBurnTimeMs}ms`,
+    );
   } else if (isMine) {
     summary.push(`Mine: proximity ${mineProx}, arm ${mineArm}ms, fuse ${mineFuse}ms, ${damage} damage`);
   } else if (isArrow) {
@@ -818,7 +841,14 @@ export function parseWepBinary(buffer: ArrayBuffer, fileName: string): WepParseR
     recordOverrides['mine.explosion.bias'] = mineExplosionBias;
     recordOverrides['mine.explosion.push_pct'] = mineExplosionPush;
   }
-  if (isGun || isSpray) {
+  if (isSpray) {
+    recordOverrides['flame_thrower.flames'] = sprayFlames;
+    recordOverrides['flame_thrower.spread_generations'] = spraySpreadGenerations;
+    recordOverrides['flame_thrower.spread_delay_ms'] = spraySpreadDelayMs;
+    recordOverrides['flame_thrower.burn_time_ms'] = sprayBurnTimeMs;
+    recordOverrides['flame_thrower.decay_mode'] = sprayDecayMode;
+  }
+  if (isGun) {
     recordOverrides['gun.bullets'] = gunBullets;
     recordOverrides['gun.spread_deg'] = gunSpread;
     recordOverrides['gun.shot_interval_ms'] = gunShotInterval;

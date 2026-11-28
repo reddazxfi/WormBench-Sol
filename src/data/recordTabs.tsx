@@ -22,6 +22,7 @@ export type RecordTabId =
   | 'collisions'
   | 'callbacks'
   | 'gun'
+  | 'flame'
   | 'beam'
   | 'beam_prebuffer'
   | 'beam_explosion'
@@ -139,7 +140,7 @@ export function visibleRecordTabs(
 
   if (fireType === 'spray') {
     return [
-      { id: 'gun', label: 'Flame Inspector', hint: 'Raw 0x3c–0x64 stream parameters', icon: Flame },
+      { id: 'flame', label: 'Flame Thrower', hint: 'Flames, spreading, burn time and decay', icon: Flame },
       { id: 'callbacks', label: 'Lua Script', hint: 'Custom game event hooks', icon: Code2 },
     ];
   }

@@ -705,8 +705,9 @@ export function mapRecord(
 
   // ---- native family groups ----------------------------------------------
   // `fires`, `arrow`, `baseball_bat`, `fire_punch`, `drill`, `jet_pack`,
-  // `parachute` and `utility` are flat tables of scalars. They go straight into
-  // the overrides, which is where the panels and the generator read them.
+  // `parachute`, `utility` and `flame_thrower` are flat tables of scalars. They
+  // go straight into the overrides, which is where the panels and the generator
+  // read them.
   const NATIVE_GROUPS: Record<string, string[]> = {
     fires: ['launch_power_pct', 'creates_projectile'],
     arrow: ['damage'],
@@ -716,6 +717,7 @@ export function mapRecord(
     jet_pack: ['fuel'],
     parachute: ['wind_pct'],
     utility: ['effect'],
+    flame_thrower: ['flames', 'spread_generations', 'spread_delay_ms', 'burn_time_ms', 'decay_mode'],
   };
   // `fires.type` / `method` are family selectors owned by the archetype; `subtype`
   // maps into `fires.subtype` / `specialSubtype` so it round-trips.

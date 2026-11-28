@@ -3148,10 +3148,13 @@ export function generateLuaCode(project: WeaponProject): string {
         );
         holdRows.push(`  ticks = ${fireTicks},`);
         if (h.fireHideMain) holdRows.push('  hide_main = true,');
-        // The role's own nudge, the same channel the held art has.
-        if ((h.fireOffsetX ?? 0) !== 0 || (h.fireOffsetY ?? 0) !== 0) {
+        // The role's own nudge, inheriting the held art's offset unless overridden.
+        const hasFireOffset = h.fireOffsetX !== undefined || h.fireOffsetY !== undefined;
+        const fireOffX = h.fireOffsetX ?? h.offsetX ?? 0;
+        const fireOffY = h.fireOffsetY ?? h.offsetY ?? 0;
+        if (hasFireOffset && (fireOffX !== (h.offsetX ?? 0) || fireOffY !== (h.offsetY ?? 0))) {
           holdRows.push(
-            `  offset = { x = ${formatNumber(h.fireOffsetX ?? 0)}, y = ${formatNumber(h.fireOffsetY ?? 0)} },`,
+            `  offset = { x = ${formatNumber(fireOffX)}, y = ${formatNumber(fireOffY)} },`,
           );
         }
         holdRows.push(`  weap_radius = ${fireRadius},`);
@@ -3166,9 +3169,15 @@ export function generateLuaCode(project: WeaponProject): string {
         if (fireHandScale !== (h.handScale ?? 1)) {
           holdRows.push(`  hand_scale = ${formatNumber(fireHandScale)},`);
         }
-        if ((h.fireHandOffsetX ?? 0) !== 0 || (h.fireHandOffsetY ?? 0) !== 0) {
+        const hasFireHandOffset = h.fireHandOffsetX !== undefined || h.fireHandOffsetY !== undefined;
+        const fireHandOffX = h.fireHandOffsetX ?? h.handOffsetX ?? 0;
+        const fireHandOffY = h.fireHandOffsetY ?? h.handOffsetY ?? 0;
+        if (
+          hasFireHandOffset &&
+          (fireHandOffX !== (h.handOffsetX ?? 0) || fireHandOffY !== (h.handOffsetY ?? 0))
+        ) {
           holdRows.push(
-            `  hand_offset = { x = ${formatNumber(h.fireHandOffsetX ?? 0)}, y = ${formatNumber(h.fireHandOffsetY ?? 0)} },`,
+            `  hand_offset = { x = ${formatNumber(fireHandOffX)}, y = ${formatNumber(fireHandOffY)} },`,
           );
         }
         // The panel's checkbox is `fireDrawHand ?? drawHand`, so the emitted
@@ -3212,9 +3221,12 @@ export function generateLuaCode(project: WeaponProject): string {
           holdRows.push(`  anim_speed = ${formatNumber(bufFps / (1.5 * bufFrames))},`);
         }
         if (h.bufferHideMain) holdRows.push('  hide_main = true,');
-        if ((h.bufferOffsetX ?? 0) !== 0 || (h.bufferOffsetY ?? 0) !== 0) {
+        const hasBufOffset = h.bufferOffsetX !== undefined || h.bufferOffsetY !== undefined;
+        const bufOffX = h.bufferOffsetX ?? h.offsetX ?? 0;
+        const bufOffY = h.bufferOffsetY ?? h.offsetY ?? 0;
+        if (hasBufOffset && (bufOffX !== (h.offsetX ?? 0) || bufOffY !== (h.offsetY ?? 0))) {
           holdRows.push(
-            `  offset = { x = ${formatNumber(h.bufferOffsetX ?? 0)}, y = ${formatNumber(h.bufferOffsetY ?? 0)} },`,
+            `  offset = { x = ${formatNumber(bufOffX)}, y = ${formatNumber(bufOffY)} },`,
           );
         }
         holdRows.push(`  weap_radius = ${bufRadius},`);
@@ -3229,9 +3241,15 @@ export function generateLuaCode(project: WeaponProject): string {
         if (bufHandScale !== (h.handScale ?? 1)) {
           holdRows.push(`  hand_scale = ${formatNumber(bufHandScale)},`);
         }
-        if ((h.bufferHandOffsetX ?? 0) !== 0 || (h.bufferHandOffsetY ?? 0) !== 0) {
+        const hasBufHandOffset = h.bufferHandOffsetX !== undefined || h.bufferHandOffsetY !== undefined;
+        const bufHandOffX = h.bufferHandOffsetX ?? h.handOffsetX ?? 0;
+        const bufHandOffY = h.bufferHandOffsetY ?? h.handOffsetY ?? 0;
+        if (
+          hasBufHandOffset &&
+          (bufHandOffX !== (h.handOffsetX ?? 0) || bufHandOffY !== (h.handOffsetY ?? 0))
+        ) {
           holdRows.push(
-            `  hand_offset = { x = ${formatNumber(h.bufferHandOffsetX ?? 0)}, y = ${formatNumber(h.bufferHandOffsetY ?? 0)} },`,
+            `  hand_offset = { x = ${formatNumber(bufHandOffX)}, y = ${formatNumber(bufHandOffY)} },`,
           );
         }
         if ((h.bufferDrawHand ?? h.drawHand) === false) holdRows.push('  draw_hand = false,');

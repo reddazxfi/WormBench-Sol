@@ -2463,18 +2463,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       flashPreview: previewUrl,
       flashWidth,
       flashHeight,
-      // A new firing sheet starts with its own copy of the aim placement, so
-      // the role is independent from the moment it exists.
-      fireWeapRadius: hold.fireWeapRadius ?? hold.weapRadius ?? 6,
-      fireWeapRotation: hold.fireWeapRotation ?? hold.weapRotation ?? 0,
-      fireScale: hold.fireScale ?? hold.scale ?? 1,
-      fireOffsetX: hold.fireOffsetX ?? hold.offsetX ?? 0,
-      fireOffsetY: hold.fireOffsetY ?? hold.offsetY ?? 0,
-      fireHandRadius: hold.fireHandRadius ?? hold.handRadius ?? 10,
-      fireHandRotation: hold.fireHandRotation ?? hold.handRotation ?? 0,
-      fireHandScale: hold.fireHandScale ?? hold.handScale ?? 1,
-      fireHandOffsetX: hold.fireHandOffsetX ?? hold.handOffsetX ?? 0,
-      fireHandOffsetY: hold.fireHandOffsetY ?? hold.handOffsetY ?? 0,
+      // Keep inheriting aiming placement by default until the author edits a
+      // firing placement control or disables "Inherit aim placement".
       fireFrames: autoFrames,
       fireFps: hold.fireFps ?? 15,
       // One whole strip cycle, in 50 Hz ticks, so the animation is visible from
@@ -2533,16 +2523,8 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
       bufferPreview: previewUrl,
       bufferWidth,
       bufferHeight,
-      bufferWeapRadius: hold.bufferWeapRadius ?? hold.weapRadius ?? 6,
-      bufferWeapRotation: hold.bufferWeapRotation ?? hold.weapRotation ?? 0,
-      bufferScale: hold.bufferScale ?? hold.scale ?? 1,
-      bufferOffsetX: hold.bufferOffsetX ?? hold.offsetX ?? 0,
-      bufferOffsetY: hold.bufferOffsetY ?? hold.offsetY ?? 0,
-      bufferHandRadius: hold.bufferHandRadius ?? hold.handRadius ?? 10,
-      bufferHandRotation: hold.bufferHandRotation ?? hold.handRotation ?? 0,
-      bufferHandScale: hold.bufferHandScale ?? hold.handScale ?? 1,
-      bufferHandOffsetX: hold.bufferHandOffsetX ?? hold.handOffsetX ?? 0,
-      bufferHandOffsetY: hold.bufferHandOffsetY ?? hold.handOffsetY ?? 0,
+      // Keep inheriting aiming placement by default until the author edits a
+      // buffering placement control or disables "Inherit aim placement".
       bufferFrames: autoFrames,
       bufferFps: hold.bufferFps ?? 15,
       bufferHideMain: hold.bufferHideMain ?? true,
@@ -3451,14 +3433,15 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       Hand Offset
                     </span>
                     <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-                      {(hold.bufferHandOffsetX ?? 0)}, {hold.bufferHandOffsetY ?? 0} px
+                      {hold.bufferHandOffsetX ?? hold.handOffsetX ?? 0},{' '}
+                      {hold.bufferHandOffsetY ?? hold.handOffsetY ?? 0} px
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <HoldDial
                       id="hold-buffer-hand-offset-x"
                       label="X"
-                      value={hold.bufferHandOffsetX ?? 0}
+                      value={hold.bufferHandOffsetX ?? hold.handOffsetX ?? 0}
                       onChange={(value) => updateHold({ bufferHandOffsetX: value })}
                       min={-32}
                       max={32}
@@ -3467,7 +3450,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <HoldDial
                       id="hold-buffer-hand-offset-y"
                       label="Y"
-                      value={hold.bufferHandOffsetY ?? 0}
+                      value={hold.bufferHandOffsetY ?? hold.handOffsetY ?? 0}
                       onChange={(value) => updateHold({ bufferHandOffsetY: value })}
                       min={-32}
                       max={32}
@@ -3525,14 +3508,15 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                       Hand Offset
                     </span>
                     <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-                      {(hold.fireHandOffsetX ?? 0)}, {hold.fireHandOffsetY ?? 0} px
+                      {hold.fireHandOffsetX ?? hold.handOffsetX ?? 0},{' '}
+                      {hold.fireHandOffsetY ?? hold.handOffsetY ?? 0} px
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <HoldDial
                       id="hold-fire-hand-offset-x"
                       label="X"
-                      value={hold.fireHandOffsetX ?? 0}
+                      value={hold.fireHandOffsetX ?? hold.handOffsetX ?? 0}
                       onChange={(value) => updateHold({ fireHandOffsetX: value })}
                       min={-32}
                       max={32}
@@ -3541,7 +3525,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <HoldDial
                       id="hold-fire-hand-offset-y"
                       label="Y"
-                      value={hold.fireHandOffsetY ?? 0}
+                      value={hold.fireHandOffsetY ?? hold.handOffsetY ?? 0}
                       onChange={(value) => updateHold({ fireHandOffsetY: value })}
                       min={-32}
                       max={32}
@@ -4335,9 +4319,9 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                   }`}
                 >
                   {aimTab === 'firing'
-                    ? `${hold.fireOffsetX ?? 0}, ${hold.fireOffsetY ?? 0} px`
+                    ? `${hold.fireOffsetX ?? hold.offsetX ?? 0}, ${hold.fireOffsetY ?? hold.offsetY ?? 0} px`
                     : aimTab === 'buffer'
-                      ? `${hold.bufferOffsetX ?? 0}, ${hold.bufferOffsetY ?? 0} px`
+                      ? `${hold.bufferOffsetX ?? hold.offsetX ?? 0}, ${hold.bufferOffsetY ?? hold.offsetY ?? 0} px`
                       : `${hold.offsetX ?? 0}, ${hold.offsetY ?? 0} px`}
                 </span>
               </div>
@@ -4347,7 +4331,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <HoldDial
                       id="hold-fire-offset-x"
                       label="X"
-                      value={hold.fireOffsetX ?? 0}
+                      value={hold.fireOffsetX ?? hold.offsetX ?? 0}
                       onChange={(value) => updateHold({ fireOffsetX: value })}
                       min={-32}
                       max={32}
@@ -4356,7 +4340,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <HoldDial
                       id="hold-fire-offset-y"
                       label="Y"
-                      value={hold.fireOffsetY ?? 0}
+                      value={hold.fireOffsetY ?? hold.offsetY ?? 0}
                       onChange={(value) => updateHold({ fireOffsetY: value })}
                       min={-32}
                       max={32}
@@ -4368,7 +4352,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <HoldDial
                       id="hold-buffer-offset-x"
                       label="X"
-                      value={hold.bufferOffsetX ?? 0}
+                      value={hold.bufferOffsetX ?? hold.offsetX ?? 0}
                       onChange={(value) => updateHold({ bufferOffsetX: value })}
                       min={-32}
                       max={32}
@@ -4377,7 +4361,7 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                     <HoldDial
                       id="hold-buffer-offset-y"
                       label="Y"
-                      value={hold.bufferOffsetY ?? 0}
+                      value={hold.bufferOffsetY ?? hold.offsetY ?? 0}
                       onChange={(value) => updateHold({ bufferOffsetY: value })}
                       min={-32}
                       max={32}
@@ -4455,39 +4439,20 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 </div>
 
                 <div className="space-y-2 rounded-lg border border-stone-200 bg-white/70 px-2.5 py-2 text-[11px] text-stone-600 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400">
-                  <p>
-                    {hasFireGeometry
-                      ? 'These numbers belong to the firing sheet; the aiming pose keeps the ones on the other tab.'
-                      : "Following the aiming parameters, which is PX's FAMAS case: the sheet sits exactly where the gun does."}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={!hold.flashFile}
-                      onClick={() =>
-                        updateHold({
-                          fireWeapRadius: hold.weapRadius ?? 6,
-                          fireWeapRotation: hold.weapRotation ?? 0,
-                          fireScale: hold.scale ?? 1,
-                          fireOffsetX: hold.offsetX ?? 0,
-                          fireOffsetY: hold.offsetY ?? 0,
-                          fireHandRadius: hold.handRadius ?? 10,
-                          fireHandRotation: hold.handRotation ?? 0,
-                          fireHandScale: hold.handScale ?? 1,
-                          fireHandOffsetX: hold.handOffsetX ?? 0,
-                          fireHandOffsetY: hold.handOffsetY ?? 0,
-                        })
-                      }
-                      title="Copy the aiming radius, rotation, scale and offsets into the firing sheet, so they can be changed without moving the gun"
-                      className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
-                    >
-                      <Copy className="h-3 w-3" />
-                      Copy aiming parameters
-                    </button>
-                    {hasFireGeometry && (
-                      <button
-                        type="button"
-                        onClick={() =>
+                  <label
+                    htmlFor="hold-fire-inherit-aim"
+                    title="Follow the aiming tab's weapon and hand placement live (radius, rotation, scale, and offsets). Uncheck or tweak any firing placement control to customize independently."
+                    className="flex cursor-pointer items-center justify-between gap-2"
+                  >
+                    <span className="text-xs font-semibold text-stone-800 dark:text-stone-200">
+                      Inherit aim placement
+                    </span>
+                    <input
+                      id="hold-fire-inherit-aim"
+                      type="checkbox"
+                      checked={!hasFireGeometry}
+                      onChange={(e) => {
+                        if (e.target.checked) {
                           updateHold({
                             fireWeapRadius: undefined,
                             fireWeapRotation: undefined,
@@ -4499,15 +4464,57 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                             fireHandScale: undefined,
                             fireHandOffsetX: undefined,
                             fireHandOffsetY: undefined,
+                          });
+                        } else {
+                          updateHold({
+                            fireWeapRadius: hold.weapRadius ?? 6,
+                            fireWeapRotation: hold.weapRotation ?? 0,
+                            fireScale: hold.scale ?? 1,
+                            fireOffsetX: hold.offsetX ?? 0,
+                            fireOffsetY: hold.offsetY ?? 0,
+                            fireHandRadius: hold.handRadius ?? 10,
+                            fireHandRotation: hold.handRotation ?? 0,
+                            fireHandScale: hold.handScale ?? 1,
+                            fireHandOffsetX: hold.handOffsetX ?? 0,
+                            fireHandOffsetY: hold.handOffsetY ?? 0,
+                          });
+                        }
+                      }}
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                    />
+                  </label>
+                  <p>
+                    {hasFireGeometry
+                      ? 'Custom firing placement: edits on the Aim tab will not move this sheet.'
+                      : 'Following the Aim tab live (radius, rotation, scale, and hand/weapon offsets).'}
+                  </p>
+                  {hasFireGeometry && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={!hold.flashFile}
+                        onClick={() =>
+                          updateHold({
+                            fireWeapRadius: hold.weapRadius ?? 6,
+                            fireWeapRotation: hold.weapRotation ?? 0,
+                            fireScale: hold.scale ?? 1,
+                            fireOffsetX: hold.offsetX ?? 0,
+                            fireOffsetY: hold.offsetY ?? 0,
+                            fireHandRadius: hold.handRadius ?? 10,
+                            fireHandRotation: hold.handRotation ?? 0,
+                            fireHandScale: hold.handScale ?? 1,
+                            fireHandOffsetX: hold.handOffsetX ?? 0,
+                            fireHandOffsetY: hold.handOffsetY ?? 0,
                           })
                         }
-                        title="Go back to following the aiming parameters"
-                        className="font-medium text-forge-600 hover:text-forge-700 dark:text-forge-400"
+                        title="Re-copy the aiming radius, rotation, scale, and offsets into the firing sheet"
+                        className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
                       >
-                        Follow the aim
+                        <Copy className="h-3 w-3" />
+                        Copy aiming parameters
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </>
             ) : aimTab === 'buffer' ? (
@@ -4532,38 +4539,20 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                 </div>
 
                 <div className="space-y-2 rounded-lg border border-stone-200 bg-white/70 px-2.5 py-2 text-[11px] text-stone-600 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400">
-                  <p>
-                    Duration follows your Beam Charge Buffer or Timed Sequencer Initial Buffer
-                    automatically, then switches cleanly to Firing Frames on shot release.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={!hold.bufferFile}
-                      onClick={() =>
-                        updateHold({
-                          bufferWeapRadius: hold.weapRadius ?? 6,
-                          bufferWeapRotation: hold.weapRotation ?? 0,
-                          bufferScale: hold.scale ?? 1,
-                          bufferOffsetX: hold.offsetX ?? 0,
-                          bufferOffsetY: hold.offsetY ?? 0,
-                          bufferHandRadius: hold.handRadius ?? 10,
-                          bufferHandRotation: hold.handRotation ?? 0,
-                          bufferHandScale: hold.handScale ?? 1,
-                          bufferHandOffsetX: hold.handOffsetX ?? 0,
-                          bufferHandOffsetY: hold.handOffsetY ?? 0,
-                        })
-                      }
-                      title="Copy aiming geometry into the buffering sheet"
-                      className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
-                    >
-                      <Copy className="h-3 w-3" />
-                      Copy aiming parameters
-                    </button>
-                    {hasBufferGeometry && (
-                      <button
-                        type="button"
-                        onClick={() =>
+                  <label
+                    htmlFor="hold-buffer-inherit-aim"
+                    title="Follow the aiming tab's weapon and hand placement live (radius, rotation, scale, and offsets). Uncheck or tweak any buffering placement control to customize independently."
+                    className="flex cursor-pointer items-center justify-between gap-2"
+                  >
+                    <span className="text-xs font-semibold text-stone-800 dark:text-stone-200">
+                      Inherit aim placement
+                    </span>
+                    <input
+                      id="hold-buffer-inherit-aim"
+                      type="checkbox"
+                      checked={!hasBufferGeometry}
+                      onChange={(e) => {
+                        if (e.target.checked) {
                           updateHold({
                             bufferWeapRadius: undefined,
                             bufferWeapRotation: undefined,
@@ -4575,15 +4564,61 @@ export const HoldPreview: React.FC<HoldPreviewProps> = ({ project, onChange }) =
                             bufferHandScale: undefined,
                             bufferHandOffsetX: undefined,
                             bufferHandOffsetY: undefined,
+                          });
+                        } else {
+                          updateHold({
+                            bufferWeapRadius: hold.weapRadius ?? 6,
+                            bufferWeapRotation: hold.weapRotation ?? 0,
+                            bufferScale: hold.scale ?? 1,
+                            bufferOffsetX: hold.offsetX ?? 0,
+                            bufferOffsetY: hold.offsetY ?? 0,
+                            bufferHandRadius: hold.handRadius ?? 10,
+                            bufferHandRotation: hold.handRotation ?? 0,
+                            bufferHandScale: hold.handScale ?? 1,
+                            bufferHandOffsetX: hold.handOffsetX ?? 0,
+                            bufferHandOffsetY: hold.handOffsetY ?? 0,
+                          });
+                        }
+                      }}
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded text-forge-600 focus:ring-forge-500"
+                    />
+                  </label>
+                  <p>
+                    {hasBufferGeometry
+                      ? 'Custom buffering placement: edits on the Aim tab will not move this sheet.'
+                      : 'Following the Aim tab live (radius, rotation, scale, and hand/weapon offsets).'}
+                  </p>
+                  <p className="text-[10px] text-stone-500 dark:text-stone-400">
+                    Duration follows your Beam Charge Buffer or Timed Sequencer Initial Buffer
+                    automatically, then switches cleanly to Firing Frames on shot release.
+                  </p>
+                  {hasBufferGeometry && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={!hold.bufferFile}
+                        onClick={() =>
+                          updateHold({
+                            bufferWeapRadius: hold.weapRadius ?? 6,
+                            bufferWeapRotation: hold.weapRotation ?? 0,
+                            bufferScale: hold.scale ?? 1,
+                            bufferOffsetX: hold.offsetX ?? 0,
+                            bufferOffsetY: hold.offsetY ?? 0,
+                            bufferHandRadius: hold.handRadius ?? 10,
+                            bufferHandRotation: hold.handRotation ?? 0,
+                            bufferHandScale: hold.handScale ?? 1,
+                            bufferHandOffsetX: hold.handOffsetX ?? 0,
+                            bufferHandOffsetY: hold.handOffsetY ?? 0,
                           })
                         }
-                        title="Go back to following the aiming parameters"
-                        className="font-medium text-forge-600 hover:text-forge-700 dark:text-forge-400"
+                        title="Re-copy aiming geometry into the buffering sheet"
+                        className="inline-flex items-center gap-1.5 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
                       >
-                        Follow the aim
+                        <Copy className="h-3 w-3" />
+                        Copy aiming parameters
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (

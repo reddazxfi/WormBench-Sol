@@ -204,8 +204,8 @@ export function drawHoldOverlay(
     offCtx.translate(roleWeapX, roleWeapY);
     offCtx.rotate(roleAngle);
     offCtx.scale(roleDrawScale, roleDrawScale);
-    const bufOffX = Number(hold.bufferOffsetX ?? 0);
-    const bufOffY = Number(hold.bufferOffsetY ?? 0);
+    const bufOffX = Number(hold.bufferOffsetX ?? hold.offsetX ?? 0);
+    const bufOffY = Number(hold.bufferOffsetY ?? hold.offsetY ?? 0);
     if (bufOffX || bufOffY) offCtx.translate(bufOffX, bufOffY);
     offCtx.drawImage(
       bufferImg,
@@ -232,8 +232,8 @@ export function drawHoldOverlay(
     offCtx.translate(roleWeapX, roleWeapY);
     offCtx.rotate(roleAngle);
     offCtx.scale(roleDrawScale, roleDrawScale);
-    const fireOffX = Number(hold.fireOffsetX ?? 0);
-    const fireOffY = Number(hold.fireOffsetY ?? 0);
+    const fireOffX = Number(hold.fireOffsetX ?? hold.offsetX ?? 0);
+    const fireOffY = Number(hold.fireOffsetY ?? hold.offsetY ?? 0);
     if (fireOffX || fireOffY) offCtx.translate(fireOffX, fireOffY);
     offCtx.drawImage(
       flashImg,
@@ -284,14 +284,14 @@ export function drawHoldOverlay(
     const handAngle = rot + Math.PI * (1 + roleHandRotation / 180);
     const handCarry = roleHandScale * putAwayShrink;
     const handNudgeX = isFiring
-      ? Number(hold.fireHandOffsetX ?? 0)
+      ? Number(hold.fireHandOffsetX ?? hold.handOffsetX ?? 0)
       : isBuffer
-        ? Number(hold.bufferHandOffsetX ?? 0)
+        ? Number(hold.bufferHandOffsetX ?? hold.handOffsetX ?? 0)
         : Number(hold.handOffsetX ?? 0) + (swingPose?.dx ?? 0);
     const handNudgeY = isFiring
-      ? Number(hold.fireHandOffsetY ?? 0)
+      ? Number(hold.fireHandOffsetY ?? hold.handOffsetY ?? 0)
       : isBuffer
-        ? Number(hold.bufferHandOffsetY ?? 0)
+        ? Number(hold.bufferHandOffsetY ?? hold.handOffsetY ?? 0)
         : Number(hold.handOffsetY ?? 0) + (swingPose?.dy ?? 0);
     const hox = handNudgeX * handCarry;
     const hoy = handNudgeY * handCarry;

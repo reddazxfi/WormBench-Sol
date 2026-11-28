@@ -1798,6 +1798,8 @@ function M.hold(ctx, spec)
   -- Normalise `fire` and `buffer` roles once so the draw reads plain numbers.
   local function normalize_role(role_spec)
     if type(role_spec) ~= "table" or type(role_spec.sheet) ~= "string" then return nil end
+    local role_off = type(role_spec.offset) == "table" and role_spec.offset or nil
+    local role_hand_off = type(role_spec.hand_offset) == "table" and role_spec.hand_offset or nil
     return {
       sheet = role_spec.sheet,
       cell_w = role_spec.cell_w or cell,
@@ -1817,10 +1819,10 @@ function M.hold(ctx, spec)
       hand_scale = role_spec.hand_scale or spec.hand_scale or 1.0,
       hand_size = role_spec.hand_size or HOLD_HAND_CELL,
       draw_hand = role_spec.draw_hand,
-      ox = (type(role_spec.offset) == "table" and role_spec.offset.x) or 0,
-      oy = (type(role_spec.offset) == "table" and role_spec.offset.y) or 0,
-      hox = (type(role_spec.hand_offset) == "table" and role_spec.hand_offset.x) or 0,
-      hoy = (type(role_spec.hand_offset) == "table" and role_spec.hand_offset.y) or 0,
+      ox = (role_off and role_off.x) or off.x or 0,
+      oy = (role_off and role_off.y) or off.y or 0,
+      hox = (role_hand_off and role_hand_off.x) or hand_off.x or 0,
+      hoy = (role_hand_off and role_hand_off.y) or hand_off.y or 0,
     }
   end
   local fire = normalize_role(spec.fire)

@@ -229,7 +229,7 @@ export default function App() {
     if (isDark) {
       root.classList.add('dark');
       localStorage.setItem('wf_theme_v2', 'dark');
-      themeColor?.setAttribute('content', '#0c0a09');
+      themeColor?.setAttribute('content', '#071222');
     } else {
       root.classList.remove('dark');
       localStorage.setItem('wf_theme_v2', 'light');

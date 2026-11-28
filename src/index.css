@@ -2,18 +2,19 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* WormBench's forge-red, sampled from the mod loader logo. */
-  --color-forge-50: #fdf4f2;
-  --color-forge-100: #fbe6e2;
-  --color-forge-200: #f7cdc6;
-  --color-forge-300: #f0a99e;
-  --color-forge-400: #e67d6d;
-  --color-forge-500: #d65443;
-  --color-forge-600: #bf3928;
-  --color-forge-700: #a02c1f;
-  --color-forge-800: #85271e;
-  --color-forge-900: #6f251e;
-  --color-forge-950: #3c0f0b;
+  /* WormBench Sol celestial blue accent scale, paired with Solar Gold sliders in light mode. */
+  --color-forge-50: #f0f9ff;
+  --color-forge-100: #e0f2fe;
+  --color-forge-200: #bae6fd;
+  --color-forge-300: #7dd3fc;
+  --color-forge-400: #38bdf8;
+  --color-forge-500: #0ea5e9;
+  --color-forge-600: #0277bd;
+  --color-forge-700: #036099;
+  --color-forge-800: #075985;
+  --color-forge-900: #0c4a6e;
+  --color-forge-950: #082f49;
+  --color-slider: #ca8a04;
 }
 
 @layer base {
@@ -24,6 +25,25 @@
 
   html.dark {
     color-scheme: dark;
+    /* Deep midnight blue surfaces and light blue accents for night mode. */
+    --color-stone-950: #071222;
+    --color-stone-900: #0d1e36;
+    --color-stone-800: #162d4d;
+    --color-stone-700: #23416b;
+    --color-stone-600: #365887;
+    --color-stone-500: #6687b3;
+    --color-stone-400: #93b0d4;
+    --color-stone-300: #bdd2eb;
+    --color-stone-200: #dae7f7;
+    --color-stone-100: #eef5fd;
+    --color-stone-50: #f7fbff;
+    --color-forge-300: #bae6fd;
+    --color-forge-400: #7dd3fc;
+    --color-forge-500: #0284c7;
+    --color-forge-600: #0ea5e9;
+    --color-forge-900: #0e3a5c;
+    --color-forge-950: #0a2540;
+    --color-slider: #56c4f9;
   }
 
   body {
@@ -43,17 +63,26 @@
     text-wrap: balance;
   }
 
-  /* Native controls (checkboxes, radios, ranges) follow the forge accent. */
+  /* Native checkboxes and radios follow the theme accent. */
   input[type='checkbox'],
-  input[type='radio'],
-  input[type='range'] {
+  input[type='radio'] {
     accent-color: var(--color-forge-600);
+  }
+
+  html.dark input[type='checkbox'],
+  html.dark input[type='radio'] {
+    accent-color: var(--color-forge-400);
   }
 
   :focus-visible {
     outline: 2px solid var(--color-forge-500);
     outline-offset: 2px;
   }
+}
+
+/* Unlayered rule overrides .accent-forge-* utilities so all sliders follow light gold / dark sky blue. */
+input[type='range'] {
+  accent-color: var(--color-slider);
 }
 
 /* Custom scrollbars for dense editor panels */
@@ -70,6 +99,12 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.6);
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(125, 211, 252, 0.25);
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(125, 211, 252, 0.48);
 }
 
 @media (prefers-reduced-motion: reduce) {

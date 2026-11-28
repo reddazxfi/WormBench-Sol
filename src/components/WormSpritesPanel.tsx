@@ -512,10 +512,11 @@ export const WormSpritesPanel: React.FC<WormSpritesPanelProps> = ({
     ctx.scale(VIEW_SCALE * aimZoom, VIEW_SCALE * aimZoom);
     ctx.imageSmoothingEnabled = false;
 
+    // Deep blue to black sky gradient, matching Worms Armageddon's dark backdrop in both themes.
     const sky = ctx.createLinearGradient(0, 0, 0, MAP_SIZE);
-    sky.addColorStop(0, '#0c4a6e');
-    sky.addColorStop(0.5, '#0284c7');
-    sky.addColorStop(1, '#38bdf8');
+    sky.addColorStop(0, '#0c2344');
+    sky.addColorStop(0.55, '#061124');
+    sky.addColorStop(1, '#000000');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
 
